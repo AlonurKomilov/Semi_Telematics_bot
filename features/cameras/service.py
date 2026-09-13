@@ -302,17 +302,38 @@ async def save_camera_results(account_id: int, results: list[dict]):
             logger.debug(f"Camera history save failed: {e}")
 
 
-async def get_dashcam_snapshots(account_id: int, days: int = 3) -> list[dict]:
+async def get_dashcam_snapshots(
+    account_id: int, days: int = 3, *,
+    vehicle_ids: list[str] | None = None, company: str | None = None,
+) -> list[dict]:
     """One recent dashcam frame per vehicle, merged across companies.
 
     SSOT accessor for raw snapshot frames (the camera tool's data path);
     ``gather_snapshots`` above remains the richer analysis-pipeline
     entrypoint.  Routed through the cached MultiCompanyClient pool so
     callers share the breaker + rate-limit retries.
+
+    ``vehicle_ids`` and ``company`` narrow the work to one truck.
+    Without them this asks every company's client for a frame from every
+    one of its vehicles — a roster fetch, a JPEG per truck, then safety
+    VIDEOS through ffmpeg for whatever the media API missed. Answering
+    "is the camera on 231 blocked?" used all of that and one frame.
+
+    Rows are stamped with the company they came from, which they were
+    not: the camera tool's company filter compared against a key no row
+    carried, so it matched nothing and the tool reported "no image" for
+    any truck whose registry row had a company code.
     """
     from infra.services import get_client
     multi = await get_client(account_id)
+    want_co = (company or "").strip().upper()
     out: list[dict] = []
-    for _code, client in multi.clients.items():
-        out.extend(await client.get_dashcam_snapshots(days=days))
+    for code, client in multi.clients.items():
+        if want_co and str(code).strip().upper() != want_co:
+            continue
+        rows = await client.get_dashcam_snapshots(
+            days=days, vehicle_ids=vehicle_ids)
+        for r in rows:
+            r["_org"] = code
+        out.extend(rows)
     return out

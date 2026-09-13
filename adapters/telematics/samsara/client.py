@@ -1740,7 +1740,7 @@ class SamsaraClient:
     _MAX_VIDEO_BYTES = 25 * 1024 * 1024  # 25 MB download cap
     _MAX_IMAGE_BYTES = 5 * 1024 * 1024   # 5 MB image cap
 
-    async def _get_camera_media(self) -> list[dict]:
+    async def _get_camera_media(self, vehicle_ids: list[str] | None = None) -> list[dict]:
         """Fetch camera media (images) via GET /cameras/media.
 
         Uses a 24-hour window (API max is 1 day).  Returns one result per
@@ -1756,13 +1756,21 @@ class SamsaraClient:
         end = now.isoformat()
         start = (now - timedelta(hours=23, minutes=59)).isoformat()
 
-        # Build vehicle ID list for batched queries
-        try:
-            vehicles_data = await self._get("/fleet/vehicles", {"limit": "512"})
-            vids = [str(v["id"]) for v in vehicles_data.get("data", [])]
-        except Exception as e:
-            logger.warning(f"Camera media: failed to fetch vehicles: {e}")
-            return []
+        # Build vehicle ID list for batched queries.
+        #
+        # ``vehicle_ids`` short-circuits the roster fetch entirely: the
+        # media endpoint takes the ids, so asking about ONE truck should
+        # cost one batch, not a fleet enumeration followed by a JPEG per
+        # vehicle.
+        if vehicle_ids:
+            vids = [str(v).strip() for v in vehicle_ids if str(v).strip()]
+        else:
+            try:
+                vehicles_data = await self._get("/fleet/vehicles", {"limit": "512"})
+                vids = [str(v["id"]) for v in vehicles_data.get("data", [])]
+            except Exception as e:
+                logger.warning(f"Camera media: failed to fetch vehicles: {e}")
+                return []
 
         if not vids:
             return []
@@ -1826,8 +1834,18 @@ class SamsaraClient:
             })
         return results
 
-    async def get_dashcam_snapshots(self, days: int = 10) -> list[dict]:
+    async def get_dashcam_snapshots(
+        self, days: int = 10, vehicle_ids: list[str] | None = None,
+    ) -> list[dict]:
         """Get one dashcam frame per vehicle from camera media + safety events.
+
+        ``vehicle_ids`` narrows every tier to those trucks. Without it
+        this walks the whole org: a roster fetch, then a JPEG download
+        per vehicle (up to ~512 KB each, eight at a time), then safety
+        VIDEOS through ffmpeg for anything the media API missed. That is
+        the right shape for the account-wide camera sweep it was written
+        for, and badly wrong for "is the camera on 231 blocked?", which
+        uses exactly one frame.
 
         Two-tier approach:
         1. Primary: GET /cameras/media (24h) — direct JPEG URLs for periodic
@@ -1854,8 +1872,13 @@ class SamsaraClient:
         timeout = aiohttp.ClientTimeout(total=15)
         session = self._session or aiohttp.ClientSession(timeout=timeout)
 
+        want = {str(v).strip() for v in (vehicle_ids or []) if str(v).strip()}
+
         # ── Tier 1: Camera media API (direct JPEG) ──────────────
-        media_items = await self._get_camera_media()
+        media_items = await self._get_camera_media(
+            vehicle_ids=sorted(want) if want else None)
+        if want:
+            media_items = [m for m in media_items if str(m.get("vehicle_id")) in want]
 
         # Build vehicle name map
         vname_map: dict[str, str] = {}
@@ -1919,6 +1942,11 @@ class SamsaraClient:
         for ev in events:
             vid = ev.get("vehicle_id", "")
             if not vid or vid in covered_vehicle_ids:
+                continue
+            # The fallback downloads VIDEO and runs ffmpeg on it. When
+            # the caller named its trucks, doing that for everyone else's
+            # is pure waste — and it is the expensive half.
+            if want and vid not in want:
                 continue
             for cam_type, url_key in [
                 ("forward", "video_url"),

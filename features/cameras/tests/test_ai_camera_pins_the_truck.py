@@ -63,7 +63,7 @@ async def test_a_truck_with_a_company_code_still_gets_its_frame(monkeypatch, _st
     was told there was no image."""
     import features.cameras.service as svc
 
-    async def _snaps(account_id, days=3):
+    async def _snaps(account_id, days=3, *, vehicle_ids=None, company=None):
         return [_snap("sam_42")]
 
     monkeypatch.setattr(svc, "get_dashcam_snapshots", _snaps, raising=False)
@@ -79,7 +79,7 @@ async def test_a_truck_with_a_company_code_still_gets_its_frame(monkeypatch, _st
 async def test_the_twins_frame_is_not_returned(monkeypatch, _stub):
     import features.cameras.service as svc
 
-    async def _snaps(account_id, days=3):
+    async def _snaps(account_id, days=3, *, vehicle_ids=None, company=None):
         return [_snap("sam_99")]          # only the OTHER company's truck
 
     monkeypatch.setattr(svc, "get_dashcam_snapshots", _snaps, raising=False)
@@ -95,7 +95,7 @@ async def test_the_twins_frame_is_not_returned(monkeypatch, _stub):
 async def test_a_scoped_caller_cannot_reach_the_twins_camera(monkeypatch, _stub):
     import features.cameras.service as svc
 
-    async def _snaps(account_id, days=3):
+    async def _snaps(account_id, days=3, *, vehicle_ids=None, company=None):
         return [_snap("sam_42"), _snap("sam_99")]
 
     monkeypatch.setattr(svc, "get_dashcam_snapshots", _snaps, raising=False)
@@ -105,3 +105,47 @@ async def test_a_scoped_caller_cannot_reach_the_twins_camera(monkeypatch, _stub)
         None, account_id=1, db=_DB([OSY, G1]))
 
     assert res.get("error"), res
+
+
+@pytest.mark.asyncio
+async def test_only_this_trucks_frame_is_fetched(monkeypatch, _stub):
+    """The fan-out was the whole cost: a roster fetch per company, a
+    JPEG per truck, and safety videos through ffmpeg for whatever the
+    media API missed — to use one frame."""
+    import features.cameras.service as svc
+
+    asked = {}
+
+    async def _snaps(account_id, days=3, *, vehicle_ids=None, company=None):
+        asked["vehicle_ids"] = vehicle_ids
+        asked["company"] = company
+        return [_snap("sam_42")]
+
+    monkeypatch.setattr(svc, "get_dashcam_snapshots", _snaps, raising=False)
+    await check_vehicle_camera(
+        {"vehicle_name": "103", "company": "OSY"}, None,
+        account_id=1, db=_DB([OSY, G1]))
+
+    assert asked["vehicle_ids"] == ["sam_42"], asked
+    assert asked["company"] == "OSY", asked
+
+
+@pytest.mark.asyncio
+async def test_a_truck_with_no_provider_link_still_asks(monkeypatch, _stub):
+    """A manual or TMS-only truck has no telematics_ref — narrowing by
+    id is impossible, and the tool must still ask rather than refuse."""
+    import features.cameras.service as svc
+
+    asked = {}
+
+    async def _snaps(account_id, days=3, *, vehicle_ids=None, company=None):
+        asked["vehicle_ids"] = vehicle_ids
+        return []
+
+    monkeypatch.setattr(svc, "get_dashcam_snapshots", _snaps, raising=False)
+    manual = _V(7, "", "888", "OSY")
+    res = await check_vehicle_camera(
+        {"vehicle_name": "888"}, None, account_id=1, db=_DB([manual]))
+
+    assert asked["vehicle_ids"] is None
+    assert res.get("result"), res

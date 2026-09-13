@@ -67,7 +67,21 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         # accessor) — it merges companies and rides the same cached
         # MultiCompanyClient pool (breaker + rate-limit retries).
         from .service import get_dashcam_snapshots as _svc_snaps
-        snaps = await _svc_snaps(account_id, days=3)
+        # Ask for THIS truck, from THIS company.
+        #
+        # This asked every company's client for a frame from every one of
+        # its vehicles and then used exactly one: a roster fetch per
+        # company, a JPEG per truck (up to ~512 KB, eight at a time), and
+        # safety VIDEOS through ffmpeg for whatever the media API missed.
+        # On a 200-truck account that is ~200 image downloads and up to
+        # ~400 video downloads to answer "is the camera on 231 blocked?"
+        # — real provider quota, and a chat turn nobody waits out.
+        _ref = (getattr(resolved, "telematics_ref", "") or "").strip()
+        snaps = await _svc_snaps(
+            account_id, days=3,
+            vehicle_ids=[_ref] if _ref else None,
+            company=co or None,
+        )
         # Fail closed on the caller's Vehicle-Access scope FIRST: these
         # rows carry vehicle_id, so the ladder's rung 2 splits twins
         # even with no registry id on them.
