@@ -17,11 +17,14 @@ from __future__ import annotations
 from capabilities.ai.tools.registry import (
     register_tool, register_action_executor, tool_propose, tool_error,
 )
+from adapters.storage.maintenance import CLOSED_TASK_STATUSES
 from capabilities.ai.tools.scope import filter_to_scope
 from features.vehicles.resolve import resolve_for_tool
 
-# Stored statuses that mean "closed" — excluded from every open-task bucket.
-_CLOSED = ("completed", "cancelled")
+# Stored statuses that mean "closed" — excluded from every open-task
+# bucket.  The adapter owns the vocabulary (it includes the bot's
+# "done"); this alias exists only so the reads below stay readable.
+_CLOSED = CLOSED_TASK_STATUSES
 
 
 def _mileage_fields(t: dict) -> dict:
@@ -136,7 +139,8 @@ async def get_vehicle_maintenance(tool_args: dict, samsara_client,
     resolved, err = await resolve_for_tool(db, account_id, tool_args)
     if err:
         return err
-    tasks = await db.get_maintenance_tasks(account_id, vehicle_name=vehicle)
+    tasks = await db.get_maintenance_tasks(
+        account_id, vehicle_name=vehicle, open_only=True)
     # The task rows carry vehicle_id (the provider id) and company_code,
     # so once the registry has named the truck we can keep only its own
     # tasks. A task created on the dashboard has an empty vehicle_id, so
@@ -196,7 +200,9 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
                                   account_id: int | None = None, db=None) -> dict:
     if not db or account_id is None:
         return {"error": "Maintenance data not available in this context"}
-    tasks = await db.get_maintenance_tasks(account_id)
+    # Open tasks only — this answer is entirely about open work, and
+    # the closed history is the part that grows without bound.
+    tasks = await db.get_maintenance_tasks(account_id, open_only=True)
     # Scope to the caller's vehicles before aggregating.
     tasks = filter_to_scope(tasks, tool_args)
     # Live-readings merge before classifying — same rationale as

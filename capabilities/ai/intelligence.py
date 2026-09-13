@@ -250,7 +250,8 @@ async def build_context(account_id: int,
     async def _fetch_maintenance():
         try:
             tenant = await get_tenant_db(account_id)
-            tasks = await tenant.get_maintenance_tasks(account_id)
+            tasks = await tenant.get_maintenance_tasks(
+                account_id, open_only=True)
             if _vehicle_set:
                 tasks = [t for t in tasks if t.get("vehicle_name", "").lower() in _vehicle_set]
             # DERIVED urgency (date / mileage / engine-hours), same as the

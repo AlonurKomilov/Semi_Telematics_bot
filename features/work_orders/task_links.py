@@ -16,10 +16,16 @@ from __future__ import annotations
 
 import re
 
+from adapters.storage.maintenance import CLOSED_TASK_STATUSES
+
 # Statuses that mean "this task is finished or abandoned" — everything
 # else (pending / overdue / in_progress) is open work.  The bot writes
 # 'done' where the API writes 'completed'; both count as closed.
-CLOSED_STATUSES = frozenset({"completed", "done", "cancelled"})
+#
+# Re-exported from the adapter that owns the column, not re-declared:
+# this file had the full set while the urgency classifier next door was
+# missing "done", and nothing could see the two disagree.
+CLOSED_STATUSES = CLOSED_TASK_STATUSES
 
 # Curated matching vocabulary, keyed on the SERVICE TASK's
 # ``canonical_key`` (adapters/storage/service_tasks.py) — not on a

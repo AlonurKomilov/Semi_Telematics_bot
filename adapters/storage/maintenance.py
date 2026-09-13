@@ -10,6 +10,21 @@ from capabilities.activity_trail import delete_changes, diff_rows
 
 logger = logging.getLogger("bot.storage")
 
+# Statuses that mean the task is finished — the SSOT for every reader
+# that asks "is this still open?".
+#
+# Historical schism (see ``update_maintenance_status`` below): the
+# Telegram bot's "✓ Done" button writes ``"done"``; the API and the
+# dashboard write ``"completed"``.  Both are terminal, neither was
+# migrated (that would invalidate existing audit trails), so every
+# reader has to know both spellings.  It lives here, in the adapter
+# that owns the column, because the layer below features is the only
+# place all of features/, capabilities/ and interfaces/ can import
+# from — a copy in each of them is exactly how ``"done"`` went missing
+# from the urgency classifier while the dashboard's badge helper had
+# it all along.
+CLOSED_TASK_STATUSES = frozenset({"completed", "done", "cancelled"})
+
 
 if TYPE_CHECKING:
     # Typing stub — actual ``_db`` is provided by the ``_DatabaseCore``
@@ -202,7 +217,19 @@ class MaintenanceMixin(_MixinBase):
     async def get_maintenance_tasks(
         self, account_id: int, status: Optional[str] = None,
         vehicle_name: Optional[str] = None,
+        open_only: bool = False,
     ) -> list[dict]:
+        """Maintenance tasks for an account, urgency-sorted.
+
+        ``open_only`` leaves the closed history in the database.  Every
+        caller that derives urgency discards those rows in Python
+        anyway, so on an account a year in they were pure transfer —
+        and the AI reads them twice on every chat turn (once for the
+        context snapshot, once for whichever maintenance tool the model
+        calls).  The predicate is BUILT from
+        :data:`CLOSED_TASK_STATUSES`, so the SQL cannot drift from the
+        Python filters the way the vocabulary itself once did.
+        """
         q = ("SELECT m.*" + self._TASK_TYPE_SELECT
              + "FROM maintenance_tasks m" + self._TASK_TYPE_JOIN
              + "WHERE m.account_id = ?")
@@ -210,6 +237,11 @@ class MaintenanceMixin(_MixinBase):
         if status:
             q += " AND m.status = ?"
             params.append(status)
+        if open_only:
+            closed = sorted(CLOSED_TASK_STATUSES)
+            marks = ", ".join("?" for _ in closed)
+            q += f" AND LOWER(COALESCE(m.status, '')) NOT IN ({marks})"
+            params.extend(closed)
         if vehicle_name:
             q += " AND m.vehicle_name = ?"
             params.append(vehicle_name)

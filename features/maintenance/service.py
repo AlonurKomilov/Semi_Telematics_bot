@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from adapters.storage.maintenance import CLOSED_TASK_STATUSES
+
 
 # ── Task type registry (SSOT used by both bot and API) ────────────────────────
 
@@ -95,12 +97,16 @@ def classify_task_urgency(task: dict, *, today=None) -> Optional[str]:
     on ANY axis (date / mileage / engine hours) wins — a task that's
     overdue on mileage but not yet on date is still overdue.
 
-    Tasks that are closed (status completed / cancelled) return
-    ``None`` regardless of dates, so the cleanup pass in the caller
-    doesn't have to special-case them.
+    Tasks that are closed return ``None`` regardless of dates, so the
+    cleanup pass in the caller doesn't have to special-case them.
+    "Closed" means the adapter's vocabulary, which includes the bot's
+    ``"done"`` — a task a driver marked done in Telegram used to keep
+    classifying as overdue here (the alert carrying that button only
+    fires once the task is past due), so the AI and the Overview page
+    reported work the dashboard already showed as finished.
     """
     status = (task.get("status") or "").lower()
-    if status in ("completed", "cancelled"):
+    if status in CLOSED_TASK_STATUSES:
         return None
     if status == "overdue":
         return "overdue"

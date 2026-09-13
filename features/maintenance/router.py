@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
 from interfaces.api.deps import deny, get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, get_user_vehicle_assignments, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope, holds, effective_perms
+from adapters.storage.maintenance import CLOSED_TASK_STATUSES
 from capabilities.activity_trail import new_group_id
 from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
 from features.maintenance.service import apply_live_readings, spawn_recurring_if_completed
@@ -334,7 +335,7 @@ async def list_tasks(
             from datetime import datetime as _dt, timedelta as _td, timezone as _tz
             today = _dt.now(_tz.utc)
             for t in items:
-                if t.get("status") in ("completed", "cancelled"):
+                if (t.get("status") or "").lower() in CLOSED_TASK_STATUSES:
                     continue
                 if t.get("due_date"):
                     # Date already pinned by the operator — projection

@@ -13,6 +13,8 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
+from adapters.storage.maintenance import CLOSED_TASK_STATUSES
+
 from features.maintenance.ai_tool import (
     get_maintenance_summary,
     get_vehicle_maintenance,
@@ -24,10 +26,18 @@ class _FakeDB:
         self._tasks = tasks
         self._state_rows = state_rows
 
-    async def get_maintenance_tasks(self, account_id, vehicle_name=None):
+    async def get_maintenance_tasks(self, account_id, vehicle_name=None,
+                                    status=None, open_only=False):
+        rows = self._tasks
         if vehicle_name:
-            return [t for t in self._tasks if t.get("vehicle_name") == vehicle_name]
-        return list(self._tasks)
+            rows = [t for t in rows if t.get("vehicle_name") == vehicle_name]
+        if open_only:
+            # Mirror the store, so a fixture that adds a closed task
+            # here behaves the way production would.
+            rows = [t for t in rows
+                    if (t.get("status") or "").lower()
+                    not in CLOSED_TASK_STATUSES]
+        return list(rows)
 
     async def get_vehicle_state(self, account_id, **kwargs):
         if self._state_rows is None:
