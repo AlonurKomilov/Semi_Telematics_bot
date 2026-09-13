@@ -17,8 +17,8 @@ import { useState } from 'react';
 
 import { MAP_TYPES, MAP_TYPE_LABEL, type MapType } from './tiles';
 import type { MapEngine } from './engine';
-import { POI_GROUPS, glyphSvg, readableOn, type PoiLayerDef } from './poiLayers';
-import type { PoiLayersState } from './usePoiLayers';
+import { POI_GROUPS, glyphSvg, readableOn, type PoiLayerDef } from './poi/layers';
+import type { PoiLayersState } from './poi/usePoiLayers';
 
 /** A picture OF the tiles rather than a colour from the palette — which
  *  is why these are literals.  The dashboard's `MAP_TYPE_PREVIEW`, kept

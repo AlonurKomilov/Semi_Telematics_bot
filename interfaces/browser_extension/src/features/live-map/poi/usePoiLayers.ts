@@ -23,17 +23,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type L from 'leaflet';
 
-import { apiFetch, apiJSON } from '../../api/client';
-import { POI_LAYERS_KEY, getWords, setWords } from '../../prefs';
+import { apiFetch, apiJSON } from '../../../api/client';
+import { POI_LAYERS_KEY, getWords, setWords } from '../../../prefs';
 import {
   POI_LAYERS, customLayerDef, esc, glyphSvg, osmPopup, readableOn,
   type CustomLayerDto, type PoiLayerDef,
-} from './poiLayers';
+} from './layers';
 import {
   LS_FRESH_MS, MARKER_BUDGET, bboxCovers, bboxKey, bboxParam, brandMatch,
   filterToView, lsFindCovering, lsRead, lsWrite, nearestFirst,
   type PoiFeature, type ViewBox,
-} from './pois';
+} from './viewport';
 
 /** An Overpass query over a state-sized box legitimately runs past the
  *  client's ordinary thirty seconds.  The dashboard waits ninety; so

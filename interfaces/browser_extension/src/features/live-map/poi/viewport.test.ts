@@ -15,7 +15,7 @@ import {
   MARKER_BUDGET, bboxCovers, bboxKey, bboxParam, brandMatch, expandedBbox,
   filterToView, lsFindCovering, lsRead, lsWrite, nearestFirst, parseBboxKey,
   snapToGrid, wordMatch, LS_STALE_MS, type PoiFeature,
-} from './pois';
+} from './viewport';
 
 const at = (lat: number, lng: number, props: Record<string, unknown> = {}): PoiFeature => ({
   type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props,

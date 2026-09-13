@@ -17,7 +17,7 @@ import { MAP_TYPES, type MapType } from './tiles';
 import { LOW_LEVEL_PCT, levelsOf } from './levels';
 import SourceMarks from './SourceMarks';
 import MapControls from './MapControls';
-import { usePoiLayers } from './usePoiLayers';
+import { usePoiLayers } from './poi/usePoiLayers';
 import { linksFor, type ProviderLink } from './links';
 import { forgetVehicle, inventoryFor, setItemStatus, verifyItem, type Inventory } from '../inventory/data';
 import ItemRows from '../inventory/ItemRows';

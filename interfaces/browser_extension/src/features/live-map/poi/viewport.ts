@@ -1,7 +1,10 @@
 /**
- * The Map Layers' arithmetic — bounding boxes, the caches, and brand
- * matching.  No Leaflet, no React, no `chrome.*`: everything here is a
- * function of its arguments, which is why it is the part with tests.
+ * The Map Layers' arithmetic — the bbox grid, what is remembered of an
+ * answer (both caches), the marker budget, and brand matching.  No
+ * Leaflet, no React, no `chrome.*`: everything here is a function of its
+ * arguments, which is why it is the part with tests.  Named for the same
+ * role the server's `features/live_map/poi/viewport.py` plays: where a
+ * request may look, and what is kept of what came back.
  *
  * The dashboard's `features/live-map/poi/usePoiLayers.ts` is the original.  What is
  * shared with it is shared on purpose and MUST stay identical, because

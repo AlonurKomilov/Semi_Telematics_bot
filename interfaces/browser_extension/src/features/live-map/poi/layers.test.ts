@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { POI_LAYERS, esc, glyphSvg, osmPopup, readableOn, vendorPopup } from './poiLayers';
+import { POI_LAYERS, esc, glyphSvg, osmPopup, readableOn, vendorPopup } from './layers';
 
 function ratio(a: string, b: string): number {
   const lum = (hex: string) => {
