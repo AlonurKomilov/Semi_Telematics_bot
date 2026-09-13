@@ -103,6 +103,13 @@ _JOB_META = {
     "capacity_sample":                ("Accounts & system", "Sample host/DB/Redis/request-rate into the capacity history (60s)"),
     "capacity_flush_yesterday":       ("Accounts & system", "Close out yesterday's per-account request metering"),
     "capacity_alerts":                ("Accounts & system", "Telegram the operators when capacity crosses 85% (stateful, breach/recovery)"),
+    "poi_import":                     ("Accounts & system", "Refresh the map's built-in POI layers from OpenStreetMap (weekly)"),
+    # Found missing when the catalog first got a guard: three jobs ran
+    # every day and reached the operator's Scheduler page as bare ids
+    # with no section — which is the shape a reader skips.
+    "machinery_watchdog":             ("Accounts & system", "Alert when a job stops stamping its heartbeat — the layer the schedulerless nights proved was missing"),
+    "bot_health_daily":               ("Accounts & system", "Probe every bot's delivery path and report what a group can actually receive"),
+    "warehouse_catalog_comments":     ("Accounts & system", "Stamp the warehouse tables with what they hold (one-shot at boot, idempotent)"),
 }
 
 
@@ -211,6 +218,20 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minutes=1, args=[app], id="capacity_sample",
         max_instances=1, coalesce=True,
     )
+    # ── The map's own furniture ───────────────────────────────────
+    # Fuel, DEF, parking, showers, weigh stations, rest areas: things
+    # that do not move, so they are fetched weekly and served from our
+    # table instead of from a volunteer mirror on every map pan.  Sunday
+    # 03:40 UTC is the European night, where those mirrors live and when
+    # their queues are shortest — the run takes minutes and nobody is
+    # waiting on it.
+    from features.live_map.poi.jobs import job_poi_import
+    scheduler.add_job(
+        job_poi_import, "cron",
+        day_of_week="sun", hour=3, minute=40, args=[app], id="poi_import",
+        max_instances=1, coalesce=True,
+    )
+
     scheduler.add_job(
         job_capacity_flush_yesterday, "cron",
         hour=0, minute=10, args=[app], id="capacity_flush_yesterday",
