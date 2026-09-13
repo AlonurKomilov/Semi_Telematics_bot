@@ -134,3 +134,48 @@ async def test_no_operator_to_notify_is_logged_not_raised():
     out must not undo it."""
     from capabilities.platform.billing import plan_requests as notify
     assert await notify.notify_operators(10000001, {"case_number": "4T-1"}, "Co") == 0
+
+
+# ── what the person who asked hears back ──────────────────────────
+
+def test_the_asker_is_acknowledged_with_the_number_to_quote(monkeypatch):
+    """A request that vanishes into a form looks exactly like one that
+    was never sent, and the next thing the customer does is ask again."""
+    from capabilities.platform.billing import plan_requests as notify
+    monkeypatch.setenv("SALES_EMAIL", "sales@4truck.us")
+    sent: dict = {}
+    monkeypatch.setattr("capabilities.email.smtp.send_email",
+                        lambda **kw: sent.update(kw) or True)
+    ok = notify.email_customer(
+        {"case_number": "4T-202609-0007", "tier": "enterprise",
+         "contact_email": "ops@bigfleet.example", "note": "200 trucks"},
+        "Big Fleet Co")
+    assert ok and sent["to"] == "ops@bigfleet.example"
+    assert "4T-202609-0007" in sent["subject"]
+    assert "4T-202609-0007" in sent["body"]
+    assert "200 trucks" in sent["body"], "they should see we have the right thing"
+    # Replying to the acknowledgement must reach a person, not no-reply@.
+    assert sent["reply_to"] == "sales@4truck.us"
+
+
+def test_nobody_is_emailed_when_no_address_was_given(monkeypatch):
+    from capabilities.platform.billing import plan_requests as notify
+    called: list = []
+    monkeypatch.setattr("capabilities.email.smtp.send_email",
+                        lambda **kw: called.append(kw) or True)
+    assert notify.email_customer({"case_number": "4T-1", "tier": "enterprise"}, "Co") is False
+    assert called == []
+
+
+def test_the_acknowledgement_falls_back_to_the_reply_address(monkeypatch):
+    """Without a sales inbox the customer still needs somewhere to reply."""
+    from capabilities.platform.billing import plan_requests as notify
+    monkeypatch.delenv("SALES_EMAIL", raising=False)
+    monkeypatch.setenv("SMTP_FROM_REPLY_TO", "support@4truck.us")
+    sent: dict = {}
+    monkeypatch.setattr("capabilities.email.smtp.send_email",
+                        lambda **kw: sent.update(kw) or True)
+    notify.email_customer(
+        {"case_number": "4T-1", "tier": "enterprise", "contact_email": "a@b.example"},
+        "Co")
+    assert sent["reply_to"] == "support@4truck.us"

@@ -75,6 +75,50 @@ async def notify_operators(account_id: int, req: dict, account_name: str) -> int
     return sent
 
 
+def email_customer(req: dict, account_name: str) -> bool:
+    """Tell the person who asked that we have it, and what to quote.
+
+    A request that vanishes into a form is indistinguishable from a
+    request that was never sent — the customer has no way to tell, and
+    the next thing they do is ask again. So the acknowledgement carries
+    the case number, what they wrote (so they can see we have the right
+    thing), and where a reply will come from.
+
+    Best-effort like the sales copy: the request is already recorded by
+    the time this runs, and a mail system that is down must not undo it.
+    """
+    to = (req.get("contact_email") or "").strip()
+    if not to:
+        logger.info("plan request %s: no contact email to acknowledge",
+                    req.get("case_number"))
+        return False
+    case = req.get("case_number") or ""
+    reply_to = sales_inbox() or (os.getenv("SMTP_FROM_REPLY_TO") or "").strip()
+    body = "\n".join([
+        f"Thanks — we have your request about the {req.get('tier')} plan.",
+        "",
+        f"Your case number is {case}. Quote it in any reply and we will",
+        "find this conversation.",
+        "",
+        "What you told us:",
+        (req.get("note") or "(no message)"),
+        "",
+        "Someone will be in touch by email. You do not need to send it",
+        "again — asking a second time reaches the same case.",
+    ])
+    try:
+        from capabilities.email.smtp import send_email
+        return bool(send_email(
+            to=to,
+            subject=f"[{case}] We have your {req.get('tier')} enquiry",
+            body=body,
+            reply_to=reply_to or None,
+        ))
+    except Exception:
+        logger.exception("plan request %s could not be acknowledged to %s", case, to)
+        return False
+
+
 def email_sales(req: dict, account_name: str) -> bool:
     """Best-effort copy to the sales inbox. False when there is nowhere
     to send it or the send failed — the caller carries on either way."""

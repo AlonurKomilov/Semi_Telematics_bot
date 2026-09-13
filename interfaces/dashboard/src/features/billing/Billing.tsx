@@ -402,6 +402,10 @@ interface PlanCardProps {
   /** A plan offered at no price is not for sale — it is a conversation.
    *  The case number of one already asked for, when there is one. */
   openCase?: string;
+  /** What the server said about this request — "we have it" reads
+   *  differently from "you already asked", and only the server knows
+   *  which happened. */
+  caseMessage?: string;
   onUpgrade: () => void;
   onAsk?: (note: string, email: string) => Promise<void>;
   defaultEmail?: string;
@@ -410,7 +414,7 @@ interface PlanCardProps {
 
 function PlanCard({
   name, price, features, current, highlighted, buyable, warnings = [],
-  openCase, onUpgrade, onAsk, defaultEmail = '', loading,
+  openCase, caseMessage, onUpgrade, onAsk, defaultEmail = '', loading,
 }: PlanCardProps) {
   // A plan with no price cannot be bought; asking about it is the whole
   // interaction, so the form lives in the card rather than behind a
@@ -464,7 +468,7 @@ function PlanCard({
         <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm">
           <p className="font-medium text-foreground">Request {openCase}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            We have it — someone will be in touch by email.
+            {caseMessage ?? 'We have it — someone will be in touch by email.'}
           </p>
         </div>
       ) : asking ? (
@@ -758,14 +762,19 @@ export default function Billing() {
       .catch(() => { /* a missing case number costs a duplicate, not a page */ });
   }, []);
 
+  const [askResult, setAskResult] = useState<Record<string, string>>({});
   const handleAsk = async (tier: string, note: string, email: string) => {
     setError(null);
     try {
-      const res = await apiJSON<{ case_number: string; joined: boolean }>(
+      const res = await apiJSON<{ case_number: string; joined: boolean; message: string }>(
         '/billing/plan-request',
         { method: 'POST', body: { tier, note, contact_email: email } },
       );
       setOpenCases((c) => ({ ...c, [tier]: res.case_number }));
+      // The server's sentence, not one assembled here: asking twice is a
+      // different answer from asking once, and the difference is the
+      // whole point of saying anything.
+      setAskResult((r) => ({ ...r, [tier]: res.message }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'We could not record that — please email us.');
     }
@@ -927,6 +936,7 @@ export default function Billing() {
                 quotaWarnings,
               )}
               openCase={openCases[p.tier]}
+              caseMessage={askResult[p.tier]}
               onAsk={(note, email) => handleAsk(p.tier, note, email)}
               defaultEmail={summary?.billing_email ?? ''}
             />

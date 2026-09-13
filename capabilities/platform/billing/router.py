@@ -209,11 +209,28 @@ async def billing_plan_request(
             _notify.email_sales(req, account_name)
         except Exception:
             logger.exception("plan request %s: sales email failed", req.get("case_number"))
+        try:
+            # The asker hears back immediately, with the number to quote.
+            # A request that vanishes into a form looks exactly like one
+            # that was never sent.
+            _notify.email_customer(req, account_name)
+        except Exception:
+            logger.exception("plan request %s: acknowledgement failed", req.get("case_number"))
+    joined = bool(req.get("joined"))
     return {
         "case_number": req.get("case_number", ""),
         "status": req.get("status", "open"),
-        "joined": bool(req.get("joined")),
+        "joined": joined,
         "tier": tier,
+        # Said here rather than assembled in the page, so the bot, the
+        # dashboard and anything else answer the same way.
+        "message": (
+            f"You have already asked about {plan['label']} — "
+            f"case {req.get('case_number', '')} is open and someone will reply to it."
+            if joined else
+            f"Request {req.get('case_number', '')} is with us. "
+            "We have emailed you a copy."
+        ),
     }
 
 
