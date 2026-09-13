@@ -530,7 +530,7 @@ def test_the_panels_data_path_is_the_dashboards_gates_not_its_own():
     allow-list, then assigned-vehicle scope.  A future endpoint the
     panel reads must be added to this list and pass the same checks."""
     from tests._repo import REPO
-    src = (REPO / "features/location/router.py").read_text()
+    src = (REPO / "features/live_map/router.py").read_text()
     # The panel reads /map/vehicles and /map/vehicles/live.
     panel = (REPO / "interfaces/browser_extension/src/features/live-map/LiveMapPanel.tsx").read_text()
     assert "'/map/vehicles'" in panel and "'/map/vehicles/live'" in panel

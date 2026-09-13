@@ -53,9 +53,9 @@ from capabilities.object_storage import router as object_storage_routes
 from features.vehicles import router as vehicles_routes
 from features.inventory import router as inventory_routes
 from features.cameras import router as cameras_routes
-from features.location import router as maps
-from features.location import config as location_config
-from features.location import pois
+from features.live_map import router as maps
+from features.live_map import config as location_config
+from features.live_map import pois
 from features.geofencing import router as geofences
 from features.parking import router as parking_routes
 from features.routes import router as dispatch_routes

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-import features.location.service as svc
+import features.live_map.service as svc
 
 
 def _row(vid: str, engine: str | None = None, speed: float = 0.0) -> dict:

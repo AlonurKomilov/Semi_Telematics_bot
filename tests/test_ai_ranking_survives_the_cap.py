@@ -75,7 +75,7 @@ def _w(name, temp):
 @pytest.mark.asyncio
 async def test_the_hot_end_is_reachable(monkeypatch):
     """The source is sorted coldest-first; the hottest truck is last."""
-    import features.location.ai_tool as mod
+    import features.live_map.ai_tool as mod
 
     fleet = [_w(f"COLD-{i:02d}", -10 + i) for i in range(40)]
     fleet.append(_w("HOT-1", 112.0))                 # the answer
@@ -96,7 +96,7 @@ async def test_the_hot_end_is_reachable(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_weather_counts_freezing_and_hot_over_every_reading(monkeypatch):
-    import features.location.ai_tool as mod
+    import features.live_map.ai_tool as mod
 
     fleet = [_w("F1", 20), _w("F2", 32), _w("MILD", 70), _w("H1", 95), _w("H2", 104)]
 
@@ -112,7 +112,7 @@ async def test_weather_counts_freezing_and_hot_over_every_reading(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_weather_with_no_readings_says_so_rather_than_crashing(monkeypatch):
-    import features.location.ai_tool as mod
+    import features.live_map.ai_tool as mod
 
     async def _svc(account_id):
         return [{"name": "NO-SENSOR", "_weather": {}, "location": {}}]

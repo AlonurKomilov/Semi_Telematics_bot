@@ -205,7 +205,7 @@ async def test_map_pois_vendor_directory_layer(geo_app):
 
     # Bust the shared POI cache so this test never sees another test's
     # cached empty FeatureCollection for the same rounded bbox.
-    import features.location.pois as pois_mod
+    import features.live_map.pois as pois_mod
     pois_mod._poi_cache.clear()
 
     # A regular (non-operator) owner reads the layer through the map API.

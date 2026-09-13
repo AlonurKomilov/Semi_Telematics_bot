@@ -15,7 +15,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-import features.location.ai_tool as LOC
+import features.live_map.ai_tool as LOC
 from capabilities.ai.tools.registry import execute_tool
 
 

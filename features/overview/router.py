@@ -30,7 +30,7 @@ from adapters.storage import Role
 from features.vehicles.service import get_vehicles_overview as _svc_vehicles_overview
 from features.vehicles.warehouse.service import get_fleet_weather as _svc_fleet_weather
 from features.vehicles.warehouse import readers as _wh_reader
-from features.location.service import classify_vehicle_status, get_vehicles_for_map
+from features.live_map.service import classify_vehicle_status, get_vehicles_for_map
 
 router = APIRouter(prefix="/overview", tags=["overview"])
 

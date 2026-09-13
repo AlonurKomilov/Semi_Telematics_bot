@@ -29,7 +29,7 @@ PINNED = {
 
 @pytest.mark.asyncio
 async def test_location_refuses_and_never_calls_the_provider(monkeypatch):
-    import features.location.ai_tool as mod
+    import features.live_map.ai_tool as mod
 
     called = []
 
@@ -69,7 +69,7 @@ async def test_faults_refuses_and_never_calls_the_provider(monkeypatch):
 @pytest.mark.asyncio
 async def test_the_caller_s_own_twin_still_resolves(monkeypatch):
     """The refusal must not cost the caller their OWN truck."""
-    import features.location.ai_tool as mod
+    import features.live_map.ai_tool as mod
 
     called = []
 

@@ -51,7 +51,7 @@ from features.vehicles.warehouse.service import (
 import aiohttp
 
 from features.vehicles.warehouse import readers as _wh_reader
-from features.location.service import classify_vehicle_status
+from features.live_map.service import classify_vehicle_status
 from infra.platform import get_tenant_db as _get_tenant_db
 import infra.cache as _redis
 

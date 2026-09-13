@@ -28,7 +28,7 @@ def classify_vehicle_status(vehicle: dict) -> str:
     itself, or from /fleet/vehicles/stats?types=engineStates when the row
     arrived without one).  Falls back to a speed-only heuristic for
     vehicles whose Samsara plan doesn't expose engineStates or for paths
-    that don't merge that data (e.g. ``features.location`` consumers
+    that don't merge that data (e.g. ``features.live_map`` consumers
     other than the map).
     """
     loc = vehicle.get("location", {})

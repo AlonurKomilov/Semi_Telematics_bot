@@ -406,7 +406,7 @@ class TestPinDrop:
             ]
         }
         with patch(
-            "features.location.pois._get_http_session",
+            "features.live_map.pois._get_http_session",
             new=AsyncMock(return_value=_mk_overpass_session(overpass_data)),
         ):
             async with _client(app_ctx["app"]) as c:
@@ -423,7 +423,7 @@ class TestPinDrop:
     async def test_pin_drop_no_brand_returns_404(self, app_ctx):
         # Empty Overpass response → 404 with hint about Geofences.
         with patch(
-            "features.location.pois._get_http_session",
+            "features.live_map.pois._get_http_session",
             new=AsyncMock(return_value=_mk_overpass_session({"elements": []})),
         ):
             async with _client(app_ctx["app"]) as c:
@@ -476,7 +476,7 @@ class TestUsaClipping:
     async def test_clip_helper_intersects_overlapping_bbox(self):
         """Sanity-check the helper directly so we don't depend on Overpass
         for the intersection-math assertion."""
-        from features.location.pois import _clip_bbox_to_usa
+        from features.live_map.pois import _clip_bbox_to_usa
         # Border viewport (Detroit↔Windsor): bbox extends north into Canada.
         s, w, n, e = 41.5, -83.5, 43.5, -82.0
         clipped = _clip_bbox_to_usa(s, w, n, e)

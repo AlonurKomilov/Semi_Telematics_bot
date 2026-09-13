@@ -1,7 +1,7 @@
 """Location AI tools — current GPS position (and, once migrated, weather).
 
 Split out of the old central ``vehicle.py`` so location lives with the
-``features/location`` feature.  ``get_vehicle_location`` is vehicle-specific
+``features/live_map`` feature.  ``get_vehicle_location`` is vehicle-specific
 (requires a vehicle_name), so driver/scope isolation is enforced by the gate.
 """
 

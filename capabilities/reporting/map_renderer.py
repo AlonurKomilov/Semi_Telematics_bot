@@ -10,7 +10,7 @@ import io
 
 from constants import OSM_TILE_URL
 from features.routes.service import total_route_miles
-from features.location.service import classify_vehicle_status, STATUS_COLORS
+from features.live_map.service import classify_vehicle_status, STATUS_COLORS
 
 
 def render_fleet_map(vehicles: list[dict]) -> io.BytesIO | None:

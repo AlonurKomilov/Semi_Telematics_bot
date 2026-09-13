@@ -12,7 +12,7 @@ do not recognise is not trusted.
 """
 import pytest
 
-from features.location import map_engine as me
+from features.live_map import map_engine as me
 
 
 @pytest.fixture(autouse=True)

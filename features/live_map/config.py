@@ -18,7 +18,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from features.location import map_engine
+from features.live_map import map_engine
 from infra.platform import get_tenant_db as _get_tenant_db
 from interfaces.api.deps import require_permission
 

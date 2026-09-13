@@ -3,9 +3,9 @@ hands out the billable token — and only to an account on Google."""
 import pytest
 from fastapi import HTTPException
 
-from features.location import config as cfg
-from features.location import map_engine as me
-from features.location import router as maps
+from features.live_map import config as cfg
+from features.live_map import map_engine as me
+from features.live_map import router as maps
 
 
 @pytest.mark.asyncio

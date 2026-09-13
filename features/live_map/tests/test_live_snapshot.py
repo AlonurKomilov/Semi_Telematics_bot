@@ -21,8 +21,8 @@ import time
 
 import pytest
 
-import features.location.service as svc
-from features.location import router as loc
+import features.live_map.service as svc
+from features.live_map import router as loc
 
 ROWS = {
     "PTG": [{"id": "1", "name": "101",

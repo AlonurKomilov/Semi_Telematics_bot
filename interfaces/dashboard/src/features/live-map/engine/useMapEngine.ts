@@ -1,7 +1,7 @@
 /**
  * Which basemap this account is drawn on, resolved once per surface.
  *
- * The server decides (features/location/map_engine.py): an account
+ * The server decides (features/live_map/map_engine.py): an account
  * setting names an engine, and the answer falls back to the free one
  * whenever the platform cannot serve the paid one. This hook does not
  * re-decide any of that — it asks, and reports one of three states so

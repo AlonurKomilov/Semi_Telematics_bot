@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import inspect
 
-from features.location import map_engine, router as map_router
+from features.live_map import map_engine, router as map_router
 
 
 def test_the_session_wire_offers_both_paths():

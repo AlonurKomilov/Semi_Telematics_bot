@@ -32,7 +32,7 @@ from __future__ import annotations
 import inspect
 import re
 
-from features.location import pois
+from features.live_map import pois
 
 
 def _built_query() -> str:

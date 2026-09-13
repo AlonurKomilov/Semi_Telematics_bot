@@ -508,7 +508,7 @@ _PROCESS_CACHES = (
     ("features.events.alert", "_events_warmup_done"),
     ("features.events.alert", "_known_event_ids"),
     ("features.inspections.service", "_LAST_MANUAL_REMIND"),
-    ("features.location.service", "_engine_states_cache"),
+    ("features.live_map.service", "_engine_states_cache"),
     ("features.overview.router", "_stats_cache"),
     ("features.parking.check", "_vehicle_stopped_checks_local"),
     ("infra.cache", "_inflight"),

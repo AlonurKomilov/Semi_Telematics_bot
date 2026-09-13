@@ -283,11 +283,11 @@ C2-map layer (SHIPPED 2026-07-14, same session as prep):
 
 1. `directory_entries_in_bbox()` on VendorDirectoryMixin — ACTIVE +
    lat/lng NOT NULL + bbox predicate, identity fields only.
-   features/location calls the storage method on the shared Database;
+   features/live_map calls the storage method on the shared Database;
    it does NOT import capabilities.platform modules (layer boundary
    verified by test_layer_boundaries).
 2. `vendor_directory` source branch in `map_pois()`
-   (features/location/pois.py) — platform-global data, tenant-agnostic
+   (features/live_map/pois.py) — platform-global data, tenant-agnostic
    TTL cache key correct as-is.  Freshness: server cache 5 min +
    client localStorage up to 2 h → a newly geocoded shop can take up
    to ~2 h to appear for a client that recently viewed the area.

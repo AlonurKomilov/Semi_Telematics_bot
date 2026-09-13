@@ -164,7 +164,7 @@ export const PERM_GROUPS: PermGroup[] = [
     flags: [
       { key: 'can_view_location', kind: 'feature', label: 'Live Map' },
       // The row is the OBJECT, the column supplies the verb: POI layers
-      // are a flag-gated part of Live Map's surface (features/location/
+      // are a flag-gated part of Live Map's surface (features/live_map/
       // pois.py — a file, not a home of its own), manage-only.
       { key: 'can_manage_poi_layers', kind: 'component', label: 'POI Layers', indented: true, description: 'Custom map overlays — the Live Map grant shows them, this one edits them' },
       { key: 'can_view_vehicles',  kind: 'feature', label: 'Vehicles' },

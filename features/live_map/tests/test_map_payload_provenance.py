@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from features.location import router as loc
+from features.live_map import router as loc
 
 
 @pytest.mark.asyncio

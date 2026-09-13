@@ -17,7 +17,7 @@ from capabilities.permissions.vehicle_scope import VehicleIdentity, VehicleScope
 def _admitted(scope: VehicleScope, raw: list[dict]) -> set[str]:
     """What the endpoint's filter keeps, expressed on the raw payload.
 
-    Mirrors features/location/router.py, including its ``external_key``:
+    Mirrors features/live_map/router.py, including its ``external_key``:
     a live-position row carries no dedicated vehicle key, so ``id`` IS
     the provider vehicle here and the call site says so. The ladder
     stopped guessing that for every row shape, because on a maintenance

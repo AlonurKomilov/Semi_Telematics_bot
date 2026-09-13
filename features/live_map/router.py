@@ -22,7 +22,7 @@ from interfaces.api.deps import (
     filter_by_allowed_companies,
     filter_by_assigned_trucks,
 )
-from features.location.service import (
+from features.live_map.service import (
     classify_vehicle_status, get_vehicles_for_map, live_snapshot,
 )
 
@@ -135,16 +135,16 @@ async def map_engine(
 
     The answer can differ from what the account asked for; it says both,
     so a settings page can explain itself.  See
-    features/location/map_engine.py for why it fails to the free engine.
+    features/live_map/map_engine.py for why it fails to the free engine.
     """
-    from features.location.map_engine import for_account
+    from features.live_map.map_engine import for_account
     from infra.platform import get_tenant_db
 
     account_id = int(user["account_id"])
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         # No tenant DB is no reason to draw no map.
-        from features.location.map_engine import OSM, ENGINES, google_available
+        from features.live_map.map_engine import OSM, ENGINES, google_available
         return {"engine": OSM, "requested": OSM, "engines": list(ENGINES),
                 "google_available": google_available()}
     return await for_account(account_id, tenant)
@@ -164,7 +164,7 @@ async def map_tiles_session(
     enabled, the network — the answer is 503 with the reason, and the
     map falls back to the free engine rather than staying blank.
     """
-    from features.location import map_engine
+    from features.live_map import map_engine
     from infra.platform import get_tenant_db
 
     if type not in map_engine.TILE_TYPES:
@@ -215,7 +215,7 @@ async def map_tile(
     this — see ``proxy_tile_url`` in ``map_engine.tile_wire``.
     """
     from fastapi import Response
-    from features.location import map_engine
+    from features.live_map import map_engine
 
     if type not in map_engine.TILE_TYPES:
         raise HTTPException(422, f"unknown tile type {type!r}")
@@ -252,7 +252,7 @@ async def map_tile_copyright(
     attribution that is briefly stale is a smaller wrong than a map
     that stops drawing over a credit lookup.
     """
-    from features.location import map_engine
+    from features.live_map import map_engine
 
     if type not in map_engine.TILE_TYPES:
         raise HTTPException(422, f"unknown tile type {type!r}")
@@ -283,7 +283,7 @@ async def _require_google(user: dict) -> None:
     questions and the money one is answered here.
     """
     import time
-    from features.location import map_engine
+    from features.live_map import map_engine
     from infra.platform import get_tenant_db
 
     account_id = int(user["account_id"])
@@ -387,7 +387,7 @@ async def map_vehicles_live(
         # one linked and one unlinked truck lost the unlinked one — here
         # only, because every other surface has a registry id to answer
         # on rung 1.  Pinned in
-        # features/location/tests/test_live_positions_scope.py.
+        # features/live_map/tests/test_live_positions_scope.py.
         account_id = int(user["account_id"])
         tenant = await _get_router().get_tenant(account_id)
         scope = await build_vehicle_scope(tenant, account_id, trucks)

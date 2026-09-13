@@ -37,7 +37,7 @@ from capabilities.ai.tools import attachments_tool as _attachments_tool     # no
 # package keeps only the mechanism (registry + scope helper) and this hub.
 from features.vehicles.faults import ai_tool as faults                       # noqa: F401
 from features.vehicles import ai_tool as vehicles_tools                       # noqa: F401
-from features.location import ai_tool as location_tools                       # noqa: F401
+from features.live_map import ai_tool as location_tools                       # noqa: F401
 from features.vehicles.health import ai_tool as health                       # noqa: F401
 from features.overview import ai_tool as overview                            # noqa: F401
 from features.vehicles.fuel import ai_tool as fuel                           # noqa: F401
