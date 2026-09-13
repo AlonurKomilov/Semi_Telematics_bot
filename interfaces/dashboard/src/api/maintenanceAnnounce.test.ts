@@ -31,6 +31,48 @@ describe('what reaches the maintenance channel', () => {
     expect(ear.seen).toEqual(['updating']);
   });
 
+  // ── Who answered: the gateway, or the app? ───────────────────────────
+  //
+  // nginx routes its own 502/503/504 to an HTML maintenance page and lets
+  // app-level 5xx JSON through untouched, so the body says which layer
+  // spoke.  Before this told them apart, ONE third-party map-data mirror
+  // refusing covered the whole dashboard and reloaded the page — and did
+  // it again on the next render, because /health answers 200 whatever the
+  // dependency is doing.
+
+  const json = (status: number, body: unknown) => new Response(
+    JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } },
+  );
+
+  it.each([502, 503, 504])(
+    'says nothing when the APP answered %i with its own reason', async (status) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        json(status, { detail: 'The map-data source is not answering — try again shortly.' })));
+      await apiFetch('/map/pois').catch(() => { /* the caller handles it */ });
+      expect(ear.seen).toEqual([]);
+    });
+
+  it('announces when the GATEWAY answered — an HTML body, not ours', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      '<html><body>maintenance</body></html>',
+      { status: 502, headers: { 'Content-Type': 'text/html' } },
+    )));
+    await apiFetch('/thing').catch(() => { /* the rejection is the point */ });
+    expect(ear.seen).toEqual(['updating']);
+  });
+
+  it('announces when JSON carries no `detail` — we cannot claim it as ours', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(503, { error: 'nope' })));
+    await apiFetch('/thing').catch(() => { /* the rejection is the point */ });
+    expect(ear.seen).toEqual(['updating']);
+  });
+
+  it('announces when `detail` is not a string — the shape has to be ours', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(504, { detail: { code: 7 } })));
+    await apiFetch('/thing').catch(() => { /* the rejection is the point */ });
+    expect(ear.seen).toEqual(['updating']);
+  });
+
   it('announces a dead connection as unreachable, not as an update', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await apiFetch('/thing').catch(() => { /* the rejection is the point; the test listens for what was announced */ });

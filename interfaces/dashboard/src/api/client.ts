@@ -127,12 +127,39 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
       throw new Error(said || 'Unauthorized');
     }
     if (res.status === 502 || res.status === 503 || res.status === 504) {
-      // Gateway-level failure — the API is restarting (make restart) or
-      // briefly unreachable.  Announce it so the MaintenanceOverlay can
-      // show "updating…" instead of each page surfacing a raw error.
-      window.dispatchEvent(
-        new CustomEvent('4truck:maintenance', { detail: { reason: 'updating' } }),
-      );
+      // WHO answered — the gateway, or the app?  Both use these codes and
+      // they mean opposite things.
+      //
+      // nginx turns its OWN 502/503/504 into the maintenance HTML page
+      // (`error_page 502 503 504 /__maintenance.html`, and no
+      // `proxy_intercept_errors`, so "App-level 5xx JSON passes through
+      // untouched" — nginx/4truck.conf says so in those words).
+      // Cloudflare's origin-down page is HTML too.  So an
+      // `application/json` body with a string `detail` can only have come
+      // from a RUNNING app deliberately reporting on ONE request: a
+      // third-party map-data mirror refusing, a tenant database briefly
+      // away, Telegram not answering.
+      //
+      // Announcing those covered the whole dashboard with "Updating the
+      // platform", polled /health — which returns 200 in all cases and
+      // knows nothing about any dependency — and then RELOADED THE PAGE,
+      // taking a half-filled form elsewhere in the SPA with it.  And on
+      // the next render the same call failed the same way, so it did it
+      // again.
+      //
+      // Fails safe: a restarting app cannot answer JSON at all, so a real
+      // restart still announces.  Anything we cannot positively identify
+      // as the app's own answer — empty body, HTML, JSON without a
+      // `detail` string, a body that will not parse — announces, which is
+      // what this did for everything before.
+      const appAnswered = await res.clone().json()
+        .then((b: { detail?: unknown }) => typeof b?.detail === 'string')
+        .catch(() => false);
+      if (!appAnswered) {
+        window.dispatchEvent(
+          new CustomEvent('4truck:maintenance', { detail: { reason: 'updating' } }),
+        );
+      }
     }
     return res;
   } catch (e) {
