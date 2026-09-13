@@ -97,7 +97,10 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   for (const b of GRID.bands) for (const fam of b.families) {
     if (rowDelta(fam.parent)) deltaNames.push(fam.parent.label);
     if (fam.manage && rowDelta(fam.manage)) deltaNames.push(`Manage (${fam.parent.label})`);
-    for (const c of fam.children) if (rowDelta(c.row)) deltaNames.push(`${c.row.label} (${fam.parent.label})`);
+    for (const c of fam.children) {
+      if (rowDelta(c.row)) deltaNames.push(`${c.row.label} (${fam.parent.label})`);
+      if (c.manage && rowDelta(c.manage)) deltaNames.push(`Manage (${c.row.label})`);
+    }
   }
   for (const cap of GRID.crossFeature) if (rowDelta(cap)) deltaNames.push(cap.label);
 
@@ -277,7 +280,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     const id = rowId(fam.parent);
     const kidsId = `perm-fam-${id}`;
     const hasKids = fam.children.length > 0;
-    const kidChanged = fam.children.some((c) => api.changed(col.key, c.row));
+    // Also the sub-feature's OWN Manage: a pending change there sits on
+    // a child line, and a closed disclosure would hide it from the very
+    // person about to save it.
+    const kidChanged = fam.children.some(
+      (c) => api.changed(col.key, c.row) || (!!c.manage && api.changed(col.key, c.manage)));
     const kidsOpen = hasKids && (q ? true : (kidChanged || !famClosed[id]));
     const kidsGranted = fam.children.filter((c) => api.granted(col.key, c.row)).length;
     return (
@@ -368,7 +375,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               ) : (
                 <>
                   {verbCell(c.verb === 'view' ? c.row : null, 'view', undefined, false, closed, true)}
-                  {verbCell(c.verb === 'manage' ? c.row : null, 'manage', undefined, false, closed, true)}
+                  {verbCell(c.manage ?? (c.verb === 'manage' ? c.row : null), 'manage', undefined, false, closed, true)}
                 </>
               )}
               {emptyCell}

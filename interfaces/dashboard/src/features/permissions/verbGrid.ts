@@ -23,7 +23,15 @@ import type { Block, PermFlag, ScopedFlag, SimpleFlag } from './permRows';
 export type TickRow = ScopedFlag | SimpleFlag;
 export type ChildVerb = 'view' | 'manage' | 'merged';
 
-export interface VerbChild { row: TickRow; verb: ChildVerb }
+export interface VerbChild {
+  row: TickRow;
+  verb: ChildVerb;
+  /** A sub-feature's OWN bare "Manage", promoted onto its row — the same
+   *  rule as VerbFamily.manage, one level down, so the column supplies
+   *  the verb rather than a second row naming it.  POI Layers is the
+   *  first sub-feature to carry both verbs. */
+  manage?: TickRow;
+}
 export interface VerbFamily {
   parent: TickRow;
   /** true = the parent's single flag is write-level → merged cell. */
@@ -110,14 +118,26 @@ function familyFrom(block: Block): VerbFamily {
     // else (named actions, sub-features, components) stays a child row.
     // A MERGED parent's Manage column is the tie to its own tick, so a
     // promoted child there would never render — keep it a child row.
+    let child: VerbChild | undefined;
     if (!fam.merged && row.kind === 'action' && row.label === 'Manage' && !fam.manage) {
       fam.manage = row;
     } else {
-      fam.children.push({ row, verb: childVerb(row) });
+      child = { row, verb: childVerb(row) };
+      fam.children.push(child);
     }
-    // Depth-2 (a sub-feature's own children) flattens under the family.
+    // Depth-2 — a sub-feature's OWN rows.  Its bare "Manage" is that
+    // sub-feature's Manage CELL, by the same rule one level up; anything
+    // else it owns (named actions, components) flattens under the family
+    // as before.  Flattening a bare "Manage" would put a second row
+    // called Manage in the family and leave the reader to guess whose.
     for (const cc of c.children) {
-      fam.children.push({ row: cc.parent as TickRow, verb: childVerb(cc.parent as TickRow) });
+      const sub = cc.parent as TickRow;
+      if (child && child.row.kind === 'subfeature' && !child.manage
+          && sub.kind === 'action' && sub.label === 'Manage') {
+        child.manage = sub;
+      } else {
+        fam.children.push({ row: sub, verb: childVerb(sub) });
+      }
     }
   }
   return fam;
@@ -156,7 +176,10 @@ export function placedRows(grid: VerbGrid): PermFlag[] {
   for (const b of grid.bands) for (const f of b.families) {
     out.push(f.parent);
     if (f.manage) out.push(f.manage);
-    for (const c of f.children) out.push(c.row);
+    for (const c of f.children) {
+      out.push(c.row);
+      if (c.manage) out.push(c.manage);
+    }
   }
   return out;
 }

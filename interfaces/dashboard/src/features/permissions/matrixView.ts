@@ -11,7 +11,12 @@ export function bandRows(families: VerbFamily[]): TickRow[] {
   for (const fam of families) {
     out.push(fam.parent);
     if (fam.manage) out.push(fam.manage);
-    for (const c of fam.children) out.push(c.row);
+    for (const c of fam.children) {
+      out.push(c.row);
+      // A sub-feature's own Manage is a tickable row on the SAME line —
+      // left out, a band reports fewer rows than it draws.
+      if (c.manage) out.push(c.manage);
+    }
   }
   return out;
 }
@@ -51,7 +56,7 @@ export function familyMatches(fam: VerbFamily, query: string): boolean {
   const hit = (r?: { label?: string; description?: string }) =>
     !!r && (norm(r.label).includes(q) || norm(r.description).includes(q));
   if (hit(fam.parent) || hit(fam.manage)) return true;
-  return fam.children.some((c) => hit(c.row));
+  return fam.children.some((c) => hit(c.row) || hit(c.manage));
 }
 
 /** The element id a band header carries, and a department chip scrolls to. */

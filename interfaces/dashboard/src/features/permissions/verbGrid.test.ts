@@ -30,6 +30,32 @@ describe('verb grid completeness', () => {
     }
   });
 
+  it("a sub-feature's own Manage rides its row, never a second row", () => {
+    // The same rule one level down: the COLUMN supplies the verb.  A
+    // depth-2 bare "Manage" left in `children` would draw a second row
+    // called Manage inside the family, and nothing on screen would say
+    // whose it was — POI Layers' or the map's.
+    for (const b of grid.bands) for (const fam of b.families) {
+      for (const c of fam.children) {
+        if (!c.manage) continue;
+        expect(c.manage.label, c.row.label).toBe('Manage');
+        expect(c.row.kind, c.row.label).toBe('subfeature');
+        expect(c.verb, c.row.label).toBe('view');
+      }
+    }
+  });
+
+  it('the sub-feature that has both verbs is placed with both', () => {
+    // POI Layers is the first — an owner must be able to grant the
+    // overlays without granting the right to author them, and the grid
+    // is where that choice is made.
+    const kids = grid.bands.flatMap((b) => b.families).flatMap((f) => f.children);
+    const poi = kids.find((c) => 'key' in c.row && c.row.key === 'can_view_poi');
+    expect(poi, 'can_view_poi is not a child row in any family').toBeTruthy();
+    expect(poi!.manage && 'key' in poi!.manage ? poi!.manage.key : undefined)
+      .toBe('can_manage_poi_layers');
+  });
+
   it('config cells only ride known family flags on known features', () => {
     // Storage and Integrations joined when account_settings ownership
     // moved off their Manage actions and onto the config family — the

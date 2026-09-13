@@ -80,7 +80,8 @@ export const OWNER_PROTECTED = new Set([
 // then one block per department — the SAME buckets as the Modules page,
 // so the matrix and the modules speak one language.  Sub-permissions are
 // `indented` under their parent feature (POI Layers under Live Map, the
-// reports under the Reports header, View-Own pairs under their admin row).
+// reports under the Reports header, View-Own pairs under their admin row);
+// a sub-feature's OWN rows attach by `parentKey` instead, one level deeper.
 // Exported for the drift-guard tests and the verb-grid derivation.
 /** catalog service id → the matrix row that grants the service. */
 export const SERVICE_ROW_KEYS: Record<string, string> = {
@@ -170,15 +171,20 @@ export const PERM_GROUPS: PermGroup[] = [
       // something needs it, and it is VISIBLE because this codebase
       // does not allow a flag an owner cannot tick.
       { key: 'can_manage_live_map', kind: 'action', label: 'Manage', indented: true, description: 'Reserved for map-level settings — nothing uses it yet (the basemap is an account setting, POI layers have their own grant below)' },
-      // The row is the OBJECT, the column supplies the verb: POI layers
-      // are a flag-gated part of Live Map's surface (features/live_map/
-      // pois.py — a file, not a home of its own), manage-only.
-      // POI layers are their own sub-feature now (registry id `poi`,
-      // parent `live_map`), which is why they have a VIEW row at all:
-      // seeing them used to ride the Live Map grant, so an owner could
-      // not withhold the overlays without withholding the map.
+      // POI layers have a home of their own now (features/live_map/poi/,
+      // registry id `poi`, parent `live_map`), which is why they have a
+      // VIEW row at all: seeing them used to ride the Live Map grant, so
+      // an owner could not withhold the overlays without withholding the
+      // map.
+      //
+      // Its Manage hangs off can_view_poi by `parentKey` rather than
+      // `indented`, so the COLUMN supplies the verb instead of a second
+      // row naming it (docs/FEATURES.md: row = noun, column = verb).
+      // POI Layers is the first sub-feature in the product to carry both
+      // verbs, and so the first user of parentKey — which toBlocks has
+      // carried, unexercised, since it was written for exactly this.
       { key: 'can_view_poi', kind: 'subfeature', label: 'POI Layers', indented: true, description: 'Fuel, DEF, truck parking, showers, weigh stations, rest areas and repair shops, drawn on the map' },
-      { key: 'can_manage_poi_layers', kind: 'action', label: 'Manage', indented: true, description: "Create and edit the account's own POI layers — the row above shows them, this one authors them" },
+      { key: 'can_manage_poi_layers', kind: 'action', label: 'Manage', parentKey: 'can_view_poi', description: "Create and edit the account's own POI layers — the POI Layers row shows them, this verb authors them" },
       { key: 'can_view_vehicles',  kind: 'feature', label: 'Vehicles' },
       { key: 'can_manage_vehicles', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
       // Filing a truck's papers is NOT the grant that renames and
