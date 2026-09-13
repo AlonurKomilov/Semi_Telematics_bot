@@ -938,7 +938,13 @@ describe('UI chrome', () => {
     const cfg = readFileSync(join(SRC, '..', 'tailwind.config.js'), 'utf8');
     const block = /borderRadius:\s*\{([\s\S]*?)\n\s{6}\}/.exec(cfg)?.[1] ?? '';
     expect(block, 'no borderRadius block found in tailwind.config.js').not.toBe('');
-    const derived = (block.match(/var\(--radius\)/g) ?? []).length;
+    // Through the STEP tokens now — `rounded-md` reads `--radius-md`,
+    // which `index.css` derives from `--radius`. One hop further than it
+    // used to be, and the hop is the point: a Corners item has to be
+    // able to move one step without moving the ramp. That the tokens
+    // still bottom out at `--radius`, with the same numbers they always
+    // had, is held by `mods/theme/corners.test.ts`.
+    const derived = (block.match(/var\(--radius[\w-]*\)/g) ?? []).length;
     expect(
       derived,
       'the borderRadius scale stopped deriving from --radius — the Corners ' +

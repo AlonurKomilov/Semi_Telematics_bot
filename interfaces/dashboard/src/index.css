@@ -362,6 +362,25 @@
 
     --radius: 0.625rem;
 
+    /* The STEPS, each its own token.
+       They were arithmetic inside `tailwind.config.js` — `rounded-md`
+       compiled to `calc(var(--radius) - 2px)` — which let a Corners
+       choice slide the whole ramp and nothing else. A pack cannot say
+       "round cards, square controls" by moving one number; it has to be
+       able to reach one step. So the arithmetic moves here, under names
+       an override can take.
+       `max(0px, …)` on the three that subtract: a negative radius is not
+       a value, and Sharp is `0px`. The three that add cannot go
+       negative. `rounded-full` and `rounded-none` stay out of this
+       entirely — they describe a SHAPE, not a degree of softness. */
+    --radius-sm: max(0px, calc(var(--radius) - 4px));
+    --radius-default: max(0px, calc(var(--radius) - 3px));
+    --radius-md: max(0px, calc(var(--radius) - 2px));
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 8px);
+    --radius-3xl: calc(var(--radius) + 16px);
+
     /* Shell chrome — slightly cooler and one shade darker than
        the canvas so the persistent navigation feels like a
        separate plane from the content area.  See the dark-mode

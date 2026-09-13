@@ -435,14 +435,19 @@ export default {
         '2xl': '0 calc(25px * var(--light-lift, 1)) calc(50px * var(--light-spread, 1)) -12px rgb(0 0 0 / calc(0.25 * var(--light-strength, 1)))',
       },
 
+      // Each step reads its OWN token now; the arithmetic that used to
+      // live here is in `index.css`, under names a Corners item can
+      // override one at a time. The values are unchanged — `corners.
+      // test.ts` evaluates both sides for every shipped radius and pins
+      // the numbers.
       borderRadius: {
-        DEFAULT: 'max(0px, calc(var(--radius) - 3px))',
-        sm: 'max(0px, calc(var(--radius) - 4px))',
-        md: 'max(0px, calc(var(--radius) - 2px))',
-        lg: 'var(--radius)',
-        xl: 'calc(var(--radius) + 4px)',
-        '2xl': 'calc(var(--radius) + 8px)',
-        '3xl': 'calc(var(--radius) + 16px)',
+        DEFAULT: 'var(--radius-default)',
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        '2xl': 'var(--radius-2xl)',
+        '3xl': 'var(--radius-3xl)',
       },
       // ── The Size axes ───────────────────────────────────────────────
       // Every scale below is Tailwind's own, re-emitted as
