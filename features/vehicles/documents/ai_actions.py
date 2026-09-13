@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 
+from features.vehicles.resolve import resolve_for_tool
 from capabilities.ai.tools.registry import (
     register_action_executor,
     register_tool,
@@ -56,6 +57,13 @@ def _normalize(args: dict) -> dict | None:
     return {
         "vehicle_name": unit,
         "doc_type": doc_type,
+        # The company the model named, and the registry id the PROPOSE
+        # step resolved. Both ride the payload so the executor acts on
+        # the decision already made rather than remaking it — a unit
+        # number alone cannot carry which of two companies' trucks the
+        # human approved.
+        "company": str(args.get("company") or "").strip().upper()[:20],
+        "registry_id": args.get("registry_id"),
         # Dates go through the extractor's own validator: a US-format
         # or nonsense date becomes empty rather than a plausible wrong
         # one, for exactly the reason it does there.
@@ -141,6 +149,26 @@ async def file_vehicle_document_action(tool_args: dict, samsara_client,
     if norm is None:
         return {"error": "Which vehicle is this document for?"}
 
+    # Ask the question BEFORE a human approves, not after.
+    #
+    # The propose step never resolved the truck, so an unknown unit
+    # number — or one two companies share — was discovered only inside
+    # the executor, after somebody had already clicked Approve on a card
+    # that named a truck the system could not find. The "say which
+    # company" question belongs at the point where the model can still
+    # ask it.
+    if db is not None and account_id is not None:
+        _resolved, _err = await resolve_for_tool(
+            db, account_id, {**(tool_args or {}),
+                             "vehicle_name": norm["vehicle_name"]})
+        if _err:
+            return _err
+        if _resolved is not None:
+            # Carry the decision forward so the executor does not have
+            # to make it a second time, and cannot make it differently.
+            norm["registry_id"] = getattr(_resolved, "id", None)
+            norm["company"] = (getattr(_resolved, "company_code", "") or "")
+
     label = norm["doc_type"].replace("_", " ")
     when = (f", expiring {norm['expires_at']}" if norm["expires_at"]
             else ", with no expiry date read from it")
@@ -174,22 +202,35 @@ async def _execute_file_vehicle_document(payload, account_id, user_context, db):
     if norm is None:
         return {"created": False, "message": "No vehicle was identified."}
 
-    unit = norm["vehicle_name"].strip().lower()
-    match = None
-    for v in await db.list_vehicles(account_id):
-        if v.is_active and (v.unit_number or "").strip().lower() == unit:
-            # A unit number is a reusable LABEL; two live trucks can
-            # share one across companies.  Ambiguity is a question, not
-            # a coin toss.
-            if match is not None:
-                return {
-                    "created": False,
-                    "message": (
-                        f"More than one active truck is numbered "
-                        f"{norm['vehicle_name']} — say which company."
-                    ),
-                }
-            match = v
+    # Re-resolve under the APPROVER's scope, through the shared resolver.
+    #
+    # This hand-rolled the twin check — correctly, but as a third copy —
+    # and scanned the whole roster to find one unit. What it did NOT do
+    # was re-apply the approving user's vehicle access, unlike its
+    # sibling executors: a proposal made under one caller could be
+    # approved by another who may not see that truck at all.
+    ctx = user_context or {}
+    scope_args: dict = {"vehicle_name": norm["vehicle_name"]}
+    if norm.get("company"):
+        scope_args["company"] = norm["company"]
+    pinned_id = norm.get("registry_id")
+    if ctx.get("scoped_vehicle_nums") is not None:
+        scope_args["_scope_vehicles"] = list(ctx["scoped_vehicle_nums"])
+        ladder = (ctx.get("scoped_vehicle_ladder") or {}).get("identities") or []
+        if ladder:
+            scope_args["_scope_identities"] = [list(i) for i in ladder]
+
+    match, err = await resolve_for_tool(db, account_id, scope_args)
+    if err:
+        return {"created": False, "message": err.get("error", "")}
+    if match is not None and pinned_id is not None and getattr(match, "id", None) != pinned_id:
+        # The registry moved under the proposal — the number now names a
+        # different truck than the one the human saw and approved.
+        return {"created": False, "message": (
+            f"Unit {norm['vehicle_name']} is not the truck this was "
+            "approved for any more — ask again so the card names the "
+            "current one."
+        )}
     if match is None:
         return {"created": False,
                 "message": f"No active truck numbered {norm['vehicle_name']}."}
