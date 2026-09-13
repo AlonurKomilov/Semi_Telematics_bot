@@ -6,10 +6,19 @@ all roles (no feature-flag gate), so no Vehicle-Access filtering applies.
 
 from __future__ import annotations
 
-from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.registry import (
+    clip_untrusted, register_tool, untrusted_note,
+)
 
 
 from adapters.storage.knowledge import KB_CATEGORIES
+
+
+#: How much of one article body reaches the model. Long enough for a
+#: real procedure, short enough that eight of them cannot fill the
+#: context — the tool used to ship up to 20 KB per article, re-sent on
+#: every agent-loop round.
+_BODY_MAX = 4000
 
 
 @register_tool({
@@ -84,13 +93,24 @@ async def search_knowledge_base(tool_args: dict, samsara_client,
     return {
         "query": query,
         "count": len(articles),
+        # A public article is readable by every account on the platform,
+        # so an article body is text ANOTHER customer wrote — and the
+        # comment below tells the model to quote it. Unbounded, that is
+        # an instruction channel into every tenant's assistant: a body
+        # can carry its own fake boundary and a line beginning "SYSTEM:".
+        # Bodies are capped per article and the whole result is framed.
+        "untrusted_note": untrusted_note(
+            "knowledge-base article text, which any account on the "
+            "platform can publish"
+        ),
         "articles": [
             {
-                "title": a.get("title", ""),
+                "title": clip_untrusted(a.get("title"), 120),
                 "category": a.get("category", ""),
-                # Full body so the model can quote / paraphrase directly.
-                "description": a.get("description", ""),
-                "tags": a.get("tags", ""),
+                # The body, for quoting — capped, and flattened so it
+                # cannot draw a boundary of its own.
+                "description": clip_untrusted(a.get("description"), _BODY_MAX),
+                "tags": clip_untrusted(a.get("tags"), 120),
                 "pinned": bool(a.get("pinned")),
                 # For pdf / video / image the model can't read the file —
                 # it should surface ``media_url`` to the user as a link.

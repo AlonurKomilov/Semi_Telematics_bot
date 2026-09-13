@@ -15,7 +15,9 @@ import logging
 
 from datetime import datetime, timedelta, timezone
 
-from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.registry import (
+    clip_untrusted, register_tool, untrusted_note,
+)
 
 
 def _within_days(submitted_at: str, days: int) -> bool:
@@ -129,15 +131,23 @@ async def get_driver_applications(tool_args: dict, samsara_client,
         ),
         "counted_from": scanned,
         "filters": {"status": status, "days": days},
+        # Every field below was typed into the PUBLIC apply form, which
+        # takes no login — so anyone on the internet can put text here,
+        # and it used to reach the model verbatim and unbounded. Clipped
+        # and flattened per field, and the result says what it is.
+        "untrusted_note": untrusted_note(
+            "applicant names, locations and licence classes from the "
+            "public application form, which requires no login"
+        ),
         "applications": [
             {
-                "reference": r.get("reference") or "",
-                "name": f"{r.get('first_name', '')} {r.get('last_name', '')}".strip(),
+                "reference": clip_untrusted(r.get("reference"), 40),
+                "name": clip_untrusted(
+                    f"{r.get('first_name', '')} {r.get('last_name', '')}".strip(), 80),
                 "stage": r.get("status") or "",
-                "location": ", ".join(
-                    x for x in (r.get("city"), r.get("state")) if x
-                ),
-                "cdl_class": r.get("cdl_class") or "",
+                "location": clip_untrusted(", ".join(
+                    x for x in (r.get("city"), r.get("state")) if x), 80),
+                "cdl_class": clip_untrusted(r.get("cdl_class"), 20),
                 "applied": r.get("submitted_at") or "",
             }
             for r in listed[:25]

@@ -19,6 +19,8 @@ from capabilities.ai.tools.registry import (                              # noqa
     get_action_executor,
     register_undo_executor,
     get_undo_executor,
+    clip_untrusted,
+    untrusted_note,
 )
 
 # Pre-load the alerting capability FIRST.  Some feature packages' ``__init__``

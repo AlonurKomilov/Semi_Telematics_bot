@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 
-from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.registry import (
+    clip_untrusted, register_tool, untrusted_note,
+)
 from features.vehicles.resolve import company_of, resolve_for_tool
 
 
@@ -168,6 +170,9 @@ async def get_recent_inspections(tool_args: dict, samsara_client,
             # company marker, so a merged answer looked like one truck's.
             "company": co or "",
         },
+        "untrusted_note": untrusted_note(
+            "inspection notes written by drivers"
+        ),
         "inspections": [
             {
                 "id": r.get("id"),
@@ -178,7 +183,11 @@ async def get_recent_inspections(tool_args: dict, samsara_client,
                 "review_status": r.get("review_status") or "pending",
                 "defect_count": int(r.get("defects_count") or 0),  # column is defects_count (plural)
                 "inspected_at": r.get("inspected_at") or r.get("created_at") or "",
-                "summary": (r.get("notes") or "")[:200],
+                # Driver-written free text — anyone who can submit a
+                # DVIR can put words here, and they reached the model
+                # with no marking. Flattened as well as capped: a
+                # newline is how a payload draws a fake boundary.
+                "summary": clip_untrusted(r.get("notes"), 200),
             }
             for r in items
         ],

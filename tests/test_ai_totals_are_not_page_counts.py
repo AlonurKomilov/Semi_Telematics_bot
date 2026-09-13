@@ -27,6 +27,14 @@ async def test_fuel_costs_take_the_total_from_the_uncapped_aggregate():
              "price_per_gallon": 4.0, "odometer_miles": 1000}] * 200
 
     class _DB:
+        async def list_vehicles(self, account_id, **kw):
+            """The registry, which the tool now consults to pick WHICH
+            truck. Empty here on purpose: these tests are about the
+            money coming from the uncapped aggregate rather than the
+            page, and an empty registry is the "cannot say" path that
+            keeps the name query. Twins have their own file."""
+            return []
+
         async def get_fuel_entries(self, account_id, vehicle_name=None, limit=None):
             return list(page)
 
@@ -56,6 +64,9 @@ async def test_fuel_costs_say_so_when_the_aggregate_is_unavailable():
     from features.vehicles.fuel.ai_tool import get_vehicle_fuel_costs
 
     class _DB:
+        async def list_vehicles(self, account_id, **kw):
+            return []
+
         async def get_fuel_entries(self, account_id, vehicle_name=None, limit=None):
             return [{"date": "2026-09-01", "gallons": 10.0, "total_cost": 40.0,
                      "price_per_gallon": 4.0, "odometer_miles": 1}]
