@@ -95,6 +95,7 @@ from .plan_requests import PlanRequestsMixin
 from .plan_offers import PlanOffersMixin
 from .geofence import GeofenceMixin
 from .custom_poi import CustomPoiMixin
+from .poi_directory import PoiDirectoryMixin
 from .scorecard import ScorecardMixin
 from .warehouse import WarehouseMixin
 from .ops_runs import OpsRunsMixin
@@ -176,6 +177,7 @@ class Database(
     PlanRequestsMixin,
     PlanOffersMixin,
     CustomPoiMixin,
+    PoiDirectoryMixin,
     ScorecardMixin,
     WarehouseMixin,
     OpsRunsMixin,
