@@ -115,9 +115,19 @@ async def get_recent_work_orders(tool_args: dict, samsara_client,
     if pay and pay not in ("unpaid", "partial", "paid"):
         return tool_error("payment_status must be unpaid, partial or paid.")
 
+    # Ask the store for the window instead of the history.  The date
+    # narrowing below still runs — the store's filter is deliberately
+    # generous (it keeps undated and unparseable dates so the counters
+    # below stay honest) — but a three-year-old shop history no longer
+    # crosses the wire to be thrown away in Python.  The cutoff is the
+    # DATE floor of the same instant, so the store can only ever hand
+    # back a superset of what the check below keeps.
+    cutoff_day = (
+        datetime.now(timezone.utc) - timedelta(days=max(days, 1))
+    ).date().isoformat()
     rows = await db.list_work_orders(
         account_id, status=status, payment_status=pay,
-        vehicle_name=vehicle,
+        vehicle_name=vehicle, since=cutoff_day,
     )
 
     # The caller's own trucks, by the strongest rung the rows carry.

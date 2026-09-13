@@ -153,31 +153,6 @@ async def build_context(account_id: int,
         logger.error(f"AI vehicle snapshot failed: {e}")
         snapshot["error"] = str(e)
 
-    # Health data
-    try:
-        health = await _svc_vehicle_health(account_id)
-        if _vehicle_set:
-            health = [
-                v for v in health
-                if v.get("name", "").lower() in _vehicle_set
-            ]
-        alerts_summary = []
-        for v in health:
-            h_alerts = v.get("_health_alerts", [])
-            if h_alerts:
-                alerts_summary.append({
-                    "vehicle": v.get("name", "?"),
-                    "alerts": h_alerts,
-                    "battery_v": v.get("_health", {}).get("battery_v"),
-                    "coolant_c": v.get("_health", {}).get("coolant_c"),
-                    "oil_psi": v.get("_health", {}).get("oil_psi"),
-                    "def_pct": v.get("_health", {}).get("def_pct"),
-                })
-        if alerts_summary:
-            snapshot["health_alerts"] = alerts_summary
-    except Exception as e:
-        logger.debug(f"AI health snapshot skipped: {e}")
-
     # Counts
     faulted = [v for v in snapshot.get("vehicles", []) if v.get("fault_count")]
     low_fuel = [v for v in snapshot.get("vehicles", [])
@@ -189,6 +164,11 @@ async def build_context(account_id: int,
     import asyncio
 
     async def _fetch_health():
+        # The ONLY health read in this function.  An identical block used
+        # to run inline above as well, so every turn read the whole
+        # account's health feed twice — a second warehouse scan, and on
+        # the cold-start path a second Samsara fan-out — to produce the
+        # same snapshot["health_alerts"] the second write overwrote.
         try:
             health = await _svc_vehicle_health(account_id)
             if _vehicle_set:

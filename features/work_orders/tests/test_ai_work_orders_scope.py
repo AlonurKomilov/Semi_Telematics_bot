@@ -32,10 +32,21 @@ class _DB:
         self._rows = rows
 
     async def list_work_orders(self, account_id, status=None,
-                               payment_status=None, vehicle_name=None):
+                               payment_status=None, vehicle_name=None,
+                               since=None):
         rows = self._rows
         if vehicle_name:
             rows = [r for r in rows if r["vehicle_name"] == vehicle_name]
+        if since:
+            # The store's own predicate: undated rows and anything not
+            # shaped like a 2000s ISO date survive the window.
+            rows = [
+                r for r in rows
+                if not (r.get("service_date") or "")
+                or not str(r["service_date"]).startswith("2")
+                or len(str(r["service_date"])) < 10
+                or str(r["service_date"]) >= since
+            ]
         return list(rows)
 
 

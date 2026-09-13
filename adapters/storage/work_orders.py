@@ -611,12 +611,37 @@ class WorkOrdersMixin:
         status: Optional[str] = None,
         payment_status: Optional[str] = None,
         vehicle_name: Optional[str] = None,
+        since: Optional[str] = None,
     ) -> list[dict]:
         """List work orders for an account with optional filters.
 
         Ordered by service_date DESC (newest shop visits first) so the
         dashboard's default view matches operator expectation.  NULL
         service_date rows (drafts) sort last via the COALESCE trick.
+
+        ``since`` ('YYYY-MM-DD') is a date-window PRE-filter for callers
+        that only want recent visits — it exists so the AI tool stops
+        pulling the account's entire shop history (every notes /
+        complaint / cause / correction column of it) across the wire to
+        then keep 90 days in Python.
+
+        It is deliberately generous, because two of that caller's
+        outputs count rows the window can't judge:
+
+          * undated rows (NULL or '') are always kept — "nobody dated
+            this work order" is a different fact from "this is old",
+            and the tool reports it separately;
+          * anything not shaped like a 2000s ISO date is always kept,
+            so garbage dates ('0000-00-00', a pasted '12/05/24') stay
+            visible to the caller's unreadable-date counter instead of
+            being silently swallowed by a string comparison.
+
+        Residual, named rather than hidden: a date that IS shaped like
+        a 2000s ISO date yet does not parse (e.g. '2019-13-45') and
+        falls before the window is dropped here, so a caller counting
+        unreadable dates will miss that one. Everything the window
+        keeps is still re-checked by the caller, so this only ever
+        removes rows the caller would have removed too.
         """
         q = "SELECT * FROM work_orders WHERE account_id = ?"
         params: list = [account_id]
@@ -629,6 +654,11 @@ class WorkOrdersMixin:
         if vehicle_name:
             q += " AND vehicle_name = ?"
             params.append(vehicle_name)
+        if since:
+            q += (" AND (service_date IS NULL OR service_date = ''"
+                  " OR service_date NOT LIKE '2___-__-__%'"
+                  " OR service_date >= ?)")
+            params.append(since)
         q += " ORDER BY COALESCE(service_date, '') DESC, id DESC"
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
