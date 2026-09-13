@@ -85,6 +85,58 @@ def test_the_engine_check_is_cached_so_a_drag_is_not_hundreds_of_db_reads():
     assert "_engine_seen" in src
 
 
+def test_the_server_may_carry_a_key_of_its_own(monkeypatch):
+    """The browser's key is public by design; the server's need not be.
+
+    A referrer restriction stops a casual reader and nobody else — a
+    forged referer was measured returning 200 from this very server —
+    so the proxy takes an IP-restricted key when the deployment has
+    been given one, and falls back to the shared key when it has not.
+    """
+    monkeypatch.delenv(map_engine.ENV_GOOGLE_TILE_KEY, raising=False)
+    monkeypatch.setenv(map_engine.ENV_GOOGLE_KEY, "PUBLIC")
+    assert map_engine.tile_key() == "PUBLIC", "must not break a deployment without one"
+    monkeypatch.setenv(map_engine.ENV_GOOGLE_TILE_KEY, "SERVER-ONLY")
+    assert map_engine.tile_key() == "SERVER-ONLY"
+    # …and the browser's half is untouched: the dashboard still fetches
+    # tiles directly and needs the public key in its template.
+    assert map_engine.google_key() == "PUBLIC"
+
+
+def test_a_session_belongs_to_the_key_that_opened_it(monkeypatch):
+    """Two keys can be in play at once.  Whether a session opened under
+    one is accepted on a tile request carrying the other is undocumented
+    and not worth discovering in production, so the cache is keyed by
+    both.  Sessions are free of quota and last a fortnight."""
+    import asyncio
+
+    map_engine.reset_sessions_for_tests()
+    opened: list[str] = []
+
+    async def fake_create(map_type: str, key: str) -> dict:
+        opened.append(key)
+        return {"session": f"S-{key}", "expiry": 2 ** 31,
+                "tile_size": 256, "image_format": "png"}
+
+    monkeypatch.setattr(map_engine, "_create_session", fake_create)
+    a = asyncio.run(map_engine.tile_session("roadmap", "KEY-A"))
+    b = asyncio.run(map_engine.tile_session("roadmap", "KEY-B"))
+    again = asyncio.run(map_engine.tile_session("roadmap", "KEY-A"))
+    assert a["session"] != b["session"], "one session was shared across two keys"
+    assert again["session"] == a["session"], "the cache stopped caching"
+    assert opened == ["KEY-A", "KEY-B"], opened
+    map_engine.reset_sessions_for_tests()
+
+
+def test_the_proxy_does_not_take_the_browsers_key_from_its_caller():
+    """The route used to hand `google_key()` in.  It no longer passes
+    one at all, so there is a single place that decides which key the
+    server presents."""
+    src = inspect.getsource(map_router.map_tile)
+    assert "google_key()" not in src
+    assert "fetch_tile(type, z, x, y)" in src
+
+
 def test_both_proxy_routes_are_reachable_by_a_panel_token():
     """A route the token may DO something on but may not KNOCK on is a
     403 with a confusing message."""

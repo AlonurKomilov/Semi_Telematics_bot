@@ -72,6 +72,27 @@ def google_key() -> str:
     return (os.environ.get(ENV_GOOGLE_KEY) or "").strip()
 
 
+#: A SECOND key, for the tiles the server fetches on a browser's behalf.
+#:
+#: The platform key above is public by design — it rides in every tile
+#: URL the dashboard's browser requests — and is protected by an
+#: HTTP-referrer restriction.  That restriction stops a casual reader
+#: and nothing else: a referer header is three words of ``curl``, and a
+#: forged one was measured returning 200 from this very server.
+#:
+#: The proxy does not need a public key.  It runs in one place with one
+#: address, so its key can carry an IP restriction, which cannot be
+#: forged from a browser at all.  Set this and the proxy uses it;
+#: leave it unset and it falls back to the shared key, so nothing
+#: breaks on a deployment that has not been given one yet.
+ENV_GOOGLE_TILE_KEY = "GOOGLE_MAPS_TILE_KEY"
+
+
+def tile_key() -> str:
+    """The key the SERVER presents when it fetches a tile itself."""
+    return (os.environ.get(ENV_GOOGLE_TILE_KEY) or "").strip() or google_key()
+
+
 def google_available() -> bool:
     """Whether the platform CAN draw Google at all.
 
@@ -188,14 +209,23 @@ class TileSessionError(RuntimeError):
     falls back to the free engine and says which."""
 
 
-_sessions: dict[str, dict] = {}
-_locks: dict[str, asyncio.Lock] = {}
+#: Keyed by (map type, KEY) — not by map type alone.
+#:
+#: There can be two keys in play: the public one the dashboard's browser
+#: presents, and the IP-restricted one the server presents for the tiles
+#: it fetches itself.  Whether a session created under one key is
+#: accepted on a tile request carrying the other is not documented and
+#: not worth finding out in production, so each key keeps its own.
+#: Sessions are free of quota and last two weeks; a second one costs
+#: nothing and removes the question.
+_sessions: dict[tuple[str, str], dict] = {}
+_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
 
-def _lock(map_type: str) -> asyncio.Lock:
-    lock = _locks.get(map_type)
+def _lock(cache_key: tuple[str, str]) -> asyncio.Lock:
+    lock = _locks.get(cache_key)
     if lock is None:
-        lock = _locks[map_type] = asyncio.Lock()
+        lock = _locks[cache_key] = asyncio.Lock()
     return lock
 
 
@@ -231,15 +261,16 @@ async def tile_session(map_type: str, key: str, *, now: float | None = None) -> 
     if not key:
         raise TileSessionError("no Google Maps key is configured")
     t = time.time() if now is None else now
-    cached = _sessions.get(map_type)
+    slot = (map_type, key)
+    cached = _sessions.get(slot)
     if _fresh(cached, t):
         return cached
-    async with _lock(map_type):
-        cached = _sessions.get(map_type)
+    async with _lock(slot):
+        cached = _sessions.get(slot)
         if _fresh(cached, t):
             return cached
         entry = await _create_session(map_type, key)
-        _sessions[map_type] = entry
+        _sessions[slot] = entry
         logger.info("map tiles: new %s session, expires in %.1f days",
                     map_type, (entry["expiry"] - t) / 86400)
         return entry
@@ -295,7 +326,8 @@ def tile_wire(map_type: str, entry: dict, key: str) -> dict:
     }
 
 
-async def fetch_tile(map_type: str, z: int, x: int, y: int, key: str) -> tuple[bytes, str]:
+async def fetch_tile(map_type: str, z: int, x: int, y: int,
+                     key: str | None = None) -> tuple[bytes, str]:
     """One tile, fetched with the referer Google's key restriction wants.
 
     Raises ``TileSessionError`` for anything that is not a picture, so
@@ -304,6 +336,10 @@ async def fetch_tile(map_type: str, z: int, x: int, y: int, key: str) -> tuple[b
     block went unnoticed for a day.
     """
     import httpx
+    # The SERVER's key by default — this function is only ever the
+    # server fetching on a browser's behalf, and the browser's public
+    # key has no business on a request nobody can see.
+    key = key or tile_key()
     entry = await tile_session(map_type, key)
     url = TILE_URL.format(z=z, x=x, y=y)
     async with httpx.AsyncClient(timeout=20) as c:
@@ -318,10 +354,12 @@ async def fetch_tile(map_type: str, z: int, x: int, y: int, key: str) -> tuple[b
     return r.content, ctype
 
 
-async def fetch_copyright(map_type: str, viewport: dict, key: str) -> str:
+async def fetch_copyright(map_type: str, viewport: dict,
+                          key: str | None = None) -> str:
     """Google's per-view copyright line, fetched the same way and for
     the same reason — the browser cannot ask for it either."""
     import httpx
+    key = key or tile_key()
     entry = await tile_session(map_type, key)
     params = {"session": entry["session"], "key": key, **viewport}
     async with httpx.AsyncClient(timeout=10) as c:

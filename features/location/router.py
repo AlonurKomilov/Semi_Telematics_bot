@@ -221,8 +221,9 @@ async def map_tile(
         raise HTTPException(422, f"unknown tile type {type!r}")
     await _require_google(user)
     try:
-        content, ctype = await map_engine.fetch_tile(
-            type, z, x, y, map_engine.google_key())
+        # No key argument: the fetcher picks the SERVER's key, which is
+        # the IP-restricted one when the deployment has been given it.
+        content, ctype = await map_engine.fetch_tile(type, z, x, y)
     except map_engine.TileSessionError as e:
         # 502, not 500: the refusal is Google's, and a client that sees
         # its own server blamed goes looking in the wrong place.
@@ -259,7 +260,7 @@ async def map_tile_copyright(
     try:
         line = await map_engine.fetch_copyright(
             type, {"zoom": zoom, "north": north, "south": south,
-                   "east": east, "west": west}, map_engine.google_key())
+                   "east": east, "west": west})
     except map_engine.TileSessionError:
         line = ""
     return {"copyright": line}
