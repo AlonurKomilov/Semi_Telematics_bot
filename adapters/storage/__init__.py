@@ -91,6 +91,7 @@ from .user_preferences import UserPreferencesMixin
 from .billing import BillingMixin
 from .plans import PlansMixin
 from .plan_rollouts import PlanRolloutsMixin
+from .plan_requests import PlanRequestsMixin
 from .geofence import GeofenceMixin
 from .custom_poi import CustomPoiMixin
 from .scorecard import ScorecardMixin
@@ -171,6 +172,7 @@ class Database(
     PlansMixin,
     GeofenceMixin,
     PlanRolloutsMixin,
+    PlanRequestsMixin,
     CustomPoiMixin,
     ScorecardMixin,
     WarehouseMixin,

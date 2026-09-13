@@ -223,6 +223,7 @@ async def run_all(conn) -> None:
     await migrate_account_kind(conn)
     await migrate_split_kind_and_security(conn)
     await migrate_ledger_kind_to_security(conn)
+    await migrate_user_security(conn)
     # Vehicle-document expiry needed a personal toggle like every other
     # alert type — without the column its subscriber query returned
     # nobody, so the alert fired into silence.
@@ -236,6 +237,7 @@ async def run_all(conn) -> None:
     await migrate_plans_catalog(conn)
     await migrate_plan_price_rollouts(conn)
     await migrate_subscription_billed_quantity(conn)
+    await migrate_plan_requests(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -340,6 +342,40 @@ async def migrate_ledger_kind_to_security(conn) -> None:
         logger.info("Platform migration: security_requests.kind -> security")
     except Exception:
         logger.exception("ledger kind -> security migration failed")
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_user_security(conn) -> None:
+    """The security standing asked of a PERSON, not only of an account.
+
+    An account is often fine while one person inside it is not — a
+    dispatcher probing admin endpoints, stolen credentials in use from
+    somewhere new, an ex-employee nobody deactivated. Until this column
+    the only way to watch them was to mark their ACCOUNT monitored,
+    which records every request from everyone in it: twenty-three people
+    at the largest customer, to observe one. That is noise, and it
+    treats twenty-two innocents as suspects.
+
+    Same vocabulary as ``accounts.security`` on purpose — it is the same
+    question asked of a smaller subject, and one word per state is what
+    keeps the console, the column and the card saying the same thing.
+
+    Everyone starts ``normal``, which is not a clearance: nobody has
+    examined them. ADD COLUMN IF NOT EXISTS, no index (read per-row with
+    the primary key). Idempotent.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS security "
+            "TEXT NOT NULL DEFAULT 'normal'"
+        )
+        await conn.commit()
+        logger.info("Platform migration: users.security added")
+    except Exception:
+        logger.exception("users.security column add failed")
         try:
             await conn.rollback()
         except Exception:
@@ -5388,3 +5424,42 @@ async def migrate_subscription_billed_quantity(conn) -> None:
         # missing column the same as NULL (no baseline), and the error
         # is logged for the operator to act on.
         logger.exception("migrate_subscription_billed_quantity failed")
+
+async def migrate_plan_requests(conn) -> None:
+    """A customer asking for a plan that is not sold self-serve.
+
+    A plan offered at no price is a "talk to us" plan; its button used
+    to be inert, so the customer who wanted the biggest thing we sell
+    had nowhere to say so.  The partial unique index is the anti-
+    duplicate rule: one OPEN request per (account, tier), so pressing
+    the button twice joins the request already made.  Idempotent.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS plan_requests (
+                id            SERIAL PRIMARY KEY,
+                account_id    INTEGER NOT NULL,
+                tier          TEXT    NOT NULL,
+                case_number   TEXT    NOT NULL DEFAULT '',
+                requested_by  INTEGER,
+                contact_email TEXT    NOT NULL DEFAULT '',
+                note          TEXT    NOT NULL DEFAULT '',
+                status        TEXT    NOT NULL DEFAULT 'open',
+                handled_by    TEXT    NOT NULL DEFAULT '',
+                handled_at    TEXT,
+                created_at    TEXT    NOT NULL DEFAULT (now()::text),
+                updated_at    TEXT    NOT NULL DEFAULT (now()::text)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_plan_requests_status "
+            "ON plan_requests(status, created_at DESC)")
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_requests_open "
+            "ON plan_requests(account_id, tier) WHERE status = 'open'")
+    except Exception:
+        # Boot must not fail for this: without the table the request
+        # route answers 503 and the customer is told to email instead,
+        # which is worse than a working platform and better than a
+        # crash loop.
+        logger.exception("migrate_plan_requests failed")

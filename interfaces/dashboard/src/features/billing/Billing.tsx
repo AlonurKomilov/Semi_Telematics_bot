@@ -399,10 +399,27 @@ interface PlanCardProps {
   features: string[]; current: boolean; highlighted: boolean; buyable: boolean;
   /** What this plan would not hold, from what the account has today. */
   warnings?: string[];
-  onUpgrade: () => void; loading: boolean;
+  /** A plan offered at no price is not for sale — it is a conversation.
+   *  The case number of one already asked for, when there is one. */
+  openCase?: string;
+  onUpgrade: () => void;
+  onAsk?: (note: string, email: string) => Promise<void>;
+  defaultEmail?: string;
+  loading: boolean;
 }
 
-function PlanCard({ name, price, features, current, highlighted, buyable, warnings = [], onUpgrade, loading }: PlanCardProps) {
+function PlanCard({
+  name, price, features, current, highlighted, buyable, warnings = [],
+  openCase, onUpgrade, onAsk, defaultEmail = '', loading,
+}: PlanCardProps) {
+  // A plan with no price cannot be bought; asking about it is the whole
+  // interaction, so the form lives in the card rather than behind a
+  // dialog — the reader is already looking at what they are asking for.
+  const askable = !current && !buyable && !!onAsk;
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState('');
+  const [email, setEmail] = useState(defaultEmail);
+  const [sending, setSending] = useState(false);
   return (
     <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', (current || highlighted) && 'border-primary ring-1 ring-primary/30')}>
       {current && (
@@ -440,15 +457,74 @@ function PlanCard({ name, price, features, current, highlighted, buyable, warnin
           ))}
         </ul>
       )}
-      <button
-        onClick={onUpgrade}
-        disabled={current || loading || !buyable}
-        className={`w-full py-2 min-h-tap rounded-lg text-sm font-semibold transition ${
-          current || !buyable ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-primary-foreground'
-        }`}
-      >
-        {loading ? 'Opening Stripe…' : current ? 'Current Plan' : !buyable ? 'Contact us' : 'Upgrade'}
-      </button>
+      {openCase ? (
+        /* Already asked: the case number is the answer, and offering the
+           button again would only produce a second conversation about
+           the same thing. */
+        <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm">
+          <p className="font-medium text-foreground">Request {openCase}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            We have it — someone will be in touch by email.
+          </p>
+        </div>
+      ) : asking ? (
+        <form
+          className="space-y-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!onAsk) return;
+            setSending(true);
+            try { await onAsk(note, email); } finally { setSending(false); }
+          }}
+        >
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            required
+            placeholder="How many trucks, how many companies, what you need it to do."
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm
+                       placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="Where should we reply?"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm
+                       placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={sending}
+              className="flex-1 py-2 min-h-tap rounded-lg text-sm font-semibold transition
+                         bg-primary hover:bg-primary-hover text-primary-foreground disabled:opacity-60"
+            >{sending ? 'Sending…' : 'Send request'}</button>
+            <button
+              type="button"
+              onClick={() => setAsking(false)}
+              className="px-3 py-2 min-h-tap rounded-lg text-sm text-muted-foreground hover:text-foreground"
+            >Cancel</button>
+          </div>
+        </form>
+      ) : (
+        <button
+          onClick={askable ? () => setAsking(true) : onUpgrade}
+          disabled={current || loading || (!buyable && !askable)}
+          className={`w-full py-2 min-h-tap rounded-lg text-sm font-semibold transition ${
+            current || (!buyable && !askable) ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-primary-foreground'
+          }`}
+        >
+          {loading ? 'Opening Stripe…'
+            : current ? 'Current Plan'
+            : askable ? 'Talk to sales'
+            : !buyable ? 'Contact us'
+            : 'Upgrade'}
+        </button>
+      )}
     </div>
   );
 }
@@ -672,6 +748,29 @@ export default function Billing() {
       `You have ${have} companies; this plan allows ${allowed}. None is deleted — you cannot add more until you are under ${allowed}.`,
   };
 
+  // Which plans this account has already asked about, so a card shows
+  // its case number instead of offering the button a second time.
+  const [openCases, setOpenCases] = useState<Record<string, string>>({});
+  useEffect(() => {
+    apiJSON<{ items: { tier: string; case_number: string }[] }>('/billing/plan-requests')
+      .then((r) => setOpenCases(
+        Object.fromEntries(r.items.map((i) => [i.tier, i.case_number]))))
+      .catch(() => { /* a missing case number costs a duplicate, not a page */ });
+  }, []);
+
+  const handleAsk = async (tier: string, note: string, email: string) => {
+    setError(null);
+    try {
+      const res = await apiJSON<{ case_number: string; joined: boolean }>(
+        '/billing/plan-request',
+        { method: 'POST', body: { tier, note, contact_email: email } },
+      );
+      setOpenCases((c) => ({ ...c, [tier]: res.case_number }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'We could not record that — please email us.');
+    }
+  };
+
   const handleCheckout = async (tier: string) => {
     setCheckoutLoading(tier);
     setError(null);
@@ -827,6 +926,9 @@ export default function Billing() {
                 { users: summary?.user_count ?? 0, companies: summary?.company_count ?? 0 },
                 quotaWarnings,
               )}
+              openCase={openCases[p.tier]}
+              onAsk={(note, email) => handleAsk(p.tier, note, email)}
+              defaultEmail={summary?.billing_email ?? ''}
             />
           ))}
         </div>

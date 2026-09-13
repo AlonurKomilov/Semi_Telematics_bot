@@ -962,6 +962,35 @@ async def create_tables(conn) -> None:
             ON error_log(source, created_at DESC);
 
         -- security_requests: the request ledger the security console reads.
+        -- plan_requests: a customer asking for a plan that is not sold
+        -- self-serve.  A plan offered at no price is a "talk to us"
+        -- plan — Enterprise is the case this exists for — and pressing
+        -- its button must leave something behind rather than opening a
+        -- checkout that cannot work.  The case_number is what the
+        -- customer quotes in an email; it is derived from the id, so it
+        -- is unique without a second sequence.  One OPEN request per
+        -- (account, tier): pressing the button twice joins the request
+        -- already made instead of starting a queue of duplicates.
+        CREATE TABLE IF NOT EXISTS plan_requests (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL,
+            tier          TEXT    NOT NULL,
+            case_number   TEXT    NOT NULL DEFAULT '',
+            requested_by  INTEGER,
+            contact_email TEXT    NOT NULL DEFAULT '',
+            note          TEXT    NOT NULL DEFAULT '',
+            -- open -> contacted -> closed; the operator moves it
+            status        TEXT    NOT NULL DEFAULT 'open',
+            handled_by    TEXT    NOT NULL DEFAULT '',
+            handled_at    TEXT,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_plan_requests_status
+            ON plan_requests(status, created_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_requests_open
+            ON plan_requests(account_id, tier) WHERE status = 'open';
+
         -- Two populations land here: every 401/403/429 from ANY account
         -- (the denial signal the detector was missing — the 2026-09-08
         -- probe's 17 /system/* refusals and 25 admin sweeps lived only in

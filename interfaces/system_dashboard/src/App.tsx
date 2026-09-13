@@ -23,6 +23,7 @@ import KnowledgePage from './pages/Knowledge';
 import SchedulerPage from './pages/Scheduler';
 import CapacityPage from './pages/Capacity';
 import PlansPage from './pages/Plans';
+import PlanRequestsPage from './pages/PlanRequests';
 import { apiJSON, clearToken, getToken } from './api/client';
 
 export default function App() {
@@ -48,6 +49,11 @@ export default function App() {
     apiJSON<{ count: number }>('/system/knowledge/pending')
       .then((r) => setBadges((b) => ({ ...b, '/knowledge': r.count ?? 0 })))
       .catch(() => { /* a count is not worth an error surface */ });
+    // A customer waiting on a reply is the one queue that should be
+    // visible from every page.
+    apiJSON<{ open: number }>('/system/plan-requests?status=open')
+      .then((r) => setBadges((b) => ({ ...b, '/plan-requests': r.open ?? 0 })))
+      .catch(() => { /* same */ });
   }, [authed, loc.pathname]);
 
   // Which mode the money is in.  Asked once per session rather than per
@@ -100,6 +106,7 @@ export default function App() {
             <Route path="/accounts/:id" element={<AccountDetail />} />
             <Route path="/invoices" element={<InvoicesPage />} />
             <Route path="/plans" element={<PlansPage />} />
+            <Route path="/plan-requests" element={<PlanRequestsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/health" element={<HealthPage />} />
             <Route path="/users" element={<UsersPage />} />
@@ -145,6 +152,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/accounts', label: 'Accounts', icon: Building2 },
       { to: '/invoices', label: 'Invoices', icon: Receipt },
       { to: '/plans',    label: 'Plans',    icon: Layers },
+      { to: '/plan-requests', label: 'Plan requests', icon: MessageSquareWarning },
       { to: '/audit',    label: 'Audit',    icon: ScrollText },
     ],
   },

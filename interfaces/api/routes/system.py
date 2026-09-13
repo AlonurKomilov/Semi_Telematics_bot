@@ -1167,7 +1167,7 @@ async def operator_set_account_security(
     # watched account is not recorded until the cache expires.
     try:
         from capabilities.security.recorder import forget_security
-        forget_security(account_id)
+        forget_security(account_id, kind="account")
     except Exception:
         logger.exception("security cache drop failed for account %s", account_id)
     logger.info(
@@ -1184,6 +1184,49 @@ async def operator_set_account_security(
         except Exception:
             logger.exception("platform audit write failed for account %s", account_id)
     return {"id": account_id, "security": body.security}
+
+
+@router.patch("/users/{user_id}/security")
+async def operator_set_user_security(
+    user_id: int,
+    body: AccountSecurityBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Set how one PERSON stands with security.
+
+    The same vocabulary and the same rules as the account-level control,
+    asked of a smaller subject — because an account is often fine while
+    one person inside it is not, and marking the account to watch them
+    records every request from everyone in it.
+
+    A request is kept when EITHER the account or the person is watched,
+    so this never needs the account moved as well.
+    """
+    target = await platform_db.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    previous = getattr(target, "security", "normal") or "normal"
+    await platform_db.update_user(user_id, security=body.security)
+    try:
+        from capabilities.security.recorder import forget_security
+        forget_security(user_id, kind="user")
+    except Exception:
+        logger.exception("security cache drop failed for user %s", user_id)
+    logger.info(
+        "system: user security user=%s %s -> %s operator_tg=%s",
+        user_id, previous, body.security, user.get("sub"),
+    )
+    if previous != body.security:
+        try:
+            await platform_db.add_platform_audit(
+                "user_security", account_id=target.account_id,
+                actor=f"operator:{user.get('sub')}",
+                details=f"user {user_id}: {previous} -> {body.security}",
+            )
+        except Exception:
+            logger.exception("platform audit write failed for user %s", user_id)
+    return {"id": user_id, "security": body.security}
 
 
 @router.patch("/accounts/{account_id}/billing-email")
@@ -1553,12 +1596,22 @@ async def system_health(
 @router.get("/users")
 async def list_users(
     search: str = Query(default="", description="Name substring, email, or exact telegram_id"),
+    security: str = Query(
+        default="",
+        description="How the PERSON stands — 'normal' | 'monitored' | "
+                    "'quarantined' | '' for all. Independent of the "
+                    "account's standing: a watched person inside a clean "
+                    "account is the case this filter exists for.",
+    ),
     limit: int = Query(default=200, ge=1, le=500),
     _user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
     """Cross-account user search for support / debugging."""
     items = await platform_db.list_all_users_cross_account(search=search, limit=limit)
+    if security:
+        items = [u for u in items
+                 if (u.get("security") or "normal") == security]
     return {"items": items, "count": len(items)}
 
 
@@ -2176,6 +2229,54 @@ async def system_plans(
         # what a switch to Stripe still needs — env presence only, no Stripe call
         "stripe_setup": _stripe_setup(),
     }
+
+
+@router.get("/plan-requests")
+async def system_plan_requests(
+    status: str = "",
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Customers who asked about a plan that is not sold self-serve.
+
+    The queue an operator works: a request carries the account, the
+    plan, what they wrote, where to reply, and a case number they can
+    quote back.
+    """
+    try:
+        items = await platform_db.list_plan_requests(status=status.strip())
+    except Exception:
+        logger.exception("system: plan requests unavailable")
+        raise HTTPException(status_code=503, detail="The request queue is unavailable.")
+    names: dict[int, str] = {}
+    for r in items:
+        aid = int(r["account_id"])
+        if aid not in names:
+            acc = await platform_db.get_account(aid)
+            names[aid] = (acc.name if acc else "") or f"account {aid}"
+    return {"items": [{**r, "account_name": names[int(r["account_id"])]} for r in items],
+            "open": await platform_db.count_open_plan_requests()}
+
+
+class PlanRequestStatusBody(BaseModel):
+    status: str = Field(..., pattern="^(open|contacted|closed)$")
+
+
+@router.post("/plan-requests/{request_id}/status")
+async def system_set_plan_request_status(
+    request_id: int,
+    body: PlanRequestStatusBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Move a request along. Closing it frees the (account, plan) pair,
+    so the customer can ask again later."""
+    moved = await platform_db.set_plan_request_status(
+        request_id, body.status, actor=f"tg:{user.get('sub')}")
+    if not moved:
+        raise HTTPException(status_code=404, detail="No such request.")
+    logger.info("system: plan request %s -> %s by %s", request_id, body.status, user.get("sub"))
+    return {"ok": True, "status": body.status}
 
 
 @router.get("/billing-mode")

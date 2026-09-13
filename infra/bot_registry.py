@@ -636,6 +636,18 @@ def get_registry() -> Optional[BotRegistry]:
     return _registry
 
 
+def get_system_app() -> Optional[Application]:
+    """The operator-facing bot, or None before startup registers one.
+
+    Deliberately separate from :func:`get_app_for_account`, which never
+    falls back here: a message ABOUT an account goes out on that
+    account's own bot, while a message TO the platform's operators —
+    who are identified by SYSTEM_OWNER_IDS and talk to the system bot —
+    goes out on this one.
+    """
+    return _system_app
+
+
 def get_app_for_account(account_id: int) -> Optional[Application]:
     """Resolve the Application for *account_id*.
 

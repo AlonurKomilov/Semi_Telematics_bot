@@ -118,6 +118,21 @@ a sandbox Price and Stripe would refuse it. Before swapping the keys:
 6. One real checkout on your own account with a real card, then refund
    it from the Stripe dashboard — that is the live proof.
 
+## 4c. The plan nobody can buy
+
+A plan offered at **no price** is a "talk to us" plan — Enterprise is
+the case this exists for. Its card does not open a checkout: it opens a
+short form, records the request with a case number the customer can
+quote (`4T-202609-0007`), pings the operators on Telegram, and emails
+`SALES_EMAIL` when that is set. Requests land in the console under
+**Plan requests**, with the open count badged in the sidebar.
+
+Set `SALES_EMAIL` in `.env` if you want the email copy; without it the
+Telegram notice still goes out, because that channel needs nothing
+beyond `SYSTEM_OWNER_IDS`. One open request per account and plan —
+pressing the button twice joins the one already made. Closing a request
+lets that customer ask again later.
+
 ## 5. Known limits, decided
 
 - One extras Price for every plan (per-tier extras would need a

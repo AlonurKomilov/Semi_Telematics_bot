@@ -143,6 +143,99 @@ async def billing_invoices(
     return {"items": items, "count": len(items)}
 
 
+# ── Asking for a plan that is not sold self-serve ────────────────
+
+
+class PlanRequestBody(BaseModel):
+    tier: str = Field(..., min_length=2, max_length=32)
+    note: str = Field("", max_length=2000)
+    contact_email: str = Field("", max_length=320)
+
+
+@router.post("/plan-request", status_code=201)
+async def billing_plan_request(
+    body: PlanRequestBody,
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """Leave a request for a plan whose button is not a checkout.
+
+    A plan offered at no price is a "talk to us" plan — Enterprise is
+    the case this exists for — and its button used to do nothing at all.
+    Now it leaves a row with a case number the customer can quote, pings
+    the operators on Telegram, and emails the sales inbox when one is
+    configured.
+
+    Pressing it twice joins the request already open rather than making
+    a second one; the answer says so.
+    """
+    tier = body.tier.strip().lower()
+    plan = await platform_db.get_plan(tier)
+    if not plan or not plan["public"]:
+        raise HTTPException(status_code=404, detail=f"Plan '{tier}' is not on offer.")
+    if int(plan["price_monthly_cents"] or 0) > 0:
+        # A priced plan has a checkout; sending it here instead would
+        # hide a purchase behind a conversation.
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{plan['label']}' can be bought directly — use Upgrade.")
+
+    account_id = user["account_id"]
+    try:
+        req = await platform_db.create_plan_request(
+            account_id, tier,
+            requested_by=user.get("user_id"),
+            contact_email=body.contact_email.strip(),
+            note=body.note.strip(),
+        )
+    except Exception:
+        logger.exception("plan request could not be recorded for account=%s tier=%s",
+                         account_id, tier)
+        raise HTTPException(
+            status_code=503,
+            detail="We could not record that just now — please email us instead.")
+
+    account = await platform_db.get_account(account_id)
+    account_name = (account.name if account else "") or f"account {account_id}"
+    from capabilities.platform.billing import plan_requests as _notify
+    if not req.get("joined"):
+        # Only a NEW request is announced: joining one already open must
+        # not ping the operator twice about the same conversation.
+        try:
+            await _notify.notify_operators(account_id, req, account_name)
+        except Exception:
+            logger.exception("plan request %s: operator notice failed", req.get("case_number"))
+        try:
+            _notify.email_sales(req, account_name)
+        except Exception:
+            logger.exception("plan request %s: sales email failed", req.get("case_number"))
+    return {
+        "case_number": req.get("case_number", ""),
+        "status": req.get("status", "open"),
+        "joined": bool(req.get("joined")),
+        "tier": tier,
+    }
+
+
+@router.get("/plan-requests")
+async def billing_plan_requests(
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """This account's own requests that are not closed, so a plan card
+    can show its case number instead of offering the button again."""
+    try:
+        items = await platform_db.plan_requests_for_account(user["account_id"])
+    except Exception:
+        logger.warning("plan requests unavailable for account=%s", user["account_id"])
+        items = []
+    return {"items": [
+        {"tier": r["tier"], "case_number": r["case_number"], "status": r["status"],
+         "created_at": r["created_at"]}
+        for r in items
+    ]}
+
+
 # ── Checkout (upgrade) ───────────────────────────────────────────
 
 class CheckoutRequest(BaseModel):
