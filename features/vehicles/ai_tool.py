@@ -16,7 +16,7 @@ from features.vehicles.service import (
     get_vehicle_detail as _svc_detail,
 )
 from features.vehicles.warehouse.service import get_engine_states as _svc_engine_states
-from features.vehicles.resolve import resolve_for_tool, company_for
+from features.vehicles.resolve import resolve_for_tool, company_for, rows_for
 
 
 @register_tool({
@@ -63,7 +63,24 @@ async def get_vehicle_detail(tool_args: dict, samsara_client,
     detail = await _svc_detail(account_id, vehicle, company=company_for(resolved, tool_args))
     if not detail:
         return {"result": f"Vehicle {vehicle} not found."}
-    v = detail[0] if isinstance(detail, list) else detail
+    matches = detail if isinstance(detail, list) else [detail]
+    # Pin to the truck the resolver named, then let the shared ladder
+    # decide what is left.
+    #
+    # This took matches[0] — the coin toss the resolver exists to end.
+    # It is reachable whenever the resolved registry row carries no
+    # company_code (so company_for passes None and the provider returns
+    # every org's record answering to that number), and the caller was
+    # handed whichever one the provider listed first.
+    #
+    # Detail rows key the provider vehicle on `id`, not `vehicle_id`.
+    pinned = rows_for(resolved, matches, external_key="id")
+    if pinned:
+        matches = pinned
+    elif len(matches) > 1:
+        matches = filter_to_scope(
+            matches, tool_args, key="name", external_key="id") or matches
+    v = matches[0]
     loc = v.get("location", {})
     return {
         "vehicle": v.get("name"),

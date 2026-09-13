@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 
 from capabilities.ai.tools.registry import register_tool
-from features.vehicles.resolve import resolve_for_tool, company_for, row_company
+from capabilities.ai.tools.scope import filter_to_scope
+from features.vehicles.resolve import (
+    company_for, resolve_for_tool, row_company, rows_for,
+)
 
 logger = logging.getLogger("bot.ai.tools")
 
@@ -65,11 +68,30 @@ async def check_vehicle_camera(tool_args: dict, samsara_client,
         # MultiCompanyClient pool (breaker + rate-limit retries).
         from .service import get_dashcam_snapshots as _svc_snaps
         snaps = await _svc_snaps(account_id, days=3)
-        match = [
-            s for s in snaps
-            if s["vehicle_name"].lower() == vehicle.lower()
-            and (not co or row_company(s) == co)
-        ]
+        # Fail closed on the caller's Vehicle-Access scope FIRST: these
+        # rows carry vehicle_id, so the ladder's rung 2 splits twins
+        # even with no registry id on them.
+        snaps = filter_to_scope(snaps, tool_args, key="vehicle_name")
+        # Then pin to the truck the resolver named.
+        #
+        # This matched by NAME and then by company — and the company half
+        # was DEAD: get_dashcam_snapshots merges the raw client rows
+        # without stamping one, so row_company() returned "" for every
+        # snapshot and `"" == co` was False for any vehicle whose
+        # registry row HAS a company code. The tool answered "no recent
+        # camera image" for those trucks whether or not a frame existed.
+        # With the company filter gone the name alone would have been a
+        # coin toss between twins, which is what the provider id settles.
+        match = rows_for(resolved, snaps)
+        if resolved is None or not (getattr(resolved, "telematics_ref", "") or ""):
+            # Unregistered or not yet linked to the provider — the name
+            # is all there is, and `co` is honoured where a row carries
+            # one.
+            match = [
+                s for s in match
+                if s.get("vehicle_name", "").lower() == vehicle.lower()
+                and (not co or not row_company(s) or row_company(s) == co)
+            ]
         snap = match[0] if match else None
         if not snap or not snap.get("image_bytes"):
             return {"vehicle": vehicle, "result": "No recent camera image found for this vehicle."}

@@ -194,6 +194,29 @@ def company_for(vehicle, tool_args: dict) -> str | None:
     return company_of(vehicle) or ((tool_args.get("company") or "").strip().upper() or None)
 
 
+def rows_for(resolved, rows: list[dict], *, external_key: str = "vehicle_id") -> list[dict]:
+    """The rows that ARE the resolved truck, by its provider id.
+
+    Once the registry has said WHICH truck this is, picking among
+    provider rows by NAME re-opens the question the resolver just
+    closed: two companies' trucks answer to the same unit number, and
+    ``rows[0]`` is a coin toss between them. The registry row carries
+    the provider id (``telematics_ref``); matching on that names one
+    record.
+
+    Returns an EMPTY list when the resolved truck has no row here —
+    which is a real answer ("no frame for this truck"), not a reason to
+    fall back to the first row of somebody else's. When the registry
+    could not resolve the truck at all, or the row has no provider link
+    yet, the caller keeps whatever it was doing before: this returns
+    ``rows`` unchanged so the name path stays available.
+    """
+    ref = (getattr(resolved, "telematics_ref", "") or "").strip()
+    if resolved is None or not ref:
+        return rows
+    return [r for r in rows if str(r.get(external_key) or "").strip() == ref]
+
+
 def row_company(row: dict) -> str:
     """A provider/warehouse row's company, however that row spells it."""
     return (row.get("_org") or row.get("company") or row.get("company_code") or "").strip().upper()
