@@ -157,7 +157,7 @@ class StripeBillingProvider:
         # Get or create Stripe customer
         customer_id = sub.get("provider_customer_id", "")
         if not customer_id:
-            customer = await _off_loop(stripe.Customer.create, 
+            customer = await _off_loop(stripe.Customer.create,
                 email=sub.get("billing_email") or None,
                 metadata={"account_id": str(account_id)},
             )
@@ -179,7 +179,7 @@ class StripeBillingProvider:
         if extras_price_id:
             line_items.append({"price": extras_price_id, "quantity": 0})
 
-        session = await _off_loop(stripe.checkout.Session.create, 
+        session = await _off_loop(stripe.checkout.Session.create,
             customer=customer_id,
             mode="subscription",
             line_items=line_items,
@@ -208,7 +208,7 @@ class StripeBillingProvider:
         # switch Stripe's cached first response — the row would say B
         # while Stripe still billed A.  A double-click is harmless: the
         # second modify to the same price is a no-op in Stripe.
-        await _off_loop(stripe.Subscription.modify, 
+        await _off_loop(stripe.Subscription.modify,
             sub_id,
             items=[{"id": base["id"], "price": base_price_id, "quantity": 1}],
             proration_behavior="create_prorations",
@@ -738,7 +738,7 @@ class StripeBillingProvider:
                 "account_id": account_id, **extra,
             }
         try:
-            await _off_loop(stripe.SubscriptionItem.modify, 
+            await _off_loop(stripe.SubscriptionItem.modify,
                 extra_item_id,
                 quantity=target_qty,
                 # Stripe pro-rates the difference by default; we keep
