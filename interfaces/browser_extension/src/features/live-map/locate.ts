@@ -8,7 +8,7 @@
  *
  * It lives in features/live-map/ rather than in features/inventory/
  * because a position is a LOCATION read, whatever asks for it: the route
- * it uses is gated on ``can_view_location``, and a caller that may not
+ * it uses is gated on ``can_view_live_map``, and a caller that may not
  * hold that grant must not offer the control at all.  The panel checks
  * `features.includes('live-map')` before it ever calls this — see
  * /extension/me, which answers in feature ids for exactly this reason.

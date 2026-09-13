@@ -162,7 +162,7 @@ export const PERM_GROUPS: PermGroup[] = [
     // Shared — features several departments use.
     title: 'Shared',
     flags: [
-      { key: 'can_view_location', kind: 'feature', label: 'Live Map' },
+      { key: 'can_view_live_map', kind: 'feature', label: 'Live Map' },
       // The row is the OBJECT, the column supplies the verb: POI layers
       // are a flag-gated part of Live Map's surface (features/live_map/
       // pois.py — a file, not a home of its own), manage-only.
@@ -363,7 +363,7 @@ export const contextLabel = (f: SimpleFlag | ScopedFlag): string => {
 // capabilities/permissions/roles.derive_service_perms — give a driver their
 // truck and the alerts inbox + assistant tab come with it.
 export const DRIVER_TRUCK: (ScopedFlag | SimpleFlag)[] = [
-  { key: 'can_view_location', kind: 'feature',    label: 'Live Map',            description: 'See their assigned truck on the map' },
+  { key: 'can_view_live_map', kind: 'feature',    label: 'Live Map',            description: 'See their assigned truck on the map' },
   { key: 'can_view_vehicles', kind: 'feature',     label: 'Vehicle & Assistant', description: 'Their truck’s info + the AI assistant tab (also carries the Alerts inbox)' },
   { key: 'can_view_maintenance', kind: 'feature', label: 'Maintenance',         description: 'Their truck’s maintenance schedule' },
   { key: 'can_manage_maintenance', kind: 'action', label: 'Manage', indented: true, description: 'Create, edit, complete & delete tasks and templates — for the trucks this member sees' },

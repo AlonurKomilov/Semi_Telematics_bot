@@ -11,7 +11,7 @@ the role with --role and this script tells the truth about it:
     printed under EXPOSURE before --apply so the choice is made with
     eyes open.
   * dispatcher: narrower (loads/geofence/inspections writes remain).
-  * driver: the only role with can_view_location and not a single
+  * driver: the only role with can_view_live_map and not a single
     can_manage_*.  Needs --trucks (2-3 real units, assigned as NON-
     primary rows): a driver with no assignment now sees NOTHING —
     an empty scope admits no row (deps.get_user_vehicle_scope), so a
@@ -206,7 +206,7 @@ async def create(conn, *, email: str, account_id: int, company: str, role: str,
         print(f"\nEXPOSURE  {len(wide)} write/wide flag(s) the reviewer WILL hold on {co['code']}'s real data "
               f"(owner's choice of role): {', '.join(wide)}")
         print("           The extension's own token cannot use any of them — the dashboard session can.")
-    if not perms.get("can_view_location"):
+    if not perms.get("can_view_live_map"):
         print(f"\nREFUSING: {role} on this account has no live map — the extension would show nothing.")
         return 3
     print(f"password   {password}")

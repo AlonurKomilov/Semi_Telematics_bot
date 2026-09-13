@@ -85,7 +85,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None,
 
         # Live Map Mini App (visible when WEBAPP_URL is configured)
         from interfaces.bot.config import WEBAPP_URL
-        if WEBAPP_URL and (perms.can_view_location):
+        if WEBAPP_URL and (perms.can_view_live_map):
             rows.append([InlineKeyboardButton(
                 "🗺 Live Map",
                 web_app=WebAppInfo(url=f"{WEBAPP_URL}#map"),

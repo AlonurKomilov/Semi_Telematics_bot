@@ -18,7 +18,7 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
     // names the manage verb; the view verb opens the bot / mini-app).
     const nav = paths(generateNav('safety', grants(
       'can_view_maintenance', 'can_view_work_orders', 'can_manage_inspections',
-      'can_view_events', 'can_view_scorecards', 'can_view_location', 'can_view_vehicles',
+      'can_view_events', 'can_view_scorecards', 'can_view_live_map', 'can_view_vehicles',
     ), undefined));
     expect(nav).toContain('/maintenance');
     expect(nav).toContain('/work-orders');
@@ -34,7 +34,7 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
     const nav = paths(generateNav('recruiter', grants(
       'can_view_maintenance', 'can_view_work_orders', 'can_view_inspections',
       'can_view_routes', 'can_view_events', 'can_view_scorecards',
-      'can_view_location', 'can_view_vehicles', 'can_manage_applications',
+      'can_view_live_map', 'can_view_vehicles', 'can_manage_applications',
     ), undefined, 'assigned'));
     expect(nav).not.toContain('/maintenance');
     expect(nav).not.toContain('/work-orders');
@@ -54,7 +54,7 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
     const nav = paths(generateNav('owner', grants(
       'can_view_maintenance', 'can_view_work_orders', 'can_view_routes',
       'can_manage_users', 'can_manage_account', 'can_manage_permissions',
-      'can_view_vehicles', 'can_view_location',
+      'can_view_vehicles', 'can_view_live_map',
     ), undefined));
     expect(nav).not.toContain('/maintenance');
     expect(nav).not.toContain('/routes');
@@ -74,7 +74,7 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
     // (2026-09-08) and became a feature of its own; the FOLDING rule
     // this pins is unchanged, only which entry demonstrates it.
     const nav = generateNav('fleet', grants(
-      'can_view_vehicles', 'can_view_vehicle_docs', 'can_view_location', 'can_view_maintenance',
+      'can_view_vehicles', 'can_view_vehicle_docs', 'can_view_live_map', 'can_view_maintenance',
     ), undefined);
     const flat = nav.flatMap((g) => g.items);
     const vehicles = flat.find((i) => i.path === '/vehicles');
@@ -86,7 +86,7 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
 
   it('Inventory stands on its own, not under Vehicles', () => {
     const nav = generateNav('fleet', grants(
-      'can_view_vehicles', 'can_view_inventory', 'can_view_location',
+      'can_view_vehicles', 'can_view_inventory', 'can_view_live_map',
     ), undefined);
     const flat = nav.flatMap((g) => g.items);
     expect(flat.map((i) => i.path)).toContain('/inventory');
@@ -106,7 +106,7 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
     // A granted child must never be lost: it appears EITHER nested under
     // its parent or flat, never nowhere.
     const nav = generateNav('owner', grants(
-      'can_view_vehicles', 'can_view_vehicle_docs', 'can_view_location',
+      'can_view_vehicles', 'can_view_vehicle_docs', 'can_view_live_map',
     ), undefined);
     const all = nav.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])]));
     expect(all.map((i) => i.path)).toContain('/vehicles/documents');
@@ -151,7 +151,7 @@ describe('generateNav — role manager reaches Settings (parent-only group)', ()
 describe('generateNav — "not in your plan" is drawn only for whoever can change the plan', () => {
   const items = (groups: ReturnType<typeof generateNav>) =>
     groups.flatMap((g) => [...(g.parentItem ? [g.parentItem] : []), ...g.items]);
-  const ownerFlags = grants('can_view_vehicles', 'can_view_location', 'can_manage_billing');
+  const ownerFlags = grants('can_view_vehicles', 'can_view_live_map', 'can_manage_billing');
 
   it("the owner's own view locks an account-side feature (KPI) where it would sit", () => {
     const nav = items(generateNav('owner', ownerFlags, undefined, 'all',
@@ -163,7 +163,7 @@ describe('generateNav — "not in your plan" is drawn only for whoever can chang
   });
 
   it('an owner PREVIEWING Fleet sees the lock where Maintenance would sit — the power is the person\'s, not the view\'s', () => {
-    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location'), undefined, 'all',
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_live_map'), undefined, 'all',
       { excluded: ['maintenance'], canUpgrade: true }));
     const locked = nav.find((i) => i.locked);
     expect(locked?.featureId).toBe('maintenance');
@@ -171,17 +171,17 @@ describe('generateNav — "not in your plan" is drawn only for whoever can chang
   });
 
   it('a view that cannot change the plan sees nothing — the feature is simply absent', () => {
-    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location'), undefined, 'all',
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_live_map'), undefined, 'all',
       { excluded: ['maintenance'], canUpgrade: false }));
     expect(nav.some((i) => i.locked)).toBe(false);
     expect(nav.map((i) => i.path)).not.toContain('/maintenance');
   });
 
   it('a plan that includes everything draws no lock, and a held feature is never locked', () => {
-    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location', 'can_view_maintenance'),
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_live_map', 'can_view_maintenance'),
       undefined, 'all', { excluded: [], canUpgrade: true }));
     expect(nav.some((i) => i.locked)).toBe(false);
-    const both = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location', 'can_view_maintenance'),
+    const both = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_live_map', 'can_view_maintenance'),
       undefined, 'all', { excluded: ['maintenance'], canUpgrade: true }));
     // held AND excluded cannot happen (the mask forces the flag off) — but if the
     // two ever disagree the held entry wins and no duplicate lock is drawn
@@ -189,7 +189,7 @@ describe('generateNav — "not in your plan" is drawn only for whoever can chang
   });
 
   it('a locked child folds under its visible parent, as a granted child does', () => {
-    const groups = generateNav('owner', grants('can_view_vehicles', 'can_view_location', 'can_manage_billing'), undefined, 'all',
+    const groups = generateNav('owner', grants('can_view_vehicles', 'can_view_live_map', 'can_manage_billing'), undefined, 'all',
       { excluded: ['vehicle_documents'], canUpgrade: true });
     const all = items(groups);
     const vehicles = all.find((i) => i.path === '/vehicles');
@@ -198,7 +198,7 @@ describe('generateNav — "not in your plan" is drawn only for whoever can chang
   });
 
   it('a department switched off hides the lock too', () => {
-    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_location'), ['core', 'account'], 'all',
+    const nav = items(generateNav('fleet', grants('can_view_vehicles', 'can_view_live_map'), ['core', 'account'], 'all',
       { excluded: ['maintenance'], canUpgrade: true }));
     expect(nav.some((i) => i.locked)).toBe(false);
   });

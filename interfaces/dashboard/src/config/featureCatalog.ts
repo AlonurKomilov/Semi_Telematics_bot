@@ -112,7 +112,7 @@ export type CatalogEntry =
 export type CatalogFeature = CatalogEntry;
 
 // Reusable permission groups (kept in sync with capabilities/iam/permissions.py).
-const P_LOCATION = 'can_view_location';
+const P_LOCATION = 'can_view_live_map';
 // Legacy pair, like maintenance/work_orders above: generateNav
 // derives own-shell vs account-wide placement from the pair.
 const P_VEHICLE = 'can_view_vehicles';
@@ -137,7 +137,7 @@ export const CANONICAL_WIRE_FLAGS: readonly string[] = [
  *  cross-department rule reads the width from there. */
 export const UNIT_VIEW_VERBS: readonly string[] = [
   'can_view_vehicles', 'can_view_maintenance', 'can_view_work_orders',
-  'can_view_inspections', 'can_view_location', 'can_view_routes',
+  'can_view_inspections', 'can_view_live_map', 'can_view_routes',
   'can_view_parking', 'can_view_geofence', 'can_view_events',
   'can_view_scorecards', 'can_view_risk_reports', 'can_view_alerts',
 ];

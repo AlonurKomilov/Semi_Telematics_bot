@@ -62,6 +62,8 @@ export function newState(): string {
  * The old name leaves this list when no token carrying it can still be
  * alive — eight hours after the flip, plus the refresh window.
  */
+// A blanket rename collapsed these two into one once — the list is
+// the ONE place in this file where the old name is not a mistake.
 const LIVE_MAP_SCOPE = ['can_view_live_map', 'can_view_location'] as const;
 
 /** The token must be the scoped kind — a full dashboard token pushed at

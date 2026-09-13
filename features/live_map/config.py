@@ -6,7 +6,7 @@ out).  The READ sits on the config flag with the write: its only
 consumer is the control that edits it, and a read on the weaker
 permission would make the write gate decorative.
 
-The map itself asks ``GET /map/engine`` on ``can_view_location`` — that
+The map itself asks ``GET /map/engine`` on ``can_view_live_map`` — that
 answer carries the billable key and is what DRAWS; this one carries
 none and is what DECIDES.  Billing will write the same setting through
 ``map_engine.set_engine`` when there is a plan to write it from; this

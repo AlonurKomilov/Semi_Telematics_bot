@@ -88,7 +88,7 @@ async def connect_extension(request: Request, user: dict = Depends(get_current_u
         is_manager=bool(db_user.is_manager),
         is_primary_owner=bool(db_user.is_primary_owner),
     )
-    if not getattr(perms, "can_view_location", False):
+    if not getattr(perms, "can_view_live_map", False):
         raise HTTPException(
             status_code=403,
             detail="Your role does not include the live map, which is what the extension shows.",
@@ -225,7 +225,7 @@ async def extension_me(user: dict = Depends(get_current_user)):
         isinstance(claim, list) and set(claim) != set(EXTENSION_SCOPE)
     )
     features = [
-        fid for fid, flag in (("live-map", "can_view_location"),
+        fid for fid, flag in (("live-map", "can_view_live_map"),
                               ("inventory", "can_view_inventory"))
         if getattr(perms, flag, False)
     ]

@@ -14,7 +14,7 @@ script = importlib.import_module("scripts.review_user")
 
 def test_wide_flags_catches_every_write_invite_camera_and_account_wide_flag():
     perms = {
-        "can_view_location": True,         # the one thing the reviewer is for
+        "can_view_live_map": True,         # the one thing the reviewer is for
         "can_view_vehicle_docs": True,     # accepted, knowingly
         "can_manage_loads": True,          # a write — must be named
         "can_invite": True,                # brings a second stranger in
@@ -34,7 +34,7 @@ def test_the_seeded_driver_role_has_no_wide_flag():
     from adapters.storage import Role
     from capabilities.permissions.roles import ROLE_PERMISSIONS
     seed = dataclasses.asdict(ROLE_PERMISSIONS[Role.DRIVER])
-    assert seed["can_view_location"] is True
+    assert seed["can_view_live_map"] is True
     assert script.wide_flags(seed) == []
 
 
@@ -46,7 +46,7 @@ def test_fleet_is_named_as_exposure_not_hidden():
     from adapters.storage import Role
     from capabilities.permissions.roles import ROLE_PERMISSIONS
     seed = dataclasses.asdict(ROLE_PERMISSIONS[Role.FLEET])
-    assert seed["can_view_location"] is True
+    assert seed["can_view_live_map"] is True
     wide = script.wide_flags(seed)
     assert wide, "fleet has write flags; if this is ever empty, re-check wide_flags"
     assert any(k.startswith("can_manage_") for k in wide)

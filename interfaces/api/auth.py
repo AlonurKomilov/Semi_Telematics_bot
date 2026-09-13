@@ -178,7 +178,7 @@ KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 # an intersection, so a person the owner never granted Inventory still
 # reads False for it (deps._narrow_to_token_scope).
 EXTENSION_SCOPE: tuple[str, ...] = (
-    "can_view_location", "can_location_map", "can_location_vehicle",
+    "can_view_live_map", "can_location_map", "can_location_vehicle",
     "can_view_inventory", "can_manage_inventory",
     # The config family, both halves.  The FOCUS is the narrow one — it
     # changes what one role is shown, never what a truck is short, and it
@@ -205,7 +205,7 @@ EXTENSION_SCOPE: tuple[str, ...] = (
 EXTENSION_ROUTES: frozenset[str] = frozenset({
     "/map/vehicles", "/map/vehicles/live", "/extension/me",
     # The panel's map, brought level with the dashboard's on the owner's
-    # call.  Every one of these already rides `can_view_location`, which
+    # call.  Every one of these already rides `can_view_live_map`, which
     # the scope above has carried since v1 — so full parity costs no new
     # permission, only the right to knock.
     #   /map/engine          which basemap engine this account gets

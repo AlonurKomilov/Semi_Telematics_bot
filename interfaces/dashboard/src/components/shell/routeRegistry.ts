@@ -30,7 +30,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Your look — colour, corners, sound, effects, wallpaper', keywords: ['theme','appearance','dark','light','wallpaper','sound'] },
 
   // Fleet
-  { label: 'Live Map',    path: '/live-map',       icon: Map,           group: 'Fleet',  permission: ['can_view_location'],
+  { label: 'Live Map',    path: '/live-map',       icon: Map,           group: 'Fleet',  permission: ['can_view_live_map'],
     description: 'Real-time map of every vehicle', keywords: ['map','gps','location'] },
   { label: 'Vehicles',    path: '/vehicles',  icon: Truck,         group: 'Fleet',  permission: ['can_view_vehicles'],
     description: 'List of trucks, status, fuel and faults', keywords: ['trucks','assets'] },

@@ -104,7 +104,7 @@ describe('the panel does not assume a grant it was split away from', () => {
 
   it('keeps the position read in the location feature, not in this one', () => {
     // It lives in features/live-map/locate.ts: the route it uses is
-    // gated on can_view_location, and putting it under features/
+    // gated on can_view_live_map, and putting it under features/
     // inventory/ would file a location read under the feature that must
     // not need one.
     expect(src).toContain("from '../live-map/locate'");

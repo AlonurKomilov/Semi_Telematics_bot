@@ -77,7 +77,7 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
     user = await deps.get_current_user(_Req(), authorization=f"Bearer {scoped}", auth_token=None)
 
     # The live map — the one thing the extension exists for — passes.
-    assert await deps.require_permission("can_view_location")(user=dict(user))
+    assert await deps.require_permission("can_view_live_map")(user=dict(user))
     # Everything else an owner could normally do is refused for THIS token.
     for denied in ("can_manage_vehicles", "can_manage_users", "can_manage_vehicle_docs"):
         with pytest.raises(HTTPException) as e:
@@ -211,7 +211,7 @@ def test_the_map_engine_can_be_CHOSEN_from_the_panel_not_only_read():
     """`/map/engine` says which engine draws; `/map/config` decides it.
 
     Both are in the list, and they are gated differently on purpose:
-    the read rides `can_view_location` (everyone who sees a map), the
+    the read rides `can_view_live_map` (everyone who sees a map), the
     write rides `can_manage_config_all` (the account-wide half of the
     config family).  Without the write the panel could offer Google and
     never deliver it — the tile session refuses any account not already
@@ -238,7 +238,7 @@ def test_refresh_reissues_the_audiences_scope_of_today():
     existing installation could reach it.  Re-reading the audience also
     means a NARROWING reaches live tokens on the next refresh."""
     from interfaces.api.auth import _scope_for_audience
-    stale = {"aud": EXTENSION_AUDIENCE, "scope": ["can_view_location"]}
+    stale = {"aud": EXTENSION_AUDIENCE, "scope": ["can_view_live_map"]}
     assert tuple(_scope_for_audience(stale)) == tuple(EXTENSION_SCOPE)
     # An unscoped token stays unscoped -- this must never MINT a scope.
     assert _scope_for_audience({"scope": None}) is None
@@ -463,7 +463,7 @@ async def test_connect_mints_the_scoped_token_as_its_own_announced_session(monke
     monkeypatch.setattr(_cp, "get_platform_db", lambda: object())
 
     async def _perms(role, account_id, **kw):
-        return SimpleNamespace(can_view_location=True)
+        return SimpleNamespace(can_view_live_map=True)
     monkeypatch.setattr(ext, "get_user_permissions", _perms)
 
     async def _mint(db, request, **kw):
@@ -503,7 +503,7 @@ async def test_connect_refuses_a_role_without_the_live_map(monkeypatch):
     monkeypatch.setattr(_cp, "get_platform_db", lambda: object())
 
     async def _perms(role, account_id, **kw):
-        return SimpleNamespace(can_view_location=False)
+        return SimpleNamespace(can_view_live_map=False)
     monkeypatch.setattr(ext, "get_user_permissions", _perms)
     minted = []
 
@@ -535,7 +535,7 @@ def test_the_panels_data_path_is_the_dashboards_gates_not_its_own():
     panel = (REPO / "interfaces/browser_extension/src/features/live-map/LiveMapPanel.tsx").read_text()
     assert "'/map/vehicles'" in panel and "'/map/vehicles/live'" in panel
     # Both are permission-gated by the verdict the scope narrows to.
-    assert src.count('require_permission("can_view_location")') >= 2
+    assert src.count('require_permission("can_view_live_map")') >= 2
     # Both apply Team Management's company scope and the unit scope.
     assert "filter_by_allowed_companies(" in src
     assert "filter_by_assigned_trucks(" in src and "member_unit_scope(user, \"location\")" in src
@@ -843,7 +843,7 @@ async def test_a_scoped_token_is_refused_outside_its_routes_with_403(monkeypatch
     for path in ("/api/map/vehicles", "/api/v1/map/vehicles", "/api/map/vehicles/live",
                  "/api/v1/map/vehicles/live/", "/api/extension/me",
                  # The map, brought level with the dashboard's.  Each of
-                 # these rides can_view_location, which the scope has
+                 # these rides can_view_live_map, which the scope has
                  # carried since v1.
                  "/api/map/engine", "/api/map/pois", "/api/map/custom-layers",
                  "/api/map/config"):

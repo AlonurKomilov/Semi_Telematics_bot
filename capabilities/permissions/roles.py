@@ -175,7 +175,7 @@ class FeatureSet:
     can_manage_config_role: bool = False  # Config family, ROLE scope: feature config for their OWN role (team-default page layouts today).  Seeded on at manager tier, delegatable to ANY tier via the matrix.  The own-role wall is code: only can_manage_account crosses roles.  NOTE: deliberately looser than can_manage_role_bot, which stays hard-locked to the manager tier.  SSOT: capabilities/config/docs/ARCHITECTURE.md.
     can_manage_config_all: bool = False  # Config family, ACCOUNT scope: a feature's SHARED settings — scorecard rules + pillar caps, KPI thresholds, every future one.  One truth per account (data-meaning config never varies by role).  Absorbed can_manage_scorecard_rules 2026-07-29 (stored grants carried over by migration).  SSOT: capabilities/config/docs/ARCHITECTURE.md.
     can_view_truck_anatomy: bool = False     # Truck Anatomy — the 3D learning model (education). DARK FEATURE (see DARK_FEATURE_FIELDS): seeded to NOBODY, the owner included, until the owner grants it in the Permissions matrix.
-    can_view_location: bool = False      # live location map (all trucks)
+    can_view_live_map: bool = False      # live location map (all trucks)
     can_view_fuel_cost: bool = False         # fuel cost tracker
     can_view_routes: bool = False         # route replay (all trucks)
     can_view_cost_per_mile: bool = False     # cost-per-mile dashboard
@@ -302,8 +302,8 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "can_kpi": "can_view_kpi",
     "can_loads_all": "can_view_loads",
     "can_loads_own": "can_view_loads",
-    "can_location_map": "can_view_location",
-    "can_location_vehicle": "can_view_location",
+    "can_location_map": "can_view_live_map",
+    "can_location_vehicle": "can_view_live_map",
     "can_maintenance_all": "can_manage_maintenance",
     "can_maintenance_vehicle": "can_view_maintenance",
     "can_parking_all": "can_view_parking",
@@ -343,7 +343,7 @@ PAIRED_UNIT_FEATURES: dict[str, tuple[str, str]] = {
         "can_inspections_all",
         "can_inspections_vehicle"
     ),
-    "location": (
+    "live_map": (
         "can_location_map",
         "can_location_vehicle"
     ),
@@ -395,8 +395,8 @@ UNIT_FEATURES: dict[str, tuple[str, str | None]] = {
         "can_view_inspections",
         "can_manage_inspections"
     ),
-    "location": (
-        "can_view_location",
+    "live_map": (
+        "can_view_live_map",
         None
     ),
     "maintenance": (
@@ -548,7 +548,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_service_tasks=True,
         can_view_cost_reports=True,
         can_view_scorecards=True,
-        can_view_location=True,
+        can_view_live_map=True,
         can_view_fuel_cost=True,
         can_view_routes=True,
         can_view_cost_per_mile=True,
@@ -586,7 +586,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_service_tasks=True,
         can_view_cost_reports=True,
         can_view_scorecards=True,
-        can_view_location=True,
+        can_view_live_map=True,
         can_view_fuel_cost=True,
         can_view_routes=True,
         can_view_cost_per_mile=True,
@@ -624,7 +624,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_service_tasks=True,
         can_view_cost_reports=True,
         can_view_scorecards=True,
-        can_view_location=True,
+        can_view_live_map=True,
         can_view_fuel_cost=True,
         can_view_routes=True,
         can_view_cost_per_mile=True,
@@ -653,7 +653,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_maintenance=True, can_view_maintenance=True,
         can_manage_work_orders=True, can_view_work_orders=True,
         can_view_scorecards=True,
-        can_view_location=True,
+        can_view_live_map=True,
         can_view_fuel_cost=False,
         can_view_routes=True,
         can_view_cost_per_mile=False,
@@ -686,7 +686,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_geofence=True, can_view_geofence=True,
         can_manage_maintenance=False, can_view_maintenance=False,
         can_view_scorecards=True,
-        can_view_location=True,
+        can_view_live_map=True,
         can_view_fuel_cost=False,
         can_view_routes=True,
         can_view_cost_per_mile=False,
@@ -718,7 +718,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # not edit fleet ops:
         can_view_vehicles=True,                  # Which vehicle a driver is on
         can_view_inventory=True,
-        can_view_location=True,                 # Where drivers are right now
+        can_view_live_map=True,                 # Where drivers are right now
         can_view_events=True,                   # Safety events drive coaching
         can_view_scorecards=True,                # Driver behaviour insight
         can_view_risk_reports=True,              # Personnel risk reporting
@@ -761,7 +761,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_work_orders=False, can_view_work_orders=True,
         can_view_parking=True,  # driver: assigned vehicle only
         can_view_scorecards=True,
-        can_view_location=True,
+        can_view_live_map=True,
         can_view_fuel_cost=False,
         can_view_routes=True,
         can_view_cost_per_mile=False,
@@ -804,7 +804,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_work_orders=False, can_view_work_orders=False,
         can_view_parking=False,
         can_view_scorecards=False,
-        can_view_location=False,
+        can_view_live_map=False,
         can_view_fuel_cost=False,
         can_view_routes=False,
         can_view_cost_per_mile=False,
@@ -1419,7 +1419,7 @@ def role_emoji(role: Role) -> str:
 # Order = priority order in the briefing prompt.  Both the *_all and
 # *_vehicle scope flags map to the same topic; duplicates collapse.
 BRIEFING_TOPICS: tuple[tuple[str, str], ...] = (
-    ("can_view_location",          "current vehicle movement and locations"),
+    ("can_view_live_map",          "current vehicle movement and locations"),
     ("can_view_vehicles",          "which vehicles are rolling, idling, or parked"),
     ("can_view_routes",            "routes and vehicle availability"),
     ("can_view_parking",           "unsafe parking events"),
@@ -1756,7 +1756,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_vehicle_health":       ["can_view_health"],                              # owner/admin/fleet/safety
     "get_weather":              ["can_view_vehicles"],                           # all except driver
     "get_efficiency_summary":   ["can_view_efficiency"],                          # owner/admin/fleet
-    "get_vehicle_location":     ["can_view_location", "can_view_location"],    # all roles
+    "get_vehicle_location":     ["can_view_live_map", "can_view_live_map"],    # all roles
     "get_geofences":            ["can_manage_geofence", "can_view_geofence"],    # all roles
     "get_account_stats":        ["can_view_vehicles"],                           # all except driver
     "get_vehicle_events":       ["can_view_events", "can_view_events"],        # owner/admin/fleet/safety/driver(own)

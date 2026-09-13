@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import connectSrc from './connect.ts?raw';
 import { DASHBOARD_BASE, REGISTER_URL, acceptConnectMessage, isExtensionToken, isTrustedOrigin, newState, statePending, type PendingConnect } from './connect';
 
 function jwt(payload: Record<string, unknown>): string {
@@ -7,6 +8,9 @@ function jwt(payload: Record<string, unknown>): string {
 }
 // Every name the server has used for the live-map scope, so the vector
 // is the real token under the verb migration and before it alike.
+// The names a token minted BEFORE the flip carries.  A rename must
+// not touch this line: it is the vector that proves those tokens
+// still open the panel.
 const EXT = jwt({ aud: 'extension', scope: ['can_view_location', 'can_location_map', 'can_location_vehicle'], sub: '1' });
 // …and the name the server is about to mint.  This install has to
 // accept it BEFORE the server changes, or the flip locks every panel
@@ -46,6 +50,20 @@ describe('who may hand the panel a token', () => {
     // every installed panel out of connecting, with a store review
     // between the fix and the people who needed it.
     expect(isExtensionToken(EXT_NEW)).toBe(true);
+  });
+
+  it('the accepted list holds TWO distinct names, in source', () => {
+    // Not covered by the vectors above on its own: a blanket rename
+    // collapsed the list into ['can_view_live_map', 'can_view_live_map']
+    // AND rewrote the old-token fixture in the same pass, so both the
+    // code and the test that guarded it went at once.  This reads the
+    // source, which a rename cannot make agree with itself.
+    const list = /const LIVE_MAP_SCOPE = \[([^\]]+)\]/.exec(connectSrc as unknown as string);
+    expect(list, 'LIVE_MAP_SCOPE must stay a literal list').not.toBeNull();
+    const names = new Set(list![1].split(',').map((x) => x.trim().replace(/'/g, '')));
+    expect(names.size, `two distinct names, got ${[...names]}`).toBe(2);
+    expect(names.has('can_view_location')).toBe(true);
+    expect(names.has('can_view_live_map')).toBe(true);
   });
 
   it('a token with neither name is still refused', () => {

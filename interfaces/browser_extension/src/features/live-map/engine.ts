@@ -5,7 +5,7 @@
  * had one hardcoded layer.  The owner asked for the two to match, and
  * they now call the same two endpoints — `/map/engine` for what this
  * account is allowed to use, `/map/tiles/session` for the per-session
- * tile template Google hands out.  Both ride `can_view_location`, which
+ * tile template Google hands out.  Both ride `can_view_live_map`, which
  * a panel token has carried since v1, so parity cost no new permission.
  *
  * Sessions EXPIRE.  Google's template is only good until `expiry`, and a

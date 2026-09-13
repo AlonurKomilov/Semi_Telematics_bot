@@ -61,6 +61,6 @@ async def test_the_token_scope_narrows_the_resolved_set(account_answer):
     # An extension token carries a scope; what it cannot see is False
     # even when the account grants it.
     user = {"role": "fleet", "account_id": 7, "aud": "extension",
-            "scope": ["can_view_location"]}
+            "scope": ["can_view_live_map"]}
     perms = await deps.effective_perms(user)
     assert perms.can_view_maintenance is False

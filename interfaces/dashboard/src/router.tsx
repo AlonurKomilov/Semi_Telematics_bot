@@ -196,7 +196,7 @@ export default function AppRouter() {
             truth); the persona context is carried by the subdomain
             (fleet.4truck.us etc.) and the active shell, never the URL
             path. */}
-        <Route path="live-map" element={L(<P perm={['can_view_location']}><LiveMap /></P>)} />
+        <Route path="live-map" element={L(<P perm={['can_view_live_map']}><LiveMap /></P>)} />
         <Route path="vehicles" element={L(<P perm={['can_view_vehicles']}><Vehicles /></P>)} />
         <Route path="inventory" element={L(<P perm={['can_view_inventory']}><Inventory /></P>)} />
         {/* Where it lived until it left Vehicles — kept so a bookmark,

@@ -69,7 +69,7 @@ def test_the_server_sends_the_referer_on_every_google_call():
 
 
 def test_a_tile_is_refused_to_an_account_that_did_not_choose_google():
-    """`can_view_location` says this person may see a map.  It does not
+    """`can_view_live_map` says this person may see a map.  It does not
     say the account agreed to pay Google for one, and tiles are billed
     per request against our project."""
     src = inspect.getsource(map_router._require_google)

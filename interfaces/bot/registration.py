@@ -83,7 +83,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tool_items = []
     if perms.can_view_scorecards:
         tool_items.append("🏆 Scorecards")
-    if perms.can_view_location:
+    if perms.can_view_live_map:
         tool_items.append("🗺 Live fleet map")
     if perms.can_view_routes:
         tool_items.append("🛣 Routes")

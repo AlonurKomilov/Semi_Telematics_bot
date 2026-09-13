@@ -32,11 +32,11 @@ router = APIRouter(prefix="/map", tags=["map"])
 @router.get("/vehicles")
 async def map_vehicles(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_view_location")),
+    user: dict = Depends(require_permission("can_view_live_map")),
 ):
     """Current positions for all vehicles — optimized for map rendering.
 
-    Assigned-width members (``can_view_location``, unit width 'assigned') get the same payload but the
+    Assigned-width members (``can_view_live_map``, unit width 'assigned') get the same payload but the
     response is restricted to their assigned truck(s) by
     ``filter_by_assigned_trucks`` below, so the miniapp can render a
     map for them too.
@@ -122,13 +122,13 @@ async def map_vehicles(
 
 @router.get("/engine")
 async def map_engine(
-    user: dict = Depends(require_permission("can_view_location")),
+    user: dict = Depends(require_permission("can_view_live_map")),
 ):
     """Which map this account's live map is drawn on, and what it needs.
 
     Asked once when a map mounts, by every surface that draws one — the
     dashboard Live Map today, the browser panel next.  Behind
-    ``can_view_location`` because it is part of drawing the map, and
+    ``can_view_live_map`` because it is part of drawing the map, and
     because the Google key it may carry is billable: public by design
     and referrer-restricted, but not something to hand an anonymous
     caller.
@@ -153,7 +153,7 @@ async def map_engine(
 @router.get("/tiles/session")
 async def map_tiles_session(
     type: str = Query("roadmap"),
-    user: dict = Depends(require_permission("can_view_location")),
+    user: dict = Depends(require_permission("can_view_live_map")),
 ):
     """A Google Map Tiles session for one map type, for a browser that
     is about to add the layer.
@@ -193,7 +193,7 @@ async def map_tile(
     z: int = Query(..., ge=0, le=22),
     x: int = Query(..., ge=0),
     y: int = Query(..., ge=0),
-    user: dict = Depends(require_permission("can_view_location")),
+    user: dict = Depends(require_permission("can_view_live_map")),
 ):
     """One Google tile, fetched by us instead of by the browser.
 
@@ -243,7 +243,7 @@ async def map_tile_copyright(
     south: float = Query(..., ge=-85, le=85),
     east: float = Query(...),
     west: float = Query(...),
-    user: dict = Depends(require_permission("can_view_location")),
+    user: dict = Depends(require_permission("can_view_live_map")),
 ):
     """The per-view copyright line Google's terms require, for a client
     that cannot ask Google directly — same reason as the tile above.
@@ -305,7 +305,7 @@ async def _require_google(user: dict) -> None:
 @router.get("/vehicles/live")
 async def map_vehicles_live(
     company: str | None = Query(None),
-    user: dict = Depends(require_permission("can_view_location")),
+    user: dict = Depends(require_permission("can_view_live_map")),
 ):
     """Lightweight position-only update for smooth live tracking.
 

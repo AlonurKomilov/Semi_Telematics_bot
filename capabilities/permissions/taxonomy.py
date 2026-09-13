@@ -111,10 +111,19 @@ TAXONOMY: dict[str, Verdict] = {
         "zone CRUD — create and delete — rides the wide flag, so it is "
         "a manage verb, not a wide read"),
     "can_geofence_vehicle":  Verdict(S, "can_view_geofence"),
+    # Live Map.  The target is `can_view_live_map`, not `can_view_live_map`:
+    # one feature had five names — this package, this flag, the registry
+    # id `live_map`, the frontend folder `live-map` and the routes
+    # `/map/*` — where every other feature keeps one.  The id that
+    # settles it already existed in the registry and the catalog, under
+    # a product called Live Map, so the flag comes to it rather than the
+    # other way round.  The old name survives as a generated deprecated
+    # alias, which is what keeps stored rows and tokens already in the
+    # wild working.
     "can_location_map":      Verdict(
-        V, "can_view_location",
+        V, "can_view_live_map",
         "the pair's _all half despite the odd historic name"),
-    "can_location_vehicle":  Verdict(S, "can_view_location"),
+    "can_location_vehicle":  Verdict(S, "can_view_live_map"),
     "can_route_all":         Verdict(V, "can_view_routes"),
     "can_route_vehicle":     Verdict(S, "can_view_routes"),
     "can_events_all":        Verdict(V, "can_view_events"),

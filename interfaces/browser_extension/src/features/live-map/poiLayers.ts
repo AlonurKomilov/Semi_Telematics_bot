@@ -208,7 +208,7 @@ export function osmPopup(f: PoiFeatureLike, def: PoiLayerDef): string {
  * The repair-shop directory's popup: identity only.
  *
  * Deliberately NO ratings and no spend — the map rides
- * `can_view_location`, which many more people hold than the vendor
+ * `can_view_live_map`, which many more people hold than the vendor
  * endpoints behind which that data lives.  Widening this is a product
  * decision, not a popup tweak.
  */

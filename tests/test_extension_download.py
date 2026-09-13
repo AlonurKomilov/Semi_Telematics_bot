@@ -119,7 +119,7 @@ async def test_extension_me_answers_the_panel_and_leaks_nothing_else(monkeypatch
     # a database, so the answer is about the MAPPING and not about
     # whichever seed the fixture happened to carry.
     async def _perms(_user):
-        return SimpleNamespace(can_view_location=True, can_view_inventory=False,
+        return SimpleNamespace(can_view_live_map=True, can_view_inventory=False,
                                can_manage_inventory=False)
     monkeypatch.setattr(ext, "effective_perms", _perms)
 
@@ -151,7 +151,7 @@ async def test_a_token_minted_before_the_scope_changed_is_told_to_refresh(monkey
                         lambda: SimpleNamespace(get_account=_no_account))
 
     async def _perms(_user):
-        return SimpleNamespace(can_view_location=True, can_view_inventory=True,
+        return SimpleNamespace(can_view_live_map=True, can_view_inventory=True,
                                can_manage_inventory=True)
     monkeypatch.setattr(ext, "effective_perms", _perms)
 
