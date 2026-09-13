@@ -122,6 +122,8 @@ def test_the_email_carries_what_a_reply_needs(monkeypatch):
         "Big Fleet Co")
     assert ok and sent["to"] == "sales@4truck.us"
     assert "4T-202609-0007" in sent["subject"]
+    # Press Reply and you are writing to the customer, not to no-reply@.
+    assert sent["reply_to"] == "ops@bigfleet.example"
     for needed in ("Big Fleet Co", "enterprise", "ops@bigfleet.example", "200 trucks"):
         assert needed in sent["body"], needed
 

@@ -85,11 +85,16 @@ def email_sales(req: dict, account_name: str) -> bool:
         return False
     try:
         from capabilities.email.smtp import send_email
+        # Reply-To is the customer, not our no-reply alias: an operator
+        # reading this should be able to press Reply and reach the
+        # person who asked, without copying an address out of the body.
+        contact = (req.get("contact_email") or "").strip()
         return bool(send_email(
             to=to,
             subject=f"[{req.get('case_number')}] {account_name} asks about the "
                     f"{req.get('tier')} plan",
             body="\n".join(_lines(req, account_name)),
+            reply_to=contact or None,
         ))
     except Exception:
         logger.exception("plan request %s could not be emailed to %s",
