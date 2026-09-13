@@ -88,6 +88,47 @@ async def _get_http_session() -> aiohttp.ClientSession:
     return _http_session
 
 
+#: The OSM tags a POI carries onto the map — what a popup shows and what
+#: a brand chip matches on.  MODULE level because two callers read an
+#: element now: the request path below, and the import job that fills our
+#: own table.  It was a local inside the loop, which meant the importer's
+#: only way to agree with the map was to copy the tuple — and a copied
+#: forty lines is exactly how /custom-layers/from-pin ended up missing a
+#: fix its twin had received.
+SERVICE_TAGS = (
+    "amenity", "highway", "brand", "operator",
+    "phone", "website", "opening_hours",
+    "fuel:diesel", "fuel:adblue", "fuel:HGV_diesel",
+    "hgv", "truck", "shower", "toilets",
+    "capacity", "fee",
+)
+
+
+def element_to_point(element: dict) -> dict | None:
+    """One Overpass element as a plain point, or None if it has no place.
+
+    A `way` or `relation` answers with a `center` rather than its own
+    lat/lon — asked for by `out center`, and an element with neither is
+    not something we can draw.
+    """
+    center = element.get("center") or {}
+    lat = element.get("lat") if element.get("lat") is not None else center.get("lat")
+    lon = element.get("lon") if element.get("lon") is not None else center.get("lon")
+    if lat is None or lon is None:
+        return None
+    tags = element.get("tags", {}) or {}
+    return {
+        "osm_type": element.get("type") or "node",
+        "osm_id": element.get("id"),
+        "lat": float(lat),
+        "lng": float(lon),
+        # The name a marker shows: OSM fills exactly one of these on most
+        # branded places, and an unnamed one is legitimate.
+        "name": tags.get("name") or tags.get("brand") or tags.get("operator") or "",
+        "props": {k: v for k, v in tags.items() if k in SERVICE_TAGS},
+    }
+
+
 #: Words Overpass puts in `remark` when it abandoned a query it had
 #: already answered 200 to.  Matched loosely on purpose: the exact
 #: wording is not a contract, and a remark we do not recognise is
@@ -242,32 +283,16 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
             continue
         seen_ids.add(oid_key)
 
-        center = element.get("center") or {}
-        lat = element.get("lat") if element.get("lat") is not None else center.get("lat")
-        lon = element.get("lon") if element.get("lon") is not None else center.get("lon")
-        if lat is None or lon is None:
+        point = element_to_point(element)
+        if point is None:
             continue
-        tags = element.get("tags", {})
-        display_name = (
-            tags.get("name")
-            or tags.get("brand")
-            or tags.get("operator")
-            or ""
-        )
-        _SERVICE_TAGS = (
-            "amenity", "highway", "brand", "operator",
-            "phone", "website", "opening_hours",
-            "fuel:diesel", "fuel:adblue", "fuel:HGV_diesel",
-            "hgv", "truck", "shower", "toilets",
-            "capacity", "fee",
-        )
         features.append({
             "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "geometry": {"type": "Point", "coordinates": [point["lng"], point["lat"]]},
             "properties": {
-                "name": display_name,
-                "osm_id": element.get("id"),
-                **{k: v for k, v in tags.items() if k in _SERVICE_TAGS},
+                "name": point["name"],
+                "osm_id": point["osm_id"],
+                **point["props"],
             },
         })
         if len(features) >= _MAX_POI_RESULTS:
@@ -308,17 +333,25 @@ def _validate_overpass_query(raw: str) -> str:
 
 # ── Pin-drop preview + brand search ───────────────────────────────────────────
 
-async def _overpass_post(query: str, timeout: int = 30) -> dict:
+async def _overpass_post(
+    query: str, timeout: int = 30, budget: float | None = None,
+) -> dict:
     """Single Overpass POST with mirror failover. Raises 502 on total failure.
 
     One pass, no retry: every caller here is interactive (a pin the owner
     just dropped, a name they are still typing) and already makes two or
     three of these in a row.
+
+    ``budget`` is the wall clock the whole failover may spend, and it
+    defaults to the one nginx allows a REQUEST.  A job answering to
+    nobody is the one caller that may raise it — patience is the whole
+    reason an import can ask for a state at a time where the map could
+    only ever ask for a screenful.
     """
     session = await _get_http_session()
     last_exc: Exception = RuntimeError("Overpass unreachable")
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + _OVERPASS_TOTAL_S
+    deadline = loop.time() + (budget if budget is not None else _OVERPASS_TOTAL_S)
     for endpoint in _OVERPASS_ENDPOINTS:
         # `timeout` is this caller's patience; the budget is nginx's.
         # Whichever runs out first ends the attempt.
