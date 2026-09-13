@@ -87,6 +87,48 @@ class AccountsMixin:
         rows = await cur.fetchall()
         return [self._row_to_account(r) for r in rows]
 
+    async def account_census(self) -> dict:
+        """Every count the operator's health card shows, in two queries.
+
+        Both axes at once, because the card reads them together and a
+        startup ping should not make six round trips. Accounts are
+        grouped by (kind, security) so the two breakdowns fall out of one
+        pass and can never disagree with each other.
+
+        Users count ACTIVE users only, which is what "how many people use
+        this" means; accounts are counted whatever their lifecycle,
+        because a suspended customer is still a customer on this card.
+        """
+        from adapters.storage.models import ACCOUNT_KINDS, ACCOUNT_SECURITY
+
+        accounts = {k: 0 for k in ACCOUNT_KINDS}
+        security = {k: 0 for k in ACCOUNT_SECURITY}
+        cur = await self._db.execute(
+            "SELECT kind, security, COUNT(*) AS n FROM accounts GROUP BY kind, security")
+        for r in await cur.fetchall():
+            # A value the vocabularies do not know is counted nowhere
+            # rather than inventing a bucket — the census must not be the
+            # place a bad write first becomes visible as a wrong total.
+            if r["kind"] in accounts:
+                accounts[r["kind"]] += int(r["n"])
+            if (r["security"] or "normal") in security:
+                security[r["security"] or "normal"] += int(r["n"])
+
+        users = {k: 0 for k in ACCOUNT_KINDS}
+        cur = await self._db.execute(
+            "SELECT a.kind, COUNT(*) AS n FROM users u "
+            "JOIN accounts a ON a.id = u.account_id "
+            "WHERE u.is_active = 1 GROUP BY a.kind")
+        for r in await cur.fetchall():
+            if r["kind"] in users:
+                users[r["kind"]] += int(r["n"])
+
+        return {
+            "accounts": {"total": sum(accounts.values()), **accounts},
+            "users": {"total": sum(users.values()), **users},
+            "security": security,
+        }
+
     async def update_account(self, account_id: int, **kwargs) -> bool:
         """Update account fields. Allowed keys: name, tier, is_active, bot_token_encrypted, bot_username, webhook_secret, payroll_enabled, coaching_enabled, timezone, alert_routing_mode, disabled_modules, public_display_name, is_test, kind, security."""
         allowed = {"name", "tier", "is_active", "bot_token_encrypted", "bot_username", "webhook_secret", "payroll_enabled", "coaching_enabled", "timezone", "alert_routing_mode", "disabled_modules", "public_display_name", "is_test", "kind", "security"}

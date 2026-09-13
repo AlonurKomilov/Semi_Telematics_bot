@@ -164,18 +164,27 @@ async def post_init(app: Application):
     # system.4truck.us console (no callback handler required).
     try:
         from infra import system_bot
-        # Customers only: test accounts are ours and monitored ones are
-        # someone we are watching — neither is a number the owner should
-        # read as "how many companies use this".
-        sys_accounts = [a for a in await db.list_accounts() if a.kind == "real"]
-        sys_total_users = await db.count_all_users(kinds=("real",))
+        # The card used to show only the customer counts, which answered
+        # "how many companies use this" and nothing else — so a signup
+        # burst was invisible until someone opened the console. It shows
+        # the whole census now, with the commercial number in bold and
+        # the rest beside it, because the useful reading is the SHAPE:
+        # `real` jumping is growth, `test` jumping is someone testing.
+        #
+        # `normal` is the word the column and the console use. It is not
+        # "safe" — nobody examined those accounts, and claiming they were
+        # cleared is the one thing this card must not do.
+        census = await db.account_census()
+        acc, usr, sec = census["accounts"], census["users"], census["security"]
         sys_msg = (
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "  ⚙️  <b>Bot is Online</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "\n"
-            f"  🏢 {len(sys_accounts)} accounts\n"
-            f"  👥 {sys_total_users} users\n"
+            f"  🏢 {acc['total']} accounts — <b>{acc['real']}</b> real · {acc['test']} test\n"
+            f"  👥 {usr['total']} users — <b>{usr['real']}</b> real · {usr['test']} test\n"
+            f"  🛡 {sec['monitored']} monitored · {sec['quarantined']} quarantined"
+            f" · {sec['normal']} normal\n"
             "\n"
             "  Operator console: <code>system.4truck.us</code>"
         )
