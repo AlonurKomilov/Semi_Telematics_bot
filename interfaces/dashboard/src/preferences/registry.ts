@@ -43,6 +43,7 @@ import { MATERIAL_IDS } from '../mods/store/items/material';
 import { MODS } from '../mods/store/items/mods';
 import { packById, removable } from '../mods/store/packs';
 import { CORNER_IDS } from '../mods/store/items/corners';
+import { AMBIENCE_IDS } from '../mods/store/items/ambience';
 import { THEME_PACKS } from '../mods/store/items/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
@@ -1133,6 +1134,31 @@ export const DEFS = {
     scope: 'device',
     sanitize: asBool,
     note: 'Play a short cue when the app answers — saved, refused, or undoable.',
+  }),
+
+  // ── Background sound ──────────────────────────────────────────────
+  /**
+   * Whether a bed plays under everything.
+   *
+   * OFF, and it is the only sound setting where that is not merely a
+   * default but the point. A cue is 0.35s and asks nothing; this plays
+   * for a whole shift, and a page that starts making noise on its own
+   * is a page somebody closes. It turns on from a click, which is also
+   * what unlocks audio.
+   */
+  'mods.sound.background': def<boolean>({
+    default: false,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Play a quiet bed under everything — road hum, rain. Off until asked for.',
+  }),
+
+  /** Which bed. Validity only, from the shelf, like every other id. */
+  'mods.sound.background.pack': def<string>({
+    default: 'road',
+    scope: 'device',
+    sanitize: (v) => (typeof v === 'string' && AMBIENCE_IDS.includes(v) ? v : undefined),
+    note: 'Which bed plays when background sound is on.',
   }),
 
   // ── Keyboard sound ────────────────────────────────────────────────

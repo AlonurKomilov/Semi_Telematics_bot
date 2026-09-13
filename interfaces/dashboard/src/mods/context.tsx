@@ -9,6 +9,7 @@ import { accentTokens } from './theme/accent';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
 import { groundTokens, type GroundId } from './theme/grounds';
 import { packById, THEME_PACKS } from './store/items/theme';
+import { useBed } from './sound/useBed';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { useAmbient } from './ambient/useAmbient';
 import { AMBIENT_SCALE } from './ambient/ambient';
@@ -140,6 +141,8 @@ export function applySize(size: Size, ambient = 1) {
 }
 
 export function ModProvider({ children }: { children: ReactNode }) {
+  // The bed, mounted ONCE — see `sound/useBed.ts` for why not per caller.
+  useBed();
   // Persistence (default, legacy 'dashboard-theme' migration, and the
   // partial-object completion this used to do inline) lives in the
   // preferences registry now.  This provider only applies the theme to

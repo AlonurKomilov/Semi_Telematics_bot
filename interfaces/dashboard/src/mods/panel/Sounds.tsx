@@ -31,6 +31,7 @@ import { armAudio, playCue, type SoundPack } from '../sound/engine';
 import { KEY_LIMITS } from '../sound/keys';
 import { SOUND_PACKS } from '../store/items/sound';
 import { KEY_PACKS, keyPackById } from '../store/items/keys';
+import { AMBIENCE_PACKS, ambienceById } from '../store/items/ambience';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';
 
@@ -283,6 +284,58 @@ export function SoundsGroup({ label }: { label: LabelClass }) {
       <div className="mt-2"><InterfaceSoundItem /></div>
       <div className="mt-2"><KeyboardItem /></div>
       <div className="mt-2"><LiveAlertsItem /></div>
+    </div>
+  );
+}
+
+/**
+ * Background sound — a bed under everything, off until asked for.
+ *
+ * The switch and the bed are separate controls on purpose: turning it
+ * off must not lose which bed you had, or coming back means choosing
+ * again. The same reason the interface cues keep their pack when
+ * silenced.
+ */
+export function BackgroundSoundItem() {
+  const offered = useOffered();
+  const { t } = useTranslation();
+  const { value: on, setValue: setOn } = usePreference('mods.sound.background');
+  const { value: which, setValue: setWhich } = usePreference('mods.sound.background.pack');
+  const { value: volume } = usePreference('mods.sound.volume');
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-foreground">
+          {t('mods.sound_bg_label', 'Background sound')}
+        </span>
+        <Switch
+          size="sm"
+          checked={on}
+          onCheckedChange={(next) => {
+            setOn(next);
+            // Armed from inside the click that turned it on — the same
+            // reason the interface switch does it: a bed that cannot
+            // start is a switch that appears not to work.
+            if (next) armAudio();
+          }}
+          aria-label={t('mods.sound_bg_label', 'Background sound')}
+        />
+      </div>
+      <div className="flex flex-wrap gap-1 mt-1.5">
+        {offered('ambience', AMBIENCE_PACKS, (a) => a.id).map((a) => (
+          <Chip key={a.id} value={a.id} current={which} label={a.label}
+            onClick={(v) => {
+              setWhich(v);
+              if (on) armAudio();
+            }} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1">
+        {on && volume > 0
+          ? (ambienceById(which)?.description ?? '')
+          : t('mods.sound_bg_hint',
+            'A quiet bed under everything — nothing to listen to, just somewhere to be.')}
+      </p>
     </div>
   );
 }

@@ -203,8 +203,13 @@ describe('a category', () => {
     // <input>, and jsdom does not always surface the role.
     expect(own.querySelector('input,[role="slider"]'), 'the volume is not on the category page').toBeTruthy();
     expect(own.textContent).toContain('Chime');
-    // The tiles are still there, under it.
-    expect(screen.getByTestId('mods-category').querySelectorAll('a').length).toBe(3);
+    // The tiles are still there, under it. Counted from the taxonomy
+    // rather than pinned: the assertion is "the category control did not
+    // replace them", and a literal turns that into "sounds has exactly
+    // three items", which goes red every time the category grows.
+    const tiles = browsableItemsOf('sounds').length;
+    expect(tiles, 'sounds lists nothing to tile').toBeGreaterThan(2);
+    expect(screen.getByTestId('mods-category').querySelectorAll('a').length).toBe(tiles);
   });
 
   it('and a category with nothing of its own shows only its tiles', () => {

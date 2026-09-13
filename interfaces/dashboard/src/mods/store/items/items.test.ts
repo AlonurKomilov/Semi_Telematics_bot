@@ -34,6 +34,7 @@ import { FONT_PACKS } from './font';
 import { MATERIAL_PACKS } from './material';
 import { CORNERS } from './corners';
 import { MOTION_PACKS } from './motion';
+import { AMBIENCE_PACKS } from './ambience';
 import { ICON_PACK_IDS } from './icons';
 import { MODS as MOD_PACKS } from './mods';
 import { ITEM_AXES } from './index';
@@ -55,7 +56,8 @@ const packFiles = (folder: string, ext: 'ts' | 'css' = 'ts') =>
     .map((f) => f.replace(new RegExp(`\\.${ext}$`), ''))
     .sort();
 
-const ENGINE_FILES = ['sound/engine.ts', 'sound/keys.ts', 'sound/cue.ts', 'sound/useCue.ts', 'catalogue.ts'];
+const ENGINE_FILES = ['sound/engine.ts', 'sound/keys.ts', 'sound/cue.ts', 'sound/useCue.ts',
+  'sound/bed.ts', 'catalogue.ts'];
 
 describe('an engine file holds no item content', () => {
   it('finds engine files to check', () => {
@@ -87,7 +89,8 @@ describe('an engine file holds no item content', () => {
 });
 
 describe('an item is a file, and the index is exactly the files', () => {
-  for (const [folder, packs] of [['sound', SOUND_PACKS], ['keys', KEY_PACKS], ['mods', MOD_PACKS]] as const) {
+  for (const [folder, packs] of [['sound', SOUND_PACKS], ['keys', KEY_PACKS], ['mods', MOD_PACKS],
+    ['ambience', AMBIENCE_PACKS]] as const) {
     it(`${folder}: every file is listed and every entry has a file`, () => {
       const files = packFiles(folder);
       const ids = [...packs].map((p) => p.id).sort();
@@ -103,7 +106,7 @@ describe('an item file imports only types', () => {
     const imports = [...code.matchAll(/^import\s+(?!type\s)[^;]*;/gm)].map((m) => m[0]);
     expect(imports, `packs/${rel} has a runtime import: ${imports[0] ?? ''}`).toEqual([]);
   };
-  for (const folder of ['sound', 'keys', 'mods'] as const) {
+  for (const folder of ['sound', 'keys', 'mods', 'ambience'] as const) {
     it(`${folder}: no runtime import — the registry would be one hop from itself`, () => {
       for (const f of packFiles(folder)) onlyTypes(`${folder}/${f}.ts`);
     });

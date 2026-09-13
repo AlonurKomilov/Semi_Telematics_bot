@@ -27,7 +27,7 @@ import {
   WallpaperGroup, CursorGroup, type LabelClass,
 } from './Interface';
 import { ShadersItem, MotionItem, AmbientItem } from './Effects';
-import { SoundVolume, InterfaceSoundItem, KeyboardItem, LiveAlertsItem } from './Sounds';
+import { SoundVolume, InterfaceSoundItem, KeyboardItem, BackgroundSoundItem, LiveAlertsItem } from './Sounds';
 
 export type ItemComponent = ComponentType<{ label: LabelClass }>;
 
@@ -60,6 +60,7 @@ export const ITEM_GROUPS: Record<string, ItemComponent> = {
   'effects/ambient': headless(AmbientItem),
   'sounds/interface': headless(InterfaceSoundItem),
   'sounds/keyboard': headless(KeyboardItem),
+  'sounds/background': headless(BackgroundSoundItem),
   'sounds/alerts': headless(LiveAlertsItem),
 };
 

@@ -30,6 +30,8 @@ const FROZEN_KEYS: readonly string[] = [
   'mods.sound.ui',
   'mods.sound.keyboard',
   'mods.sound.keyboard.pack',
+  'mods.sound.background',
+  'mods.sound.background.pack',
   'mods.ambient',
   // Which packs this device took off its shelves. A name nobody may
   // reuse: reusing it would hide packs for everyone who ever removed one.

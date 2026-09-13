@@ -60,6 +60,7 @@ export const AXIS_UI: Readonly<Record<string, AxisUI>> = {
   shader:    { label: 'Shaders',           home: { theme: ['shader'] } },
   sound:     { label: 'Interface sounds',  home: { pref: 'mods.sound.pack' } },
   keys:      { label: 'Keyboard',          home: { pref: 'mods.sound.keyboard.pack' } },
+  ambience:  { label: 'Background sound',  home: { pref: 'mods.sound.background.pack' } },
 };
 
 /**

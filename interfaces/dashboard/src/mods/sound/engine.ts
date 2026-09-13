@@ -119,6 +119,25 @@ let unlocked = false;
  * A single context that outlives the page is what every audio library
  * does, for this reason.
  */
+/**
+ * The one context, for the one other thing that needs it.
+ *
+ * `bed.ts` plays a CONTINUOUS sound rather than a cue, and it has to
+ * share this context — a second `AudioContext` would be a second clock,
+ * a second suspend policy and a second thing Chrome counts against the
+ * page. Exported rather than reimplemented; nothing else may call it.
+ */
+export function audioContext(): AudioContext | null {
+  return context();
+}
+
+/** Whether a gesture has unlocked audio yet. A bed must not start
+ *  before one: the browser would refuse it and the person would be left
+ *  with a switch that appears to do nothing. */
+export function isUnlocked(): boolean {
+  return unlocked;
+}
+
 function context(): AudioContext | null {
   if (ctx) return ctx;
   try {
