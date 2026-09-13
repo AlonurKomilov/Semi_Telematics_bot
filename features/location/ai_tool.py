@@ -69,11 +69,21 @@ async def get_vehicle_location(tool_args: dict, samsara_client,
     }
 
 
+# How many vehicles to name at EACH end. A token budget only — the
+# summary above the lists is computed over every reading, so the cap
+# cannot change what the extremes are.
+HALF = 15
+
+
 @register_tool({
     "name": "get_weather",
     "description": (
-        "Get ambient air temperature (°F) for each truck's current location. "
-        "Useful for identifying trucks in extreme cold or heat conditions."
+        "Ambient air temperature (°F) at each truck's current location. "
+        "Returns a summary over every reporting vehicle (min, max, "
+        "average, how many are at or below freezing, how many at or "
+        "above 95°F) plus the coldest and hottest ends of the fleet. "
+        "Use for 'which trucks are in extreme cold', 'which trucks are "
+        "running hot', or 'how cold is it out there'."
     ),
     "parameters": {
         "type": "object",
@@ -86,17 +96,48 @@ async def get_weather(tool_args: dict, samsara_client,
     if account_id is None:
         return {"error": "This tool requires account context."}
     weather = filter_to_scope(await _svc_weather(account_id), tool_args, key="name")
+
+    def _row(v: dict) -> dict:
+        return {
+            "vehicle": v.get("name"),
+            "temp_f": v.get("_weather", {}).get("temp_f"),
+            "temp_c": v.get("_weather", {}).get("temp_c"),
+            "city": v.get("location", {}).get("reverseGeo", {}).get(
+                "formattedLocation", ""),
+        }
+
+    # Both ends, because the tool promises both.
+    #
+    # The source list is sorted COLDEST FIRST and the cap took the head
+    # of it, so on any account with more than thirty reporting trucks
+    # the warm end never reached the model at all — while the
+    # description advertises "extreme cold or heat". Asked which trucks
+    # were running hot during a heat wave, the assistant answered from
+    # the thirty coldest and reported the warmest it could see, which is
+    # a wrong answer indistinguishable from a right one.
+    readings = [v for v in weather
+                if v.get("_weather", {}).get("temp_f") is not None]
+    temps = [v["_weather"]["temp_f"] for v in readings]
+    coldest = [_row(v) for v in readings[:HALF]]
+    hottest = [_row(v) for v in reversed(readings[-HALF:])]
     return {
         "vehicle_count": len(weather),
-        "vehicles": [
-            {
-                "vehicle": v.get("name"),
-                "temp_f": v.get("_weather", {}).get("temp_f"),
-                "temp_c": v.get("_weather", {}).get("temp_c"),
-                "city": v.get("location", {}).get("reverseGeo", {}).get(
-                    "formattedLocation", ""),
-            }
-            for v in weather[:30]
-            if v.get("_weather", {}).get("temp_f") is not None
-        ],
+        "reporting_count": len(readings),
+        # Computed over every reading, so the extremes are right even
+        # when the two lists below are cut.
+        "summary": {
+            "min_f": min(temps), "max_f": max(temps),
+            "avg_f": round(sum(temps) / len(temps), 1),
+            "freezing_count": sum(1 for t in temps if t <= 32),
+            "hot_count": sum(1 for t in temps if t >= 95),
+        } if temps else {},
+        "coldest": coldest,
+        "hottest": hottest,
+        "truncated": len(readings) > len(coldest) + len(hottest),
+        "note": (
+            f"The {len(coldest)} coldest and {len(hottest)} hottest of "
+            f"{len(readings)} reporting vehicles"
+            + (f" ({len(weather)} in scope)." if len(weather) != len(readings)
+               else ".")
+        ),
     }
