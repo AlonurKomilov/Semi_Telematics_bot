@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
 from features.vehicles.warehouse.service import get_low_fuel_vehicles as _svc_low_fuel
+
+
+logger = logging.getLogger("bot.ai.tools")
+
+# Per-vehicle rows named in the summary. A context budget only — the
+# account totals beside them are summed over every vehicle in scope.
+TOP_N = 20
 
 
 @register_tool({
@@ -72,6 +81,7 @@ async def get_vehicle_fuel_costs(tool_args: dict, samsara_client,
     days = tool_args.get("days")
     if not db or account_id is None:
         return {"error": "Fuel cost data not available in this context"}
+    cutoff = ""
     entries = await db.get_fuel_entries(account_id, vehicle_name=vehicle, limit=200)
     if days and isinstance(days, int) and days > 0:
         # Stored fuel dates are ACCOUNT-local day strings (the bot
@@ -110,14 +120,45 @@ async def get_vehicle_fuel_costs(tool_args: dict, samsara_client,
             ),
             "entries_total": stats["count"],
         }
+    # Money comes from the UNCAPPED aggregate, not from the page.
+    #
+    # The row fetch above is LIMIT 200 and the schema says "omit days for
+    # all-time", so on a truck past 200 fill-ups `total_cost` was the sum
+    # of the newest 200 — a money number, understated by an unknown
+    # amount, stated as fact under a key that claims to be the total.
+    # get_fuel_summary is the same aggregate the sibling tool already
+    # trusts: COUNT/SUM/SUM over every matching row, no limit.
     total_gal = sum(e.get("gallons", 0) for e in entries)
     total_cost = sum(e.get("total_cost", 0) for e in entries)
+    entry_count = len(entries)
+    covers_all = True
+    try:
+        agg = await db.get_fuel_summary(account_id, start_date=cutoff or None)
+        want = (vehicle or "").strip().lower()
+        row = next(
+            (r for r in agg
+             if (r.get("vehicle_name") or "").strip().lower() == want),
+            None,
+        )
+        if row:
+            total_gal = float(row.get("total_gallons") or 0)
+            total_cost = float(row.get("total_cost") or 0)
+            entry_count = int(row.get("entries") or entry_count)
+    except Exception as e:  # noqa: BLE001 — a page total beats no answer
+        logger.warning("fuel totals fell back to the capped page: %s", e)
+        covers_all = False
     return {
         "vehicle": vehicle,
         "period_days": days,
-        "entry_count": len(entries),
+        "entry_count": entry_count,
         "total_gallons": round(total_gal, 1),
         "total_cost": round(total_cost, 2),
+        # Says whether the money above spans every fill-up or only the
+        # page — a total that might be partial must never look exact.
+        "totals_cover": "all fill-ups" if covers_all else (
+            f"only the newest {len(entries)} fill-ups — the full total "
+            "could not be read"
+        ),
         "avg_price_per_gallon": round(total_cost / total_gal, 3) if total_gal else 0,
         "recent_fills": [
             {
@@ -198,8 +239,18 @@ async def get_fuel_cost_summary(tool_args: dict, samsara_client,
             "entries_total": stats["count"],
             "data_range": {"first": stats["first_date"], "last": stats["last_date"]},
         }
+    # The rows are the top spenders; the TOTALS are the account.
+    #
+    # This returned twenty rows and nothing else, so "what did we spend
+    # on fuel" was answered by adding up whatever twenty vehicles
+    # happened to be returned — on a fleet of eighty, a number missing
+    # three quarters of the trucks, with nothing marking it partial.
+    total_vehicles = len(summary)
+    account_cost = round(sum(x.get("total_cost") or 0 for x in summary), 2)
+    account_gallons = round(sum(x.get("total_gallons") or 0 for x in summary), 1)
+    account_entries = sum(x.get("entries") or 0 for x in summary)
     result_items = []
-    for s in summary[:20]:
+    for s in summary[:TOP_N]:
         first_odo = s.get("first_odo") or 0
         last_odo = s.get("last_odo") or 0
         miles = last_odo - first_odo if last_odo > first_odo else 0
@@ -213,4 +264,16 @@ async def get_fuel_cost_summary(tool_args: dict, samsara_client,
             "avg_price_per_gallon": round(s.get("avg_price") or 0, 3),
             "cost_per_mile": cost_per_mile,
         })
-    return {"vehicles": result_items, "start_date": start_date, "end_date": end_date}
+    return {
+        # Totals span EVERY vehicle in scope, not just the rows below.
+        "vehicle_count": total_vehicles,
+        "account_total_cost": account_cost,
+        "account_total_gallons": account_gallons,
+        "account_entry_count": account_entries,
+        "vehicles_shown": len(result_items),
+        "truncated": total_vehicles > len(result_items),
+        "sorted_by": "total cost, highest first",
+        "vehicles": result_items,
+        "start_date": start_date,
+        "end_date": end_date,
+    }

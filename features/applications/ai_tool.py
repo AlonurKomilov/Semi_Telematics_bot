@@ -11,6 +11,8 @@ detail endpoint and must never enter the model's context.
 
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime, timedelta, timezone
 
 from capabilities.ai.tools.registry import register_tool
@@ -28,6 +30,13 @@ def _within_days(submitted_at: str, days: int) -> bool:
         return False
     cutoff = datetime.now(timezone.utc) - timedelta(days=max(days, 1))
     return sd >= cutoff
+
+
+logger = logging.getLogger("bot.ai.tools")
+
+# How many applications the histogram is measured from. The TOTAL
+# comes from the database, never from this page.
+SCAN_LIMIT = 500
 
 
 @register_tool({
@@ -59,8 +68,9 @@ def _within_days(submitted_at: str, days: int) -> bool:
                 "description": (
                     "Restrict the LISTED applicants to those who applied "
                     "within the last N days (omit for all time; 7 = this "
-                    "week, 30 = this month).  The per-stage counts always "
-                    "cover every application regardless of this."
+                    "week, 30 = this month).  This filter does not change "
+                    "the per-stage counts — read by_stage_covers to see "
+                    "what those counts span."
                 ),
             },
         },
@@ -80,13 +90,25 @@ async def get_driver_applications(tool_args: dict, samsara_client,
         days = None
 
     # No-PII list (storage excludes the encrypted SSN/DOB/licence blobs).
-    rows = await db.list_driver_applications(account_id, limit=500)
+    rows = await db.list_driver_applications(account_id, limit=SCAN_LIMIT)
 
-    # Per-stage counts ALWAYS cover every application.
+    # The comment here used to read "Per-stage counts ALWAYS cover every
+    # application", and the schema told the model the same — while both
+    # the total and the histogram were derived from a 500-row page. Past
+    # 500 applications the assistant narrated a page count as the
+    # recruiting pipeline. Ask the database for the real total instead of
+    # measuring the page.
     by_stage: dict[str, int] = {}
     for r in rows:
         st = r.get("status") or "submitted"
         by_stage[st] = by_stage.get(st, 0) + 1
+    scanned = len(rows)
+    try:
+        total = int(await db.count_driver_applications(account_id))
+    except Exception as e:  # noqa: BLE001 — a page count beats no answer
+        logger.warning("application total fell back to the page: %s", e)
+        total = scanned
+    partial = total > scanned
 
     # The listed applicants honour the optional stage + recency filters.
     listed = rows
@@ -96,8 +118,16 @@ async def get_driver_applications(tool_args: dict, samsara_client,
         listed = [r for r in listed if _within_days(r.get("submitted_at") or "", days)]
 
     return {
-        "total": len(rows),
+        "total": total,
         "by_stage": by_stage,
+        # Says what the histogram actually covers. A per-stage breakdown
+        # computed from a page is not the pipeline, and the difference
+        # only shows up on the accounts busy enough to care.
+        "by_stage_covers": (
+            "every application" if not partial
+            else f"the newest {scanned} of {total} — older ones are not counted"
+        ),
+        "counted_from": scanned,
         "filters": {"status": status, "days": days},
         "applications": [
             {
