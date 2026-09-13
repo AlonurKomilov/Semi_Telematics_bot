@@ -4,7 +4,7 @@
  * areas, the repair-shop directory, and whatever custom layers the
  * account has made.
  *
- * This is the dashboard's `hooks/usePoiLayers.ts` with two deliberate
+ * This is the dashboard's `features/live-map/poi/usePoiLayers.ts` with two deliberate
  * differences, both forced by where it runs:
  *
  *  1. NO CLUSTERING.  The dashboard loads the markercluster plugin;

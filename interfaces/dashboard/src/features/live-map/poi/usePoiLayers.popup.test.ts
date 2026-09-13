@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { defaultOsmPopup } from './usePoiLayers';
-import { vendorDirectoryPopup } from '../config/poiLayers';
-import type { PoiFeature, PoiLayerDef } from '../config/poiLayers';
+import { vendorDirectoryPopup } from './layers';
+import type { PoiFeature, PoiLayerDef } from './layers';
 
 /**
  * Popup-builder contract: the engine renders `def.popup?.(f, def) ??

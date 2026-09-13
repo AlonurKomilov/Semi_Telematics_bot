@@ -1,4 +1,4 @@
-import type { PoiIconSpec } from '@/config/poiLayers';
+import type { PoiIconSpec } from './layers';
 import { iconSizeClass } from '@/lib/iconSize';
 import { cn } from '@/lib/utils';
 

@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { defaultOsmPopup } from './usePoiLayers';
-import { vendorDirectoryPopup, type PoiFeature, type PoiLayerDef } from '../config/poiLayers';
+import { vendorDirectoryPopup, type PoiFeature, type PoiLayerDef } from './layers';
 
 const EVIL = '<img src=x onerror="alert(1)">';
 

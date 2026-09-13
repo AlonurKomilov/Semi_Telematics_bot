@@ -1281,7 +1281,7 @@ A marker, its badge and its label are measured against the tiles they sit
 on, which have their own zoom; growing them with the interface setting
 would put two scales in one viewport and make a zoomed-out map unreadable
 at 130%. So the pixel values inside a Leaflet `divIcon` — `usePoiLayers`,
-`config/poiLayers.ts`, `live-map/sections/*`, and the two map control
+`live-map/poi/layers.ts`, `live-map/sections/*`, and the two map control
 panels — are a sanctioned exception, named in `chrome.test.ts` rather
 than left to judgement. Chart text is NOT covered by this: it is read
 like any other text and rides `--size-text` through `lib/chartText.ts`.
@@ -1296,7 +1296,7 @@ carries its own reason, and guard 35 fails on a literal anywhere else:
 
 | file | why |
 |---|---|
-| `config/mapColors.ts`, `config/poiLayers.ts` | painted over tile imagery; a themed marker disappears against half the world |
+| `config/mapColors.ts`, `features/live-map/poi/layers.ts` | painted over tile imagery; a themed marker disappears against half the world |
 | `config/documentColors.ts` | signature ink — a PNG filed against an FMCSA application outlives the session that drew it |
 | `features/truck-anatomy/colors.ts` | reads the tokens off the element for WebGL; these are the fallbacks for the frame before they are there |
 | `features/truck-anatomy/AssemblyNode.tsx` | `new THREE.Color('#000000')`, a "no emissive" lerp target — not a colour anyone sees |
@@ -1311,7 +1311,7 @@ they can't take Tailwind classes. **Still don't hardcode hex:**
 - **Charts:** use `chartColor(n)` from `lib/status.ts`, which returns the
   `--chart-1..5` tokens. For status-coloured bars use `var(--ok)` etc.
 - **Maps:** marker/route colours belong in a shared palette constant
-  (e.g. [`config/poiLayers.ts`](src/config/poiLayers.ts)), referenced —
+  (e.g. [`features/live-map/poi/layers.ts`](src/features/live-map/poi/layers.ts)), referenced —
   not re-typed per layer. Keep all map hex in config, never inline in a
   `<...Layer>` component.
 

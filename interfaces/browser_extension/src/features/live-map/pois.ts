@@ -3,7 +3,7 @@
  * matching.  No Leaflet, no React, no `chrome.*`: everything here is a
  * function of its arguments, which is why it is the part with tests.
  *
- * The dashboard's `hooks/usePoiLayers.ts` is the original.  What is
+ * The dashboard's `features/live-map/poi/usePoiLayers.ts` is the original.  What is
  * shared with it is shared on purpose and MUST stay identical, because
  * the two surfaces hit the same endpoint with the same `bbox` string:
  * the 1° grid, the one-cell expansion, and the cache key spelled from

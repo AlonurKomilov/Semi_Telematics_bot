@@ -1,4 +1,4 @@
-import { iconPackId, rasterGlyph } from '../lib/icons';
+import { iconPackId, rasterGlyph } from '@/lib/icons';
 /**
  * usePoiLayers — manages all POI map overlay layers.
  *
@@ -20,15 +20,15 @@ import { iconPackId, rasterGlyph } from '../lib/icons';
 
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { apiFetch, apiJSON } from '../api/client';
-import { POI_LAYERS, esc } from '../config/poiLayers';
-import type { PoiLayerDef, PoiFeature, PoiIconSpec } from '../config/poiLayers';
-import { MARKER_GLYPH, MARKER_HALO, MARKER_SHADOW, POI_DEF_BADGE, POPUP } from '../config/mapColors';
+import { apiFetch, apiJSON } from '@/api/client';
+import { POI_LAYERS, esc } from './layers';
+import type { PoiLayerDef, PoiFeature, PoiIconSpec } from './layers';
+import { MARKER_GLYPH, MARKER_HALO, MARKER_SHADOW, POI_DEF_BADGE, POPUP } from '@/config/mapColors';
 import type L from 'leaflet';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-// PoiFeature moved to config/poiLayers.ts so layer defs can type their
+// PoiFeature moved to layers.ts so layer defs can type their
 // popup builders; re-exported here so existing consumers keep working.
 export type { PoiFeature };
 

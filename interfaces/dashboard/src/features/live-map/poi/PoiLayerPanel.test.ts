@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { POI_LAYERS } from '@/config/poiLayers';
+import { POI_LAYERS } from './layers';
 import { contrastRatio, parseHex, readableTextOn } from '@/mods';
 import panelSrc from './PoiLayerPanel.tsx?raw';
 

@@ -152,7 +152,7 @@ export const POPUP_LINK = 'var(--primary-text)';
  *  wrapper with `var(--popover)` these literals sat on white in EVERY
  *  theme. Two were already broken there: `#9ca3af` at 2.54:1, and
  *  `#e5e7eb` at 1.24:1 wherever it lands on the popover itself rather
- *  than inside a badge (poiLayers.ts:175 does exactly that -- inside the
+ *  than inside a badge (live-map/poi/layers.ts:175 does exactly that -- inside the
  *  `#374151` badge it was a healthy 8.33:1). The other two PASSED on
  *  white -- `#666` at 5.74 and the `#2563eb` link at 5.17 -- and it was
  *  theming the wrapper that dropped them to 2.21 and 2.45 on the dark

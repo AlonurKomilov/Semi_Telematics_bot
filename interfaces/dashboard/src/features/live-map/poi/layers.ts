@@ -32,8 +32,8 @@ import {
   TrafficCone,
   Wrench,
   type LucideIcon,
-} from '../lib/icons';
-import { POPUP, POPUP_LINK } from './mapColors';
+} from '@/lib/icons';
+import { POPUP, POPUP_LINK } from '@/config/mapColors';
 
 /**
  * Layer icon: a lucide component for BUILT-IN layers (rendered in the

@@ -275,7 +275,7 @@ audit:
   /system/vendor-directory/{id}/geo` (both-or-null validation).  The
   pin preview is a dependency-free OSM embed iframe.
 - **Generic popup contract:** `PoiLayerDef.popup?(feature, def)` in
-  `interfaces/dashboard/src/config/poiLayers.ts`; the engine (`usePoiLayers.renderLayer`)
+  `interfaces/dashboard/src/features/live-map/poi/layers.ts`; the engine (`usePoiLayers.renderLayer`)
   dispatches `def.popup ?? defaultOsmPopup`.  DB-backed layers supply
   their own popup — never add layer-specific branches in the engine.
 

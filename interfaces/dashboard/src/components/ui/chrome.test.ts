@@ -345,7 +345,7 @@ const STORAGE_ALLOWED = [
   'App.tsx',                   // logout clears the session token
   'features/ai/attachmentStore',
   'features/ai/thoughtStore',
-  'hooks/usePoiLayers',        // map-tile cache with a TTL
+  'features/live-map/poi/usePoiLayers',        // map-tile cache with a TTL
   'features/carrier-directory/PublicCarrierIntake', // public draft
   'features/applications/public/',                  // public draft
   // Named individually because each was checked against the test in
@@ -497,7 +497,7 @@ const INLINE_LENGTH_ALLOWED: { file: string; props: string[] }[] = [
   // whole-file pass handed it `borderRadius` too, on the one surface
   // where a corner most needs to come from the token.
   { file: 'features/applications/public/PublicApply.tsx', props: ['left', 'width', 'height'] },
-  { file: 'features/live-map/PoiLayerPanel.tsx', props: ['minWidth', 'maxWidth'] },
+  { file: 'features/live-map/poi/PoiLayerPanel.tsx', props: ['minWidth', 'maxWidth'] },
   { file: 'features/live-map/MapTypeControl.tsx', props: ['minWidth'] },
 ];
 const inlineLengthAllows = (rel: string, prop: string) =>
@@ -712,7 +712,7 @@ const nestedRadiusSites = (src: string): string[] => {
 const COLOUR_LITERAL_ALLOWED: { file: string; why: string }[] = [
   { file: 'config/mapColors.ts',
     why: 'the map SSOT — painted over tile imagery, must not follow the theme' },
-  { file: 'config/poiLayers.ts',
+  { file: 'features/live-map/poi/layers.ts',
     why: 'the POI SSOT, same reason' },
   { file: 'config/documentColors.ts',
     why: 'signature ink: a PNG kept against an FMCSA application outlives the session' },

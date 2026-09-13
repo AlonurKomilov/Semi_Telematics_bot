@@ -1,6 +1,6 @@
 /**
  * What the panel can draw on top of the map, and what each one looks
- * like.  The dashboard's `config/poiLayers.ts` is the original and the
+ * like.  The dashboard's `features/live-map/poi/layers.ts` is the original and the
  * IDs here must match it exactly: an id is the `type` parameter of
  * GET /map/pois, so a typo is not a styling bug, it is a 422.
  *

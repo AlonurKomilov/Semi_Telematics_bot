@@ -34,7 +34,7 @@ Worked examples of things that LOOK like preferences but aren't — don't
 
 | Storage | What it really is |
 |---|---|
-| `poi_v2_<layer>_<bbox>` (`hooks/usePoiLayers`) | a map-tile **cache**: `{ts, features}` with 30 min / 2 hr TTLs and eviction |
+| `poi_v2_<layer>_<bbox>` (`features/live-map/poi/usePoiLayers`) | a map-tile **cache**: `{ts, features}` with 30 min / 2 hr TTLs and eviction |
 | `4truck_dispatch_last_ack_iso` | an acknowledgement **timestamp** — operational state for "what's new since" |
 | `api/client` TOKEN_KEY, `AuthContext` | session/auth |
 | AI `attachmentStore` / `thoughtStore` | transient data caches |

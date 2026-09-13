@@ -24,7 +24,8 @@ import re
 
 from tests._repo import REPO
 
-DASH = REPO / "interfaces" / "dashboard" / "src" / "config" / "poiLayers.ts"
+DASH = (REPO / "interfaces" / "dashboard" / "src" / "features"
+        / "live-map" / "poi" / "layers.ts")
 EXT = (REPO / "interfaces" / "browser_extension" / "src" / "features"
        / "live-map" / "poiLayers.ts")
 
