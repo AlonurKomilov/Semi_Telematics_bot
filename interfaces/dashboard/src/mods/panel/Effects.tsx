@@ -14,6 +14,7 @@ import { usePreference } from '../../preferences';
 import { useMods, type Motion } from '../context';
 import { motionPercent } from '../catalogue';
 import { MOTION_PACKS } from '../store/items/motion';
+import { ENTRANCE_PACKS, entranceById } from '../store/items/entrance';
 import { Chip } from './Chip';
 import { SHADER_PACKS, shaderPackById } from '../store/items/shader';
 import type { LabelClass } from './Interface';
@@ -147,6 +148,47 @@ export function EffectsGroup({ label }: { label: LabelClass }) {
       <ShadersItem label={label} />
       <div className="mt-2.5"><MotionItem label={label} /></div>
       <div className="mt-2.5"><AmbientItem /></div>
+    </div>
+  );
+}
+
+/**
+ * Entrance — whether a routed page moves, and how.
+ *
+ * Off by default and staying that way: one wrapper reaches every route,
+ * and this app is navigated dozens of times an hour. What changed is
+ * that somebody who WANTS one can say which, instead of only inheriting
+ * it from a look.
+ */
+export function EntranceItem() {
+  const offered = useOffered();
+  const { t } = useTranslation();
+  const { theme, setTheme } = useMods();
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-foreground">
+          {t('mods.entrance_label', 'Page entrance')}
+        </span>
+        <Switch
+          size="sm"
+          checked={theme.entranceOn}
+          onCheckedChange={(next) => setTheme({ entranceOn: next })}
+          aria-label={t('mods.entrance_label', 'Page entrance')}
+        />
+      </div>
+      <div className="flex flex-wrap gap-1 mt-1.5">
+        {offered('entrance', ENTRANCE_PACKS, (e) => e.id).map((e) => (
+          <Chip key={e.id} value={e.id} current={theme.entrance} label={e.label}
+            onClick={(v) => setTheme({ entrance: v })} />
+        ))}
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1">
+        {theme.entranceOn
+          ? (entranceById(theme.entrance)?.description ?? '')
+          : t('mods.entrance_hint',
+            'How a page arrives when you navigate. Off by default — this app is navigated a lot.')}
+      </p>
     </div>
   );
 }

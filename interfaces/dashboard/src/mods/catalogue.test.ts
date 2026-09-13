@@ -245,7 +245,7 @@ describe('mods are combinations, not new colours', () => {
   const DOMAIN: Record<ValueField, readonly unknown[] | 'range'> = {
     size: 'range',
     icons: MOD_ICONS,
-    entrance: [true, false],
+    entranceOn: [true, false],
     wallpaperLive: [true, false],
   };
 

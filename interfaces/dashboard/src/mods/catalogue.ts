@@ -229,7 +229,10 @@ export interface Mod extends ItemMeta {
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
-  readonly entrance?: boolean;
+  /** WHICH entrance — an `ENTRANCE_PACKS` id. */
+  readonly entrance?: string;
+  /** Whether the page moves at all. */
+  readonly entranceOn?: boolean;
   /**
    * Which cue set the look comes with — a `SOUND_PACKS` id.
    *
@@ -309,6 +312,7 @@ export const MOD_FIELD_APPLIER: Record<
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
   wallpaper: 'theme', wallpaperLive: 'theme', wallpaperPage: 'theme', cursor: 'theme', shader: 'theme',
+  entranceOn: 'theme',
   size: 'size', sound: 'sound', keys: 'sound',
 };
 
@@ -345,9 +349,9 @@ export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
   shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
   sound: 'item', keys: 'item',
-  radius: 'item', motion: 'item',
+  radius: 'item', motion: 'item', entrance: 'item',
   size: 'value', icons: 'value',
-  entrance: 'value', wallpaperLive: 'value',
+  entranceOn: 'value', wallpaperLive: 'value',
 } as const satisfies Record<keyof Omit<Mod, keyof ItemMeta>, 'item' | 'value'>;
 
 /**

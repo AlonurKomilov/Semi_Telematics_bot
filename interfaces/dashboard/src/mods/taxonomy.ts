@@ -180,10 +180,14 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // to surfaces that were already there.
       { id: 'shader',   title: 'Shaders',  heading: 'Shaders',
         axes: ['shader'], modFields: ['shader'] },
-      // A look may switch the page entrance on; the panel offers no
-      // control, and the effects reset still clears it.
-      { id: 'entrance', title: 'Entrance', axes: ['entrance'], modFields: ['entrance'],
-        modOnly: true },
+      // It has a control now. `modOnly` was right while there was ONE
+      // entrance and the field was a switch — offering a checkbox for
+      // "move on every navigation" promoted a tax. There are three
+      // movements to choose between now, the switch still defaults off,
+      // and a shelf a person can see in the store but not pick from
+      // would be worse than the promotion ever was.
+      { id: 'entrance', title: 'Entrance', axes: ['entrance', 'entranceOn'],
+        modFields: ['entrance', 'entranceOn'] },
       { id: 'ambient',  title: 'Ambient mode', axes: [], prefs: ['mods.ambient'] },
     ],
   },
@@ -261,5 +265,17 @@ export const categoryById = (id: string): TaxonomyCategory | undefined =>
  * of its category in every way except having somewhere to be clicked.
  */
 export function browsableItemsOf(id: CategoryId): readonly TaxonomyItem[] {
-  return (categoryById(id)?.items ?? []).filter((i) => !i.modOnly);
+  return browsable(categoryById(id)?.items ?? []);
 }
+
+/**
+ * The filter itself, taking its list.
+ *
+ * Exported so the RULE can be tested when nothing in the taxonomy is
+ * `modOnly` — which is the state today: Entrance was the last one and it
+ * has a control now. A guard that could only read the live list would
+ * have quietly stopped checking anything the moment the flag went
+ * unused, and the flag is exactly the kind that comes back.
+ */
+export const browsable = (items: readonly TaxonomyItem[]): readonly TaxonomyItem[] =>
+  items.filter((i) => !i.modOnly);

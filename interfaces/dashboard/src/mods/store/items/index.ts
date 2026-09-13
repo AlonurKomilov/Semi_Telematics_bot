@@ -21,6 +21,7 @@ import { ICON_PACKS } from './icons';
 import { CORNERS } from './corners';
 import { MOTION_PACKS } from './motion';
 import { AMBIENCE_PACKS } from './ambience';
+import { ENTRANCE_PACKS } from './entrance';
 
 export interface ItemAxis {
   /** The folder under `mods/packs/`, and the noun a tile is filed under. */
@@ -42,4 +43,5 @@ export const ITEM_AXES: readonly ItemAxis[] = [
   { axis: 'sound',     items: SOUND_PACKS },
   { axis: 'keys',      items: KEY_PACKS },
   { axis: 'ambience',  items: AMBIENCE_PACKS },
+  { axis: 'entrance',  items: ENTRANCE_PACKS },
 ];

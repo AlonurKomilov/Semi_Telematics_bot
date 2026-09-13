@@ -102,7 +102,7 @@ describe('and no surface draws a choice the store did not hand out', () => {
   const PACK_LISTS = [
     'ACCENT_OPTIONS', 'MATERIAL_OPTIONS', 'PACK_OPTIONS', 'MOD_OPTIONS', 'RADIUS_OPTIONS', 'MOTION_OPTIONS',
     'THEME_PACKS', 'FONT_PACKS', 'CURSOR_PACKS', 'WALLPAPERS',
-    'SHADER_PACKS', 'SOUND_PACKS', 'KEY_PACKS', 'MATERIAL_PACKS', 'ICON_PACKS', 'MODS', 'CORNERS', 'MOTION_PACKS',
+    'SHADER_PACKS', 'SOUND_PACKS', 'KEY_PACKS', 'MATERIAL_PACKS', 'ICON_PACKS', 'MODS', 'CORNERS', 'MOTION_PACKS', 'ENTRANCE_PACKS', 'AMBIENCE_PACKS',
   ];
   const files = ['panel', 'page'].flatMap((dir) =>
     readdirSync(join(__dirname, dir))

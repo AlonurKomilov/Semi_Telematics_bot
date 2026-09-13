@@ -26,7 +26,7 @@ import {
   ColorGroup, ModeGroup, CornersGroup, MaterialGroup, TypefaceGroup, IconsGroup,
   WallpaperGroup, CursorGroup, type LabelClass,
 } from './Interface';
-import { ShadersItem, MotionItem, AmbientItem } from './Effects';
+import { ShadersItem, MotionItem, EntranceItem, AmbientItem } from './Effects';
 import { SoundVolume, InterfaceSoundItem, KeyboardItem, BackgroundSoundItem, LiveAlertsItem } from './Sounds';
 
 export type ItemComponent = ComponentType<{ label: LabelClass }>;
@@ -57,6 +57,7 @@ export const ITEM_GROUPS: Record<string, ItemComponent> = {
   'interface/cursor': CursorGroup,
   'effects/shader': ShadersItem,
   'effects/motion': MotionItem,
+  'effects/entrance': headless(EntranceItem),
   'effects/ambient': headless(AmbientItem),
   'sounds/interface': headless(InterfaceSoundItem),
   'sounds/keyboard': headless(KeyboardItem),

@@ -44,6 +44,7 @@ import { MODS } from '../mods/store/items/mods';
 import { packById, removable } from '../mods/store/packs';
 import { CORNER_IDS } from '../mods/store/items/corners';
 import { AMBIENCE_IDS } from '../mods/store/items/ambience';
+import { ENTRANCE_IDS } from '../mods/store/items/entrance';
 import { THEME_PACKS } from '../mods/store/items/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
@@ -214,8 +215,20 @@ export interface ModSetting {
   iconPack: IconPack;
   /** The typeface the app is set in. A `FONT_PACKS` id. */
   font: string;
-  /** Whether the routed page animates in. Mod-only, and off by default. */
-  entrance: boolean;
+  /**
+   * WHICH entrance a routed page makes — an `ENTRANCE_PACKS` id.
+   *
+   * The pair is the wallpaper's: the id keeps the axis name and the
+   * switch takes a suffix, because "which" outlives "whether". A stored
+   * BOOLEAN is the older shape, when there was only one entrance and
+   * the field was the switch; it migrates to `lift`, which is the
+   * movement that boolean used to mean.
+   */
+  entrance: string;
+  /** Whether the page moves at all. Off by default, and that is the
+   *  point: one wrapper reaches every route, and this app is navigated
+   *  dozens of times an hour. */
+  entranceOn: boolean;
   /** Whether a wallpaper that CAN move is moving. Off by default: a
    *  pattern that can drift never drifts unasked. Meaningless — and
    *  ignored by the stylesheet — under a pattern whose kind is still. */
@@ -394,7 +407,8 @@ export const THEME_MODES: ThemeMode[] = ['dark', 'light'];
 export const THEME_ACCENTS: ThemeAccent[] = THEME_PACKS.map((p) => p.id);
 export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
-  motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist', entrance: false,
+  motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist',
+  entrance: 'lift', entranceOn: false,
   wallpaper: 'none', wallpaperLive: false, wallpaperPage: 'none', cursor: 'system', shader: 'flat',
   color: 'dark-blue',
 };
@@ -652,7 +666,14 @@ export const DEFS = {
       // this app was drawn with, not to whatever the browser guesses.
       const font = MOD_FONTS.includes(o.font as string)
         ? o.font as string : MOD_DEFAULT.font;
-      const entrance = typeof o.entrance === 'boolean' ? o.entrance : MOD_DEFAULT.entrance;
+      // A stored boolean is the field's older shape — `entrance: true`
+      // meant "the one entrance, on". It becomes the switch, and the
+      // id becomes the movement it used to mean.
+      const legacyEntrance = typeof o.entrance === 'boolean' ? o.entrance : undefined;
+      const entrance = ENTRANCE_IDS.includes(o.entrance as string)
+        ? o.entrance as string : MOD_DEFAULT.entrance;
+      const entranceOn = legacyEntrance ?? (typeof o.entranceOn === 'boolean'
+        ? o.entranceOn : MOD_DEFAULT.entranceOn);
       // A pattern that shipped and was later removed falls back to flat
       // chrome, not to a stamp nothing in the stylesheet answers.
       const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
@@ -755,7 +776,7 @@ export const DEFS = {
           ?? { mode: MOD_DEFAULT.mode, accent: MOD_DEFAULT.accent };
 
       return {
-        mode, accent, radius, material, motion, icons, iconPack, font, entrance,
+        mode, accent, radius, material, motion, icons, iconPack, font, entrance, entranceOn,
         wallpaper, wallpaperLive, wallpaperPage, cursor, shader,
         ...(mod ? { mod } : {}),
         ...(brand ? { brand } : {}),

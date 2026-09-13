@@ -28,7 +28,7 @@ vi.mock('../../hooks/useViewPermissions', () => ({
 
 import ModsPage from './ModsPage';
 import { ModProvider } from '../context';
-import { TAXONOMY, browsableItemsOf, resetAxesOf, MOD_FIELD_CATEGORY } from '../taxonomy';
+import { TAXONOMY, browsableItemsOf, browsable, resetAxesOf, MOD_FIELD_CATEGORY } from '../taxonomy';
 import { MODS } from '../store/items/mods';
 import { preferences, MOD_DEFAULT, SIZE_DEFAULT, DEFS } from '../../preferences';
 
@@ -303,37 +303,35 @@ describe('a tile promises a control, and the page keeps the promise', () => {
 
 describe('an item a look supplies but nobody sets', () => {
   const modOnly = TAXONOMY.flatMap(
-    (c) => c.items.filter((i) => i.modOnly).map((i) => [c.id, i] as const));
+    (c) => c.items.filter((i) => i.modOnly).map((i) => `${c.id}/${i.id}`));
 
-  it('exists to be tested at all', () => {
-    // Every assertion below is about `entrance`. If the flag is ever
-    // dropped they would pass by having nothing to check.
-    expect(modOnly.map(([c, i]) => `${c}/${i.id}`)).toEqual(['effects/entrance']);
+  it('is nothing, today — and that is a decision, not a gap', () => {
+    // Entrance was the last one. The flag was right while there was ONE
+    // entrance and the field was a switch: a checkbox for "move on every
+    // navigation" promoted a tax. There are three movements now, the
+    // switch still defaults off, and a shelf a person can see in the
+    // store but not pick from would be worse than the promotion was.
+    //
+    // If this goes red, something became mod-only again: check it has a
+    // reason as good, and that the store does not sell what it hides.
+    expect(modOnly).toEqual([]);
   });
 
-  it('gets no tile — the grid offers only what can be opened', () => {
+  it('and the rule that hides one still works', () => {
+    // Tested on a synthetic list, because the live one has nothing to
+    // hide. A guard that could only read the live taxonomy would have
+    // stopped checking the moment the flag went unused.
+    const items = [
+      { id: 'shown', title: 'Shown', axes: [] },
+      { id: 'hidden', title: 'Hidden', axes: [], modOnly: true },
+    ] as unknown as Parameters<typeof browsable>[0];
+    expect(browsable(items).map((i) => i.id)).toEqual(['shown']);
+  });
+
+  it('entrance is a whole item now: a tile, a page, and a reset', () => {
     at('/mods/effects');
-    const grid = screen.getByTestId('mods-category');
-    expect(grid.textContent, 'a tile for a control that does not exist')
-      .not.toContain('Entrance');
-    // Not simply an empty grid: the siblings are still there, one each.
-    expect(grid.querySelectorAll('a').length).toBe(browsableItemsOf('effects').length);
-    expect(grid.textContent).toContain('Motion');
-  });
-
-  it('and its address stops claiming a control it does not have', () => {
-    at('/mods/effects/entrance');
-    // It used to be headed "Entrance" and show Motion and Ambient.
-    expect(screen.queryByRole('heading', { name: /^Entrance$/ }),
-      'the page still promises Entrance').toBeNull();
-  });
-
-  it('but it is still part of its category in every other way', () => {
-    // The flag is about having somewhere to be clicked, nothing else: a
-    // mod still carries it and the category reset still clears it.
-    expect(resetAxesOf('effects'), 'the reset stopped clearing it')
-      .toContain('entrance');
-    expect(MOD_FIELD_CATEGORY.entrance, 'a look can no longer carry it')
-      .toBe('effects');
+    expect(screen.getByTestId('mods-category').textContent).toContain('Entrance');
+    expect(resetAxesOf('effects'), 'the reset stopped clearing it').toContain('entrance');
+    expect(MOD_FIELD_CATEGORY.entrance, 'a look can no longer carry it').toBe('effects');
   });
 });

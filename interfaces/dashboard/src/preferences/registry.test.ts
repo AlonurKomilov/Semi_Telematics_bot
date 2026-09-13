@@ -520,7 +520,7 @@ describe('the axis set itself', () => {
      * Changing this list is the decision. Make it on purpose.
      */
     expect(Object.keys(MOD_DEFAULT).sort()).toEqual([
-      'accent', 'color', 'cursor', 'entrance', 'font', 'iconPack', 'icons',
+      'accent', 'color', 'cursor', 'entrance', 'entranceOn', 'font', 'iconPack', 'icons',
       'material', 'mode', 'motion', 'radius', 'shader', 'wallpaper', 'wallpaperLive', 'wallpaperPage',
     ]);
   });
@@ -551,5 +551,36 @@ describe('a shelf remembers only packs that still ship', () => {
     expect(sanitize('cab')).toBeUndefined();
     expect(sanitize({ font: ['serif'] })).toBeUndefined();
     expect(sanitize([1, null])).toEqual([]);
+  });
+});
+
+describe('the entrance field that used to be a switch', () => {
+  const sanitize = DEFS['mods.theme'].sanitize!;
+  const read = (stored: Record<string, unknown>) =>
+    sanitize({ ...MOD_DEFAULT, ...stored }) as unknown as Record<string, unknown>;
+
+  it('a stored `true` becomes the switch, and the movement it used to mean', () => {
+    // `entrance: true` was written by every device that ever wore Wall.
+    // Dropping it would turn their entrance off silently; reading it as
+    // an id would leave them with no movement at all.
+    const out = read({ entrance: true });
+    expect(out.entranceOn, 'the old switch was lost').toBe(true);
+    expect(out.entrance, 'the old switch did not become a movement').toBe('lift');
+  });
+
+  it('a stored `false` is off, and still names a movement', () => {
+    const out = read({ entrance: false });
+    expect(out.entranceOn).toBe(false);
+    expect(out.entrance).toBe('lift');
+  });
+
+  it('the new shape survives a round trip', () => {
+    const out = read({ entrance: 'slide', entranceOn: true });
+    expect(out.entrance).toBe('slide');
+    expect(out.entranceOn).toBe(true);
+  });
+
+  it('an id that no longer ships falls back rather than stamping nothing', () => {
+    expect(read({ entrance: 'gone', entranceOn: true }).entrance).toBe(MOD_DEFAULT.entrance);
   });
 });

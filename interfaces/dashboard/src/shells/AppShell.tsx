@@ -32,7 +32,7 @@ import { DocumentLock } from './DocumentLock';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { ModPanel, useMods, surfaceFor, ModsLock, useCanMods, pageWallpaperFor } from '../mods';
+import { entranceById, ModPanel, useMods, surfaceFor, ModsLock, useCanMods, pageWallpaperFor } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -45,6 +45,7 @@ import { SHELL_SCROLLPORT_ATTR } from '../lib/scrollport';
 
 export default function AppShell({ hero }: { hero?: ReactNode }) {
   const { theme } = useMods();
+  const entranceClasses = entranceById(theme.entrance)?.classes;
   // Mods is a service: a role without it gets no palette in the bar,
   // and `ModsLock` below puts its stored look back to the defaults.
   const canMods = useCanMods();
@@ -215,7 +216,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             {...{ [SHELL_SCROLLPORT_ATTR]: "" }}
             className="h-full overflow-y-auto [scrollbar-gutter:stable] scroll-pb-16 p-4 lg:p-6"
           >
-              {/* An entrance for the routed page, when a mod asks for one.
+              {/* An entrance for the routed page, when one is asked for.
                   Off by default and on purpose: this app is navigated
                   dozens of times an hour, and a slide-in on every one of
                   them is a tax rather than a delight.
@@ -225,9 +226,15 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
                   the pathname so React remounts it and the animation
                   actually replays; the duration rides --motion-scale like
                   everything else, and the reduced-motion floor turns it
-                  off entirely. */}
-              {theme.entrance ? (
-                <div key={pathname} className="animate-in fade-in-0 slide-in-from-bottom-2">
+                  off entirely.
+
+                  WHICH movement is an item now, so the classes come from
+                  the shelf rather than being spelled here — and they are
+                  literal in the item's own file, because Tailwind reads
+                  source text and a class assembled at runtime is never
+                  built at all. */}
+              {theme.entranceOn && entranceClasses ? (
+                <div key={pathname} className={entranceClasses}>
                   <Outlet />
                 </div>
               ) : (

@@ -8,6 +8,6 @@ import type { Mod } from '../../../catalogue';
  */
 export const wall: Mod = {
   id: 'wall', label: 'Wall', accent: 'blue',  radius: 'rounded', size: 1.45,
-  icons: 'bold', entrance: true,
+  icons: 'bold', entranceOn: true, entrance: 'slide',
   description: 'A display read from across the room'
 };

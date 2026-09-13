@@ -568,7 +568,8 @@ describe('theme-boot source', () => {
   });
 
   it('accounts for every axis, one way or the other', () => {
-    // The guard on the guard. `icons`, `iconPack` and `entrance` are
+    // The guard on the guard. `icons`, `iconPack` and the two entrance
+    // fields are
     // React-level — an icon's weight and its glyphs both come from a
     // context provider, an entrance from a component that does not
     // exist until React mounts — so there is no frame in which any of
@@ -579,7 +580,7 @@ describe('theme-boot source', () => {
     // it to PREPAINT_AXES, or add it here and say why.
     // `wallpaperLive` starts an animation whose first frame is the
     // still state, so a late stamp changes nothing a person can see.
-    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'wallpaperLive'];
+    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'entranceOn', 'wallpaperLive'];
     for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),
