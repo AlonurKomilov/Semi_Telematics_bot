@@ -348,8 +348,12 @@ async def create_work_order_action(tool_args, samsara_client,
         open_tasks: list[dict] = []
         suggestions: list[dict] = []
         try:
+            # suggest_task_links discards closed rows anyway (via
+            # is_open_task, on the same vocabulary), so the closed
+            # history never needs to leave the database.
             open_tasks = await db.get_maintenance_tasks(
                 account_id, vehicle_name=norm["vehicle_name"],
+                open_only=True,
             )
             hay = invoice_haystack(
                 norm["parts"], norm["labor"], norm["notes"],

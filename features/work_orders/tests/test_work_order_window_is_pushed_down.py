@@ -141,3 +141,29 @@ async def test_the_store_really_filters(pg_db):
     # No window = no filtering, for every other caller.
     everything = await pg_db.list_work_orders(acct.id)
     assert len(everything) == len(kept) + len(dropped)
+
+
+@pytest.mark.asyncio
+async def test_the_named_residual_behaves_as_documented(pg_db):
+    """Pin the one row class the window is NOT exact about.
+
+    A service_date shaped like a 2000s ISO date but not a real calendar
+    date ('2019-13-45') goes to the string comparison like any other.
+    If it sorts before the window it is dropped, so the tool's
+    unreadable-date counter stops seeing it once it ages out — the
+    residual list_work_orders' docstring names.  If it sorts inside the
+    window it survives and is still counted.
+
+    Recorded rather than discovered: if someone later makes the
+    predicate exact, this test should be deleted, not worked around.
+    """
+    acct = await pg_db.create_account("Residual Co")
+    old_garbage = await pg_db.add_work_order(
+        acct.id, "OSY", "231", "Shop", service_date="2019-13-45")
+    fresh_garbage = await pg_db.add_work_order(
+        acct.id, "OSY", "231", "Shop", service_date="2099-13-45")
+
+    got = {r["id"] for r in
+           await pg_db.list_work_orders(acct.id, since=_day(-30))}
+    assert old_garbage not in got     # the documented blind spot
+    assert fresh_garbage in got       # still reaches the counter

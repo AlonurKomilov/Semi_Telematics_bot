@@ -1243,7 +1243,15 @@ async def get_service_history(
     all_tasks = await tenant_db.get_maintenance_tasks(
         user["account_id"], vehicle_name=vehicle_name,
     )
-    closed = [t for t in all_tasks if t.get("status") in ("completed", "done", "cancelled")]
+    # One vocabulary, and one normalisation.  This line used to carry
+    # its own copy of the closed statuses — in the same file that now
+    # imports the constant — which is precisely how "done" went missing
+    # from the urgency classifier.  Lowercase once here so the summary
+    # buckets below split the same rows this test admitted.
+    def _status_of(t: dict) -> str:
+        return (t.get("status") or "").strip().lower()
+
+    closed = [t for t in all_tasks if _status_of(t) in CLOSED_TASK_STATUSES]
     # Newest first so the timeline reads top→bottom past-to-present.
     closed.sort(
         key=lambda t: (t.get("completed_at") or t.get("created_at") or ""),
@@ -1290,8 +1298,13 @@ async def get_service_history(
         "tasks": enriched,
         "work_orders": work_orders,
         "summary": {
-            "total_completed": sum(1 for t in closed if t.get("status") in ("completed", "done")),
-            "total_cancelled": sum(1 for t in closed if t.get("status") == "cancelled"),
+            # Which terminal outcome — a different question from "is it
+            # closed", so these name the spellings deliberately.  The
+            # two counts must still add up to len(closed).
+            "total_completed": sum(1 for t in closed
+                                   if _status_of(t) in ("completed", "done")),
+            "total_cancelled": sum(1 for t in closed
+                                   if _status_of(t) == "cancelled"),
             "by_type": by_type,
             "last_service_at":  closed[0].get("completed_at") or closed[0].get("created_at") if closed else None,
             "first_service_at": closed[-1].get("completed_at") or closed[-1].get("created_at") if closed else None,
