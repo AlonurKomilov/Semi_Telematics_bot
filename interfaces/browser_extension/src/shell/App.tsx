@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
+import { rememberAppBase } from '../appHost';
 import { apiFetch, apiJSON, clearToken, getToken, refreshIfNeeded, refreshNow, UnauthorizedError } from '../api/client';
 import { FEATURES } from './registry';
 import Connect from './Connect';
@@ -140,6 +141,11 @@ export default function App() {
       setMe({ name: w.display_name ?? null, role: w.role ?? null, account_name: w.account_name ?? null });
       setAllowed(Array.isArray(w.features) ? w.features : null);
       setAbilities(Array.isArray(w.abilities) ? w.abilities : []);
+      // The role decides which 4truck host this person's deep links
+      // open.  Written here because this is the only place that learns
+      // it, and read by the content script and the background worker,
+      // neither of which can ask.
+      void rememberAppBase(String(w.role || ''));
     };
     read().catch(() => { if (!cancelled) setMe(null); });
     return () => { cancelled = true; };

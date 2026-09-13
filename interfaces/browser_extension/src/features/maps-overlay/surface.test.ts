@@ -294,7 +294,12 @@ describe("the card's button always does something", () => {
     // refusal anywhere.  A press must never be a no-op.
     const bg = (await import('../../background.ts?raw')).default as unknown as string;
     expect(bg).toContain("await chrome.sidePanel.open({ tabId })");
-    expect(bg).toContain("chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` })");
+    // …and it opens the APP's host, not the apex.  `4truck.us/inventory`
+    // is an nginx 404 — the apex serves the sign-in pages and nothing
+    // else — so this fallback was a no-op of a different kind for as
+    // long as it had existed.  See src/appHost.ts.
+    expect(bg).toContain("chrome.tabs.create({ url: `${await readAppBase()}/inventory` })");
+    expect(bg).not.toContain('DASHBOARD_BASE');
     expect(bg).not.toContain('chrome.sidePanel.open({ tabId }).catch(() => {})');
   });
 

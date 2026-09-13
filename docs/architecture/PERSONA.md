@@ -170,7 +170,16 @@ The frontend mirrors the backend:
    [features/_lib/types.ts](../../interfaces/dashboard/src/features/_lib/types.ts).
 2. Decide if it gets its own subdomain.  If yes:
    - Add to `SUBDOMAIN_TO_ROLE` and `ROLE_HOST` in
-     [RoleViewContext.tsx](../../interfaces/dashboard/src/context/RoleViewContext.tsx).
+     [RoleViewContext.tsx](../../interfaces/dashboard/src/context/RoleViewContext.tsx),
+     and to `ROLE_TO_HOST` in
+     [AuthContext.tsx](../../interfaces/dashboard/src/context/AuthContext.tsx).
+   - Add to `ROLE_SUBDOMAIN` in
+     [interfaces/browser_extension/src/appHost.ts](../../interfaces/browser_extension/src/appHost.ts)
+     — the browser panel builds its deep links from the same map, and
+     it is across a package boundary, so nothing else will catch it.
+     All three are held together by
+     [tests/test_persona_hosts_agree.py](../../tests/test_persona_hosts_agree.py),
+     which also checks nginx actually answers the host.
    - Add DNS + nginx config (see
      [subdomain-rollout.md](../runbooks/subdomain-rollout.md)).
 3. Create a shell file in

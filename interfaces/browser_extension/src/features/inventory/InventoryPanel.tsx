@@ -21,7 +21,7 @@ import Field from './Field';
 import { vehicleLine } from '../../vehicleLabel';
 import Splitter from '../../shell/Splitter';
 import { MIN_PCT } from '../../shell/splitterRange';
-import { DASHBOARD_BASE } from '../../connect';
+import { readAppBase } from '../../appHost';
 import { PENDING_SELECT_KEY, readPendingSelect } from '../maps-overlay/bridge';
 import { FIELD_LABEL, addItem, editItem, forgetVehicle, humanize, inventoryFor, retryInventory,
          setItemStatus, verifyItem,
@@ -314,7 +314,11 @@ useEffect(() => {
 
   const attentionTrucks = (fleet ?? []).filter((r) => r.attention > 0).length;
   const withItems = (fleet ?? []).filter((r) => r.total > 0).length;
-  const openDashboard = () => { void chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` }); };
+  // The app's host, resolved from this person's role — the apex answers
+  // 404 for every path but the sign-in pages.
+  const openDashboard = () => {
+    void readAppBase().then((base) => chrome.tabs.create({ url: `${base}/inventory` }));
+  };
 
   return (
     // Same skeleton as Live Map: fixed rows top and bottom, ONE region

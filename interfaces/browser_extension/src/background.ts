@@ -24,7 +24,7 @@ import { apiJSON, getToken, setToken } from './api/client';
 import { acceptConnectMessage, clearPending, getPending, isTrustedOrigin, statePending } from './connect';
 import { ACTIVE_FEATURE_KEY, CARD_ITEMS_MAX, OPEN_PANEL, OVERLAY_INVENTORY, OVERLAY_LIVE, OVERLAY_VEHICLES, PANEL_LIVE, toOverlayFixes, toOverlayVehicles, type InventoryCounts, type InventoryReply, type LiveReply, type OverlayReply, type PanelLiveReply } from './features/maps-overlay/bridge';
 import { makeShared } from './features/maps-overlay/dedupe';
-import { DASHBOARD_BASE } from './connect';
+import { readAppBase } from './appHost';
 import type { LiveVehiclesResponse } from './features/live-map/types';
 
 /** Both windows sit just under the poll they serve, so one tab alone
@@ -76,7 +76,10 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
         } catch { /* fall through to the tab */ }
       }
       try {
-        await chrome.tabs.create({ url: `${DASHBOARD_BASE}/inventory` });
+        // The app's host, not the apex: `4truck.us/inventory` is an
+        // nginx 404, and this door had the same bug as the overlay
+        // card's "Web" button — nobody had pressed it.
+        await chrome.tabs.create({ url: `${await readAppBase()}/inventory` });
         sendResponse({ ok: true, opened: 'tab' });
       } catch {
         sendResponse({ ok: false, opened: 'nothing' });

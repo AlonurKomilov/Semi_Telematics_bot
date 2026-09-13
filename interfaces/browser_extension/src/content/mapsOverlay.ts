@@ -50,7 +50,7 @@ import { ageMs, describeAge, formatAge, stalenessOf } from '../features/live-map
 import {
   SETTLE_WAIT_MS, beginDrag, dragTransform, endDrag, isMapKey, moveDrag, type Drag,
 } from '../features/maps-overlay/gesture';
-import { DASHBOARD_BASE } from '../connect';
+import { APP_BASE_KEY, appBaseFor } from '../appHost';
 import { OVERLAY_PREF_KEY, setOverlayPref } from '../features/maps-overlay/pref';
 import { cameraDrawable, cameraFromUrl, isStreetView, isVisible, project, sameCamera, showsLabels, type Camera } from '../features/maps-overlay/projection';
 import { cardAnchor, colourFor, findMapCanvas, hitRadiusFor, markerAt, needsRemeasure, sameSurface, type Surface } from '../features/maps-overlay/surface';
@@ -534,7 +534,12 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
       + '</div>';
 }
 
-/** This vehicle's own page on 4truck.us.
+/** This vehicle's own page, on the host this person's app lives on.
+ *
+ *  NOT the apex.  `4truck.us/vehicles/001` is an nginx 404: the apex
+ *  serves the sign-in pages and nothing else, and the app is on
+ *  `dash.` or the person's own persona subdomain.  This button went to
+ *  that 404 from the day it was added — see appHost.ts.
  *
  *  `?company=` is not decoration: unit numbers repeat across companies,
  *  so "103" alone names two trucks and the dashboard would have to guess
@@ -544,8 +549,14 @@ function cardHtml(v: OverlayVehicle, ts: number): string {
 function webUrl(v: OverlayVehicle): string {
   const name = encodeURIComponent(v.name || v.id);
   const q = v.company ? `?company=${encodeURIComponent(v.company)}` : '';
-  return `${DASHBOARD_BASE}/vehicles/${name}${q}`;
+  return `${appBase}/vehicles/${name}${q}`;
 }
+
+/** Where this person's app is.  Read once when the overlay wakes and
+ *  refreshed when the panel writes a new one, because the same browser
+ *  can be handed to somebody with a different role between two page
+ *  loads of google.com/maps. */
+let appBase = appBaseFor('');
 
 /** Which feature the panel will land on, so the button can say what it
  *  actually opens.  Read from storage as the person switches, because a
@@ -1318,9 +1329,24 @@ function start(): void {
     if (!torn && typeof f === 'string' && f) panelFeature = f;
   });
 
+  // …and which host its "Web" button opens.  Same shape, same reason:
+  // the panel is the only thing that learns the person's role, and this
+  // page cannot ask.
+  void chrome.storage.local.get(APP_BASE_KEY).then((got) => {
+    const b = got[APP_BASE_KEY];
+    if (!torn && typeof b === 'string' && b.startsWith('http')) appBase = b;
+  });
+
   // The panel's own switch reaches here without a reload.
   onPrefChanged = (changes, area) => {
     if (torn || area !== 'local') return;
+    if (APP_BASE_KEY in changes) {
+      // The panel was reconnected as somebody else.  The card on screen
+      // is still pointing at the previous person's host.
+      const b = changes[APP_BASE_KEY].newValue;
+      appBase = typeof b === 'string' && b.startsWith('http') ? b : appBaseFor('');
+      draw();
+    }
     if (ACTIVE_FEATURE_KEY in changes) {
       const f = changes[ACTIVE_FEATURE_KEY].newValue;
       panelFeature = typeof f === 'string' && f ? f : 'live-map';
