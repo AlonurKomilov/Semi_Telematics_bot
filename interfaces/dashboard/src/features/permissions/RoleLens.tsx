@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Eye, Link2, Lock, Search } from '../../lib/icons';
 import { InfoTip, Tip } from '../../components/tooltip';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
 import type { TickRow, VerbBand, VerbFamily } from './verbGrid';
 import { bandAnchor, bandRows, bandSummary, familyMatches, viewRows } from './matrixView';
-import { isScoped } from './permRows';
+import { contextLabel, isScoped } from './permRows';
 import type { PermFlag } from './permRows';
 import { Badge } from '@/components/ui/badge';
 
@@ -141,7 +141,15 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         onClick={() => api.onToggle(col.key, f)}
         disabled={lock || closed}
         aria-pressed={on}
-        aria-label={`${f.label} — ${ariaSuffix}: ${on ? 'granted' : 'no access'}${closed ? ' · closed, the department is off' : ''}`}
+        // contextLabel, not f.label: a bare-verb row is called "Manage"
+        // and there are two of them in the Live Map family — the map's
+        // and the POI layers'.  By label alone a screen reader announced
+        // "Manage — manage: granted" twice with nothing to tell them
+        // apart, and the sighted reader had the row to go by.  This is
+        // the case permRows wrote contextLabel for, in those words:
+        // "so a bare-verb child is never ambiguous where rows are listed
+        // OUT of tree context".  An aria-label IS out of tree context.
+        aria-label={`${contextLabel(f)} — ${ariaSuffix}: ${on ? 'granted' : 'no access'}${closed ? ' · closed, the department is off' : ''}`}
         // Hit box split from paint. A 24px TICK would widen every column
         // of the matrix, so the 20px box stays what is drawn and the
         // button around it carries the WCAG 2.5.8 target; -m-0.5 gives
@@ -195,7 +203,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   const verbCell = (
     f: TickRow | null, ariaSuffix: string, extra?: ReactNode, soft = false, closed = false,
     dense = false,
-  ): ReactNode => {
+  ): ReactElement => {
     if (!f) return emptyCell;
     const delta = seniorView && rowDelta(f);
     return (
@@ -203,6 +211,23 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft, closed, dense)}{extra}</span>
       </div>
     );
+  };
+
+  // A "Manage" promoted into a column has NO ROW, so the sentence
+  // explaining what it grants has nowhere to render — and every one of
+  // the thirteen has one written.  The worst of them is the live map's:
+  // "Reserved for map-level settings — nothing uses it yet".  That row
+  // is visible because the owner asked for it to be, and the tick has
+  // been promising a power it does not carry while the sentence saying
+  // so sat unreachable in the source.
+  //
+  // A Tip on the cell, not an InfoTip: thirteen ⓘ glyphs in a dense grid
+  // would cost more than they explain, and the reader hovering a tick is
+  // already asking about that tick.
+  const manageCell = (f: TickRow | null, closed = false, dense = false): ReactElement => {
+    if (!f) return emptyCell;
+    const cell = verbCell(f, 'manage', undefined, false, closed, dense);
+    return f.description ? <Tip label={f.description}>{cell}</Tip> : cell;
   };
 
   // A single write-level flag covers View AND Manage, so BOTH columns show
@@ -343,7 +368,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           {fam.merged ? (
             <>{verbCell(fam.parent, 'view', undefined, false, closed)}{linkedCell(fam.parent, closed)}</>
           ) : (
-            <>{verbCell(fam.parent, 'view', undefined, false, closed)}{verbCell(fam.manage ?? null, 'manage', undefined, false, closed)}</>
+            <>{verbCell(fam.parent, 'view', undefined, false, closed)}{manageCell(fam.manage ?? null, closed)}</>
           )}
           {configCells(fam)}
         </div>
@@ -375,7 +400,12 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               ) : (
                 <>
                   {verbCell(c.verb === 'view' ? c.row : null, 'view', undefined, false, closed, true)}
-                  {verbCell(c.manage ?? (c.verb === 'manage' ? c.row : null), 'manage', undefined, false, closed, true)}
+                  {/* Only the PROMOTED one takes the tip: a manage-verb
+                      child row prints its own label and description just
+                      above, and saying it twice is not saying it better. */}
+                  {c.manage
+                    ? manageCell(c.manage, closed, true)
+                    : verbCell(c.verb === 'manage' ? c.row : null, 'manage', undefined, false, closed, true)}
                 </>
               )}
               {emptyCell}

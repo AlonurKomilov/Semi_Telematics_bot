@@ -8,7 +8,8 @@
  * silently rot back into implicit indentation.
  */
 import { describe, expect, it } from 'vitest';
-import { PERM_GROUPS, PARENT_KEY, PARENT_LABEL } from './permRows';
+import { PERM_GROUPS, PARENT_KEY, PARENT_LABEL, contextLabel } from './permRows';
+import lensSrc from './RoleLens.tsx?raw';
 
 type Row = {
   key?: string; allKey?: string; vehicleKey?: string; header?: string;
@@ -145,5 +146,72 @@ describe('PARENT_KEY — what a revoked child leaves behind', () => {
   it('a top-level feature row has no parent', () => {
     expect(PARENT_KEY['can_view_coaching']).toBeUndefined();
     expect(PARENT_KEY['can_view_loads']).toBeUndefined();
+  });
+});
+
+/**
+ * What a bare verb is CALLED where the row cannot be seen.
+ *
+ * Thirteen rows in this matrix are labelled just "Manage", and two of
+ * them sit in one family — the live map's own, and the POI layers'.  On
+ * screen the row they hang under tells them apart.  In an aria-label
+ * there is no row: both announced "Manage — manage: granted", and a
+ * screen-reader user had no way to know which tick they were on.
+ *
+ * permRows wrote `contextLabel` for exactly this, in exactly these
+ * words: "so a bare-verb child is never ambiguous where rows are listed
+ * OUT of tree context".  An aria-label is out of tree context.
+ */
+describe('a bare verb is never announced ambiguously', () => {
+  const byKey = (k: string) => {
+    const row = tickable.find((r) => primaryKey(r) === k);
+    expect(row, k).toBeTruthy();
+    return row!;
+  };
+
+  it('tells the two Manages of the Live Map family apart', () => {
+    expect(contextLabel(byKey('can_manage_live_map') as never)).toBe('Live Map · Manage');
+    expect(contextLabel(byKey('can_manage_poi_layers') as never)).toBe('POI Layers · Manage');
+  });
+
+  it('gives EVERY bare "Manage" in the matrix a distinct name', () => {
+    // Not just the pair that caught it: any two families whose Manage
+    // rows collapsed to one name would have the same problem.
+    const names = tickable
+      .filter((r) => r.label === 'Manage')
+      .map((r) => contextLabel(r as never));
+    expect(names.length).toBeGreaterThan(1);
+    expect(new Set(names).size, names.join(' / ')).toBe(names.length);
+  });
+
+  it('and the lens announces a tick by that name, not by the bare label', () => {
+    expect(lensSrc).toContain('contextLabel(f)');
+    expect(lensSrc).not.toMatch(/aria-label=\{`\$\{f\.label\} —/);
+  });
+});
+
+/**
+ * A "Manage" promoted into a COLUMN has no row, so the sentence saying
+ * what it grants has nowhere to print.  All thirteen have one written,
+ * and none of them was reachable — including the live map's "Reserved
+ * for map-level settings — nothing uses it yet", which is the whole
+ * reason that row is visible at all.  A tick promising a power it does
+ * not carry, with the disclaimer unreadable, is worse than no row.
+ */
+describe('a promoted Manage can still be read', () => {
+  it('every one of them has something to say', () => {
+    const promoted = tickable.filter((r) => r.label === 'Manage') as { description?: string }[];
+    for (const r of promoted) {
+      expect(r.description, (r as unknown as Row).key).toBeTruthy();
+    }
+  });
+
+  it('and the lens hands it to the reader on the cell', () => {
+    expect(lensSrc).toContain('const manageCell');
+    expect(lensSrc).toMatch(/f\.description \? <Tip label=\{f\.description\}>/);
+    // Both promotion sites go through it — the family row's Manage and
+    // a sub-feature's own.
+    expect(lensSrc).toContain('manageCell(fam.manage ?? null, closed)');
+    expect(lensSrc).toContain('manageCell(c.manage, closed, true)');
   });
 });
