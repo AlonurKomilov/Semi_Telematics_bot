@@ -62,12 +62,33 @@ def test_an_unchanged_number_carries_no_delta():
     assert "(" not in body, body
 
 
-def test_the_security_state_is_not_a_third_census_row():
-    """"38 monitored" printed under "75 users" reads as users. These are
-    accounts, and a state is a different statement from a count."""
+def test_every_row_is_the_same_shape():
+    """Three rows, three breakdowns, two values each. An earlier version
+    wrote the security row as a sentence — one row in three inventing
+    its own shape, which is what made the block read as a list of
+    sentences instead of a table."""
+    body = format_system_card(_census()).split("Operator console")[0]
+    rows = [l for l in body.split("\n") if "·" in l]
+    assert len(rows) == 3, f"expected three breakdown rows, got {rows}"
+    for r in rows:
+        assert r.count("·") == 1, f"a row with more than two values: {r!r}"
+
+
+def test_no_row_wraps_on_a_phone_in_the_resting_state():
+    """A wrap mid-phrase is what pushed `quarantined` off the inline
+    row. The resting card must not wrap at all."""
+    body = format_system_card(_census()).split("Operator console")[0]
+    for line in body.split("\n"):
+        assert len(line) <= 38, f"{len(line)} chars: {line!r}"
+
+
+def test_the_security_row_uses_the_project_vocabulary():
+    """`normal`/`monitored` are what the column and the console say.
+    Shortening them to fit would put a second name on one value."""
     msg = format_system_card(_census())
-    assert "accounts watched" in msg, "the security line must name its own noun"
-    assert "of 48" in msg, "a bare count says nothing about whether that is most of them"
+    assert "normal" in msg and "monitored" in msg
+    for invented in ("watched", "held", "safe", "ok"):
+        assert invented not in msg.lower(), invented
 
 
 def test_quarantined_is_silent_at_zero_and_shouts_otherwise():
@@ -87,12 +108,13 @@ def test_nothing_flagged_says_so_rather_than_showing_zeroes():
     assert "0 of" not in msg
 
 
-def test_normal_is_never_printed():
-    """It is the total minus the other two, it is the resting state, and
-    with it the security line measured 49 characters."""
-    msg = format_system_card(_census(normal=10))
-    assert "normal" not in msg
-    assert "10 normal" not in msg
+def test_quarantined_stays_off_the_inline_row():
+    """Two values inline is what makes the row parallel with the two
+    above it; a third pushes it to 45 characters and it wraps."""
+    msg = format_system_card(_census(quarantined=2))
+    rows = [l for l in msg.split("\n") if "monitored" in l]
+    assert len(rows) == 1
+    assert "quarantined" not in rows[0], "the third value got onto the inline row"
 
 
 def test_the_card_never_says_safe():

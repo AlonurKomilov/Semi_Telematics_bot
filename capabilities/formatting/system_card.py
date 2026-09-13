@@ -66,34 +66,41 @@ def format_system_card(
         f"  ·  {acc['test']} test{d(p_acc, 'test', acc['test'])}",
         f"  👥  <b>{usr['real']}</b> real{d(p_usr, 'real', usr['real'])}"
         f"  ·  {usr['test']} test{d(p_usr, 'test', usr['test'])}",
-        _security_line(sec, p_sec, acc["total"]),
+        _security_line(sec, p_sec),
         "",
         f"  Operator console: <code>{console_host}</code>",
     ]
     return "\n".join(lines)
 
 
-def _security_line(sec: dict, prev: dict, total_accounts: int) -> str:
-    """The security state — deliberately not a third census row.
+def _security_line(sec: dict, prev: dict) -> str:
+    """Accounts by security standing — the third row of the same table.
 
-    "38 monitored" printed under a line about users reads as users;
-    these are accounts, so the line names its own noun and carries the
-    total as an anchor: a bare 38 says nothing about whether that is
-    most of them or a handful.
+    It reads as a breakdown like the two above it, because it IS one: a
+    population split by an attribute, exactly as accounts are split into
+    real and test. An earlier version wrote it as a sentence ("38 of 48
+    accounts watched"), which made one row in three invent its own shape
+    — the very thing this card's audit said not to do.
 
-    `normal` never appears — it is the total minus the other two, and
-    the resting state. `quarantined` appears only when it is not zero:
-    printed as 0 on every boot it becomes something the eye learns to
-    skip, and the day it turns into 1 nothing about the line would
-    change. Left out, the line changes SHAPE the moment it matters.
+    TWO values inline, not three, because that is what makes it parallel:
+    the rows above show two each. All three in the project's own
+    vocabulary measure 45 characters and wrap mid-phrase on a phone,
+    and shortening `monitored`/`quarantined` to make them fit would put
+    a second name on a value the column and the console already name.
+
+    `quarantined` is the exception rather than a column: printed as 0 on
+    every boot it becomes something the eye learns to skip, and the day
+    it turns into 1 nothing about the line would change. On its own line
+    it cannot be missed.
     """
+    normal = sec.get("normal", 0)
     watched = sec.get("monitored", 0)
     held = sec.get("quarantined", 0)
     if not watched and not held:
         return "  🛡  nothing flagged"
 
-    line = (f"  🛡  {watched}{_delta(watched, prev.get('monitored'))}"
-            f" of {total_accounts} accounts watched")
+    line = (f"  🛡  {normal} normal{_delta(normal, prev.get('normal'))}"
+            f"  ·  {watched} monitored{_delta(watched, prev.get('monitored'))}")
     if held:
         line += f"\n  ⛔  <b>{held} quarantined</b>{_delta(held, prev.get('quarantined'))}"
     return line
