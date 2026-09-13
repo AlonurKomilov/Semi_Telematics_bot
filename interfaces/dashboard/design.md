@@ -1233,6 +1233,16 @@ a 10px default, which would put 10px chart-bar corners against 0px CSS.
 Measured in Chrome, not reasoned: `0px` gives `xl` = 4px, bare `0` gives
 0px. Guarded — every preset's value must carry a unit.
 
+**Seven steps, seven tokens.** `--radius` is the base; `--radius-sm`
+through `--radius-3xl` derive from it in `index.css`, and every
+`rounded-*` utility reads its own token (`tailwind.config.js` computes
+nothing). That is what lets a Corners ITEM move one end of the ramp —
+`mods/store/items/corners/soft-panels.css` rounds cards and dialogs and
+leaves buttons alone — instead of sliding all seven. `rounded-full` and
+`rounded-none` stay out of it: they are shapes, not degrees of softness.
+The numbers every step measures at every corner the app ships are pinned
+in `interfaces/dashboard/src/mods/theme/corners.test.ts`.
+
 **`--radius` rides NO size axis, and that is deliberate.** It is the
 second of exactly two exceptions in this design system — the first is the
 24px tap floor, which is a WCAG minimum in CSS pixels and cannot shrink.
