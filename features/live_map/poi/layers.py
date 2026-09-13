@@ -8,6 +8,27 @@ name it too (tests/test_poi_layers_agree.py holds those three together).
 from __future__ import annotations
 
 
+def point_to_feature(point: dict) -> dict:
+    """One POI point as the GeoJSON both frontends already draw.
+
+    THE ONE PLACE THAT SAYS WHAT A POI LOOKS LIKE ON THE WIRE.  There are
+    two sources now — the OSM mirror, and our own table once a layer has
+    been imported — and a map that drew one shape for a fresh layer and
+    another for a stored one would be a bug nobody could see until a
+    popup came up empty.  Pure dict-in, dict-out: no I/O, nothing that
+    can fail, which is why it belongs beside the layer definitions.
+    """
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [point["lng"], point["lat"]]},
+        "properties": {
+            "name": point.get("name") or "",
+            "osm_id": point.get("osm_id"),
+            **(point.get("props") or {}),
+        },
+    }
+
+
 # ── POI Overlay Layers ────────────────────────────────────────────────────────
 #
 # To ADD a new POI layer:

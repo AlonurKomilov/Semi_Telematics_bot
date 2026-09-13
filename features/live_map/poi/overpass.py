@@ -13,6 +13,8 @@ import re
 import aiohttp
 from fastapi import HTTPException
 
+from .layers import point_to_feature
+
 logger = logging.getLogger(__name__)
 
 
@@ -286,15 +288,7 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
         point = element_to_point(element)
         if point is None:
             continue
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [point["lng"], point["lat"]]},
-            "properties": {
-                "name": point["name"],
-                "osm_id": point["osm_id"],
-                **point["props"],
-            },
-        })
+        features.append(point_to_feature(point))
         if len(features) >= _MAX_POI_RESULTS:
             break
 

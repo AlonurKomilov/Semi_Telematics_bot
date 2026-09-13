@@ -26,7 +26,7 @@ from .custom import (
     _layer_to_dto,
     _serve_custom_layer,
 )
-from .layers import POI_OVERPASS_QUERIES
+from .layers import POI_OVERPASS_QUERIES, point_to_feature
 from .viewport import (
     _MAX_BBOX_AREA,
     _bbox_to_str,
@@ -156,6 +156,36 @@ async def map_pois(
 
     if poi_type not in POI_OVERPASS_QUERIES:
         return {"type": "FeatureCollection", "features": []}
+
+    # ── Our own table, once this layer has been imported ─────────────
+    #
+    # A truck stop does not move, so there was never a reason to ask a
+    # live query service for one on every pan.  Measured 2026-09-13: all
+    # three reachable Overpass mirrors refused a one-node query inside
+    # one hour, and a layer's whole answer hung on one of them replying
+    # in seconds.  It reads from here now — an indexed bbox query — and
+    # a mirror outage stops reaching the map at all.
+    #
+    # NOT CACHED, deliberately: the five-minute cache below exists
+    # because the call under it takes tens of seconds.  This one is
+    # milliseconds, and a cache would only add a second place for a
+    # wrong answer to survive.
+    #
+    # A layer that has NEVER imported falls through to the mirror, which
+    # is what it has always done.  That is the whole migration: nothing
+    # breaks before the first import, and the path below dies once every
+    # layer has had one.
+    tenant = await get_tenant_db(user["account_id"])
+    imported_at = await tenant.poi_layer_imported_at(poi_type)
+    if imported_at:
+        rows = await tenant.poi_points_in_bbox(poi_type, s, w, n, e)
+        return {
+            "type": "FeatureCollection",
+            "features": [point_to_feature(r) for r in rows],
+            # OUR date now, not the mirror's: the panels already show it,
+            # and what they will be showing is how old OUR copy is.
+            "source_as_of": imported_at,
+        }
 
     bbox_key = _round_bbox(bbox)
     cache_key = (poi_type, bbox_key)

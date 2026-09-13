@@ -490,6 +490,95 @@ class TestPinDrop:
 
 
 # ---------------------------------------------------------------------------
+# Served from our own table
+# ---------------------------------------------------------------------------
+
+class TestServedFromOurTable:
+    """A truck stop does not move, so the map stopped asking for one.
+
+    Measured 2026-09-13: all three reachable Overpass mirrors refused a
+    one-node query inside a single hour, and a built-in layer's whole
+    answer hung on one of them replying in seconds.  Once a layer has
+    been imported it is read from an indexed table instead, and the
+    mirror is not in the request at all — which is what the first test
+    here actually proves, by making the mirror raise.
+    """
+
+    async def test_an_imported_layer_is_served_without_touching_the_mirror(self, app_ctx):
+        db = app_ctx["db"]
+        await db.upsert_poi_points("fuel_station", [
+            {"osm_type": "node", "osm_id": 1, "lat": 41.85, "lng": -87.65,
+             "name": "Pilot", "props": {"amenity": "fuel", "brand": "Pilot"}},
+            {"osm_type": "node", "osm_id": 2, "lat": 34.05, "lng": -118.24,
+             "name": "Love's", "props": {"amenity": "fuel"}},
+        ], "2026-09-13T03:40:00Z")
+        await db.finish_poi_import("fuel_station", "2026-09-13T03:40:00Z", 2, ok=True)
+
+        async def _must_not_be_called(*_a, **_k):
+            raise AssertionError("the mirror was asked for an imported layer")
+
+        with patch("features.live_map.poi.overpass._fetch_overpass",
+                   new=_must_not_be_called):
+            async with _client(app_ctx["app"]) as c:
+                r = await c.get(
+                    "/api/map/pois?type=fuel_station&bbox=41.0,-88.0,42.0,-87.0",
+                    headers=_h(app_ctx["owner_a_token"]),
+                )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # Only what is in the viewport — the Los Angeles row stays out.
+        assert len(body["features"]) == 1, body
+        f = body["features"][0]
+        assert f["properties"]["name"] == "Pilot"
+        assert f["properties"]["brand"] == "Pilot"
+        assert f["geometry"]["coordinates"] == [-87.65, 41.85]
+        # And the freshness the panels show is OURS now, not a mirror's.
+        assert body["source_as_of"] == "2026-09-13T03:40:00Z"
+
+    async def test_a_layer_never_imported_still_asks_the_mirror(self, app_ctx):
+        """The whole migration in one test: nothing breaks before the
+        first import, and the old path is still there until every layer
+        has had one."""
+        asked = []
+
+        async def _fake(parts, bbox):
+            asked.append(bbox)
+            return []
+
+        with patch("features.live_map.poi.overpass._fetch_overpass", new=_fake):
+            async with _client(app_ctx["app"]) as c:
+                r = await c.get(
+                    "/api/map/pois?type=shower&bbox=41.0,-88.0,42.0,-87.0",
+                    headers=_h(app_ctx["owner_a_token"]),
+                )
+        assert r.status_code == 200, r.text
+        assert asked, "a layer with no import did not fall through to the mirror"
+
+    async def test_a_failed_import_does_not_switch_the_layer_over(self, app_ctx):
+        """`ok=False` leaves no date, and no date means the table is not
+        the source yet — otherwise a layer whose first import died would
+        be served from an empty table and read as "none in this view"."""
+        db = app_ctx["db"]
+        await db.finish_poi_import(
+            "rest_area", "2026-09-13T03:40:00Z", 0, ok=False, note="Overpass 504")
+
+        asked = []
+
+        async def _fake(parts, bbox):
+            asked.append(bbox)
+            return []
+
+        with patch("features.live_map.poi.overpass._fetch_overpass", new=_fake):
+            async with _client(app_ctx["app"]) as c:
+                r = await c.get(
+                    "/api/map/pois?type=rest_area&bbox=41.0,-88.0,42.0,-87.0",
+                    headers=_h(app_ctx["owner_a_token"]),
+                )
+        assert r.status_code == 200, r.text
+        assert asked, "an empty table was used as the source after a failed import"
+
+
+# ---------------------------------------------------------------------------
 # A source that did not answer
 # ---------------------------------------------------------------------------
 
