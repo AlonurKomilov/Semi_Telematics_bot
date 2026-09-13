@@ -90,8 +90,8 @@ is the enforced mirror of this section; `permMatrix.test.ts` and
 | Unit | Rule (checkable, not vibes) | Examples |
 |---|---|---|
 | **Feature** | own surface + lifecycle (its row = the front door; untagged row grants VIEW) | Vehicles, Live Map, Parts |
-| **Sub-feature** | own HOME — a folder with its own hub contributions (`report.py` / `ai_tool.py` / `alert.py` / `scoring_signal.py`) — nested under a parent family; rides the parent's router/service | Health, Faults, Fuel, Efficiency under `features/vehicles/<x>/` |
-| **Component** | flag-gated part of the parent's surface, NO home of its own | POI Layers (of Live Map), Driver roster (of Drivers), Fuel Costs · Cost per Mile (of Costs) |
+| **Sub-feature** | own HOME — a folder with its own hub contributions (`report.py` / `ai_tool.py` / `alert.py` / `scoring_signal.py`) **or its own router** — nested under a parent family, with no nav entry of its own | Health, Faults, Fuel, Efficiency under `features/vehicles/<x>/`; POI Layers under `features/live_map/poi/` |
+| **Component** | flag-gated part of the parent's surface, NO home of its own | Driver roster (of Drivers), Fuel Costs · Cost per Mile (of Costs) |
 | **Feature action** | a do/write verb on one feature.  A generic one renders as the parent's **Manage column**, not a row; only a SPECIFIC verb no column can express stays a row | Manage (Vehicles · Loads · Carrier Directory) → columns; **Hire Applicant** → the one action row |
 | **Cross-feature** | a do-verb that spans features, owned by none.  Never nested, never per-feature.  NOT called "capability" — that word is the four hubs' | the config family (`can_manage_config_role` / `_all`, capabilities/config/docs/ARCHITECTURE.md) |
 
@@ -168,7 +168,7 @@ department, so it was always surfaced anyway.
 | **Vehicles** | list · detail sections: health, faults, location, timeline, usage, inspections |
 | **Inventory** | per-truck item list · attention alerts · immutable event trail · AI/CSV import — left Vehicles on 2026-09-08 for its own `/inventory` home and its own `can_view_inventory` / `can_manage_inventory`; Vehicles still *consumes* it (detail-section card + fleet-list attention badge), it no longer owns it |
 | **Drivers** | profiles · documents (+ Own Documents → Personal) · **Driver roster** (component: invite, assign trucks, TMS links) · expiry |
-| **Live Map** | map · overlays · **POI Layers** (component — the Live Map grant shows them, its own flag edits them) |
+| **Live Map** | map · overlays · **POI Layers** (sub-feature since 2026-09-13 — own home `features/live_map/poi/`, own router, own view verb `can_view_poi` seeded beside every role that carries the map; `can_manage_poi_layers` authors the account's own.  No nav entry: a POI layer is only ever seen ON the map) |
 | **Geofences** | zones CRUD · entry/exit alert contribution |
 | **Scorecards** | scoreboard (viewer) · **Scorecard Rules** (config component — gated by the config family's `can_manage_config_all`, capabilities/config/docs/ARCHITECTURE.md) · scoring engine + signals (backend) · drop-alert contribution |
 

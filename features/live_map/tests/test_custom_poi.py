@@ -131,6 +131,49 @@ class TestCrud:
             assert patched["label"] == "Renamed"
             assert patched["default_on"] is True
 
+    async def test_patch_refines_an_overpass_layers_query(self, app_ctx):
+        """The only PATCH path that reaches the query validator.
+
+        Every other test that sends an `overpass_query` aims it at a CSV
+        layer, which is refused at 422 BEFORE the validator runs — so the
+        happy path was unexercised.  A call broken on this line shipped
+        green once already: splitting pois.py gave the route a module
+        named `overpass` to reach the client through, and the local
+        variable of the same name hid it.  Python only says so here.
+        """
+        async with _client(app_ctx["app"]) as c:
+            r = await c.post(
+                "/api/map/custom-layers",
+                headers=_h(app_ctx["owner_a_token"]),
+                json={
+                    "label":          "Truck Washes",
+                    "color":          "#7c3aed",
+                    "icon":           "🚿",
+                    "source_type":    "overpass",
+                    "overpass_query": 'node["amenity"="car_wash"]["hgv"="yes"]',
+                    "default_on":     False,
+                },
+            )
+            lid = r.json()["id"]
+
+            refined = 'node["amenity"="car_wash"]["hgv"="designated"]'
+            r2 = await c.patch(
+                f"/api/map/custom-layers/{lid}",
+                headers=_h(app_ctx["owner_a_token"]),
+                json={"overpass_query": refined},
+            )
+            assert r2.status_code == 200, r2.text
+            assert r2.json()["overpass_query"] == refined
+
+            # And the validator is still in that path: a query the
+            # whitelist refuses must not reach storage.
+            r3 = await c.patch(
+                f"/api/map/custom-layers/{lid}",
+                headers=_h(app_ctx["owner_a_token"]),
+                json={"overpass_query": 'out; node["amenity"="fuel"]'},
+            )
+            assert r3.status_code == 422, r3.text
+
     async def test_patch_overpass_on_csv_layer_rejected(self, app_ctx):
         async with _client(app_ctx["app"]) as c:
             r = await c.post(
@@ -406,7 +449,7 @@ class TestPinDrop:
             ]
         }
         with patch(
-            "features.live_map.pois._get_http_session",
+            "features.live_map.poi.overpass._get_http_session",
             new=AsyncMock(return_value=_mk_overpass_session(overpass_data)),
         ):
             async with _client(app_ctx["app"]) as c:
@@ -423,7 +466,7 @@ class TestPinDrop:
     async def test_pin_drop_no_brand_returns_404(self, app_ctx):
         # Empty Overpass response → 404 with hint about Geofences.
         with patch(
-            "features.live_map.pois._get_http_session",
+            "features.live_map.poi.overpass._get_http_session",
             new=AsyncMock(return_value=_mk_overpass_session({"elements": []})),
         ):
             async with _client(app_ctx["app"]) as c:
@@ -476,7 +519,7 @@ class TestUsaClipping:
     async def test_clip_helper_intersects_overlapping_bbox(self):
         """Sanity-check the helper directly so we don't depend on Overpass
         for the intersection-math assertion."""
-        from features.live_map.pois import _clip_bbox_to_usa
+        from features.live_map.poi.viewport import _clip_bbox_to_usa
         # Border viewport (Detroit↔Windsor): bbox extends north into Canada.
         s, w, n, e = 41.5, -83.5, 43.5, -82.0
         clipped = _clip_bbox_to_usa(s, w, n, e)

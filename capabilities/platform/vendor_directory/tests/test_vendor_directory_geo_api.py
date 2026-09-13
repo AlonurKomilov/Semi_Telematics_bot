@@ -205,8 +205,8 @@ async def test_map_pois_vendor_directory_layer(geo_app):
 
     # Bust the shared POI cache so this test never sees another test's
     # cached empty FeatureCollection for the same rounded bbox.
-    import features.live_map.pois as pois_mod
-    pois_mod._poi_cache.clear()
+    import features.live_map.poi.viewport as poi_viewport
+    poi_viewport._poi_cache.clear()
 
     # A regular (non-operator) owner reads the layer through the map API.
     r = await s["client"].get(
@@ -237,7 +237,7 @@ async def test_map_pois_vendor_directory_layer(geo_app):
         headers=_hdr(s["op_token"]),
     )
     assert r.status_code == 200
-    pois_mod._poi_cache.clear()
+    poi_viewport._poi_cache.clear()
     r = await s["client"].get(
         "/api/map/pois",
         params={"type": "vendor_directory", "bbox": "41.0,-88.0,42.0,-87.0"},

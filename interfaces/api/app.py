@@ -55,7 +55,7 @@ from features.inventory import router as inventory_routes
 from features.cameras import router as cameras_routes
 from features.live_map import router as maps
 from features.live_map import config as location_config
-from features.live_map import pois
+from features.live_map.poi import router as poi_routes
 from features.geofencing import router as geofences
 from features.parking import router as parking_routes
 from features.routes import router as dispatch_routes
@@ -577,7 +577,7 @@ def create_api() -> FastAPI:
         # is the setting, /map/engine is the drawing read.
         app.include_router(location_config.router, prefix=prefix)
         app.include_router(maps.router, prefix=prefix)
-        app.include_router(pois.router, prefix=prefix)
+        app.include_router(poi_routes.router, prefix=prefix)
         app.include_router(geofences.router, prefix=prefix)
         app.include_router(alerts.router, prefix=prefix)
         app.include_router(alerts.user_router, prefix=prefix)

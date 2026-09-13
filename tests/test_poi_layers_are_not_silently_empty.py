@@ -32,12 +32,13 @@ from __future__ import annotations
 import inspect
 import re
 
-from features.live_map import pois
+from features.live_map.poi import overpass
+from features.live_map.poi import router as poi_routes
 
 
 def _built_query() -> str:
     """The Overpass query text this build would send, without sending it."""
-    src = inspect.getsource(pois._fetch_overpass)
+    src = inspect.getsource(overpass._fetch_overpass)
     # The two lines that assemble it, read rather than executed — the
     # function is async and talks to the network.
     body = src.split('"""', 2)[-1]
@@ -55,14 +56,14 @@ def test_the_bbox_is_the_only_geographic_bound():
 
 def test_the_bbox_is_still_clipped_to_the_us_before_the_query():
     """The area filter's PURPOSE has to survive its removal."""
-    src = inspect.getsource(pois.map_pois)
+    src = inspect.getsource(poi_routes.map_pois)
     assert "_clip_bbox_to_usa" in src, (
         "nothing bounds the query to the US any more — the area filter was "
         "removed because this clip already does it")
 
 
 def test_a_source_that_did_not_answer_is_not_an_empty_area():
-    src = inspect.getsource(pois.map_pois)
+    src = inspect.getsource(poi_routes.map_pois)
     # The old shape, which must not come back.
     assert not re.search(r"except Exception:\s*\n\s*features = \[\]", src), (
         "a failed fetch is being turned into an empty result again")
@@ -85,14 +86,14 @@ def test_a_200_that_admits_defeat_is_not_an_answer():
     check costs one string comparison, so it is worth having either
     way — but nobody should read it as a measurement.
     """
-    assert pois._overpass_gave_up(
+    assert overpass._overpass_gave_up(
         {"remark": 'runtime error: Query timed out in "query" at line 3 after 25 seconds.'})
-    assert pois._overpass_gave_up(
+    assert overpass._overpass_gave_up(
         {"remark": 'runtime error: Query run out of memory in "recurse" at line 2.'})
     # A plain empty answer is still a legitimate empty answer.
-    assert not pois._overpass_gave_up({"elements": []})
-    assert not pois._overpass_gave_up({})
-    assert not pois._overpass_gave_up({"remark": None})
+    assert not overpass._overpass_gave_up({"elements": []})
+    assert not overpass._overpass_gave_up({})
+    assert not overpass._overpass_gave_up({"remark": None})
 
 
 def test_a_refusal_is_retried_before_it_is_believed():
@@ -100,8 +101,8 @@ def test_a_refusal_is_retried_before_it_is_believed():
     the heaviest query took 7.8s, 11.9s and 16.8s, and a fourth never
     returned inside ninety seconds.  A second pass converts most of
     those into the answer that was there all along."""
-    assert pois._OVERPASS_ATTEMPTS >= 2, "one try is not a policy for a flaky mirror"
-    src = inspect.getsource(pois._fetch_overpass)
+    assert overpass._OVERPASS_ATTEMPTS >= 2, "one try is not a policy for a flaky mirror"
+    src = inspect.getsource(overpass._fetch_overpass)
     assert "_overpass_gave_up" in src, "a soft refusal must be caught where the reply is read"
     assert "continue" in src, "a refusal must fall through to the next attempt"
 
@@ -109,7 +110,7 @@ def test_a_refusal_is_retried_before_it_is_believed():
 def test_the_server_gives_up_before_the_browser_does():
     """A server still trying after its caller has left is burning a
     shared mirror for nobody.  Both clients wait 90 seconds."""
-    worst = pois._OVERPASS_ATTEMPT_S * pois._OVERPASS_ATTEMPTS + pois._OVERPASS_RETRY_PAUSE_S
+    worst = overpass._OVERPASS_ATTEMPT_S * overpass._OVERPASS_ATTEMPTS + overpass._OVERPASS_RETRY_PAUSE_S
     assert worst < 90, f"worst-case {worst}s outlasts the 90s the browser waits"
 
 
@@ -121,7 +122,7 @@ def test_a_failure_is_never_cached():
     place (the vendor directory reads the database and caches its own
     answer), so the first cache write in the source is not this one.
     """
-    src = inspect.getsource(pois.map_pois)
+    src = inspect.getsource(poi_routes.map_pois)
     branch = src[src.index("query_parts = POI_OVERPASS_QUERIES"):]
     raise_at = branch.index("status_code=502")
     cache_at = branch.index("_poi_cache[cache_key] = features")

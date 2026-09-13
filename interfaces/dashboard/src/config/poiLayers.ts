@@ -10,7 +10,7 @@
  *
  * To ADD a new layer:
  *   1. Add one entry to POI_LAYERS below.
- *   2. Add a matching key to POI_OVERPASS_QUERIES in features/live_map/pois.py
+ *   2. Add a matching key to POI_OVERPASS_QUERIES in features/live_map/poi/layers.py
  *      (or, for a DB-backed layer, a source branch in map_pois there).
  *   The hook and the panel pick it up automatically.
  *   If the layer's feature properties are NOT OSM tags, also give it a
@@ -359,7 +359,7 @@ export const POI_LAYERS: PoiLayerDef[] = [
   {
     // Platform-curated repair-shop directory (vendor-parts master data,
     // Phase C2).  DB-backed: served by the vendor_directory branch in
-    // features/live_map/pois.py, NOT Overpass.  Only operator-geocoded
+    // features/live_map/poi/router.py, NOT Overpass.  Only operator-geocoded
     // ACTIVE entries appear; properties are identity-only.
     id: 'vendor_directory',
     label: 'Repair Shops',
