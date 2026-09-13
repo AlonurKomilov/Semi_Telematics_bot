@@ -1,0 +1,34 @@
+/* Night Haul — the road under headlights: light low and wide, nothing
+   above the horizon. */
+@media screen {
+  /* The ground carries its own colour and becomes a stacking context,
+     so the wash sits UNDER the panes and OVER the paint — `z-index: -1`
+     on the pseudo-element would otherwise put it behind the ground. */
+  :root[data-wallpaper="night-haul"] .chrome-ground,
+  :root[data-wallpaper-page="night-haul"] .page-ground {
+    background-color: var(--ground);
+    position: relative;
+    isolation: isolate;
+  }
+  /* Two gradients rather than one: the near band is what the lamps
+     reach, the far one is how far they carry. Both stop well short of
+     the top, because the thing that makes this read as night is the
+     UNLIT half — a wash across the whole surface would just be a tint.
+     Held low on purpose: text sits in the upper two thirds of a pane,
+     and the strongest stop is the one furthest from it. */
+  :root[data-wallpaper="night-haul"] .chrome-ground::before,
+  :root[data-wallpaper-page="night-haul"] .page-ground::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to top,
+        color-mix(in oklab, var(--primary) 15%, transparent) 0%,
+        transparent 38%),
+      linear-gradient(to top,
+        color-mix(in oklab, var(--primary) 7%, transparent) 0%,
+        transparent 72%);
+  }
+}

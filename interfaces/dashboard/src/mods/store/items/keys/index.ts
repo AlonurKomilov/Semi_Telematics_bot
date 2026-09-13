@@ -9,8 +9,9 @@
 import type { KeyPack } from '../../../sound/keys';
 import { click } from './click';
 import { soft } from './soft';
+import { nightHaul } from './night-haul';
 
-export const KEY_PACKS: readonly KeyPack[] = [click, soft];
+export const KEY_PACKS: readonly KeyPack[] = [click, soft, nightHaul];
 
 export const keyPackById = (id: string): KeyPack | undefined =>
   KEY_PACKS.find((p) => p.id === id);

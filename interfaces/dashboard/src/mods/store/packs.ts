@@ -53,6 +53,17 @@ const THEMED: readonly Pack[] = [
     description: 'Ready for a moving truck — bigger targets, a cue that cuts through road noise' },
   { id: 'wall', label: 'Wall', publisher: PUBLISHER, items: { mods: ['wall'] },
     description: 'Ready for a wall display — read from across the room' },
+  /**
+   * The first pack that brings its OWN items: a pattern, a cue set and
+   * a keyboard, all called Night Haul on their shelves, plus the preset
+   * that wears them together. It borrows the accent — the chart ramp
+   * has no hue left that clears the tones under simulated colour
+   * blindness — and a pack does not have to ship an item on an axis to
+   * prepare that axis.
+   */
+  { id: 'night-haul', label: 'Night Haul', publisher: PUBLISHER,
+    description: 'For the end of a long shift — low light, low sound, nothing in a hurry',
+    items: { wallpaper: ['night-haul'], sound: ['night-haul'], keys: ['night-haul'], mods: ['night-haul'] } },
 ];
 
 const key = (axis: string, id: string) => `${axis}/${id}`;

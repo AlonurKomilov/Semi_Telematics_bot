@@ -18,8 +18,9 @@
 import type { SoundPack } from '../../../sound/engine';
 import { chime } from './chime';
 import { blip } from './blip';
+import { nightHaul } from './night-haul';
 
-export const SOUND_PACKS: readonly SoundPack[] = [chime, blip];
+export const SOUND_PACKS: readonly SoundPack[] = [chime, blip, nightHaul];
 
 export const soundPackById = (id: string): SoundPack | undefined =>
   SOUND_PACKS.find((p) => p.id === id);

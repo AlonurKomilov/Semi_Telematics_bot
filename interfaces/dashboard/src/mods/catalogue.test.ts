@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
-import {
+import { MOD_THEME_FIELDS,
   MOD_ICONS,
   MOD_FIELD_SECTION, modFootprint,
   PACK_TOKENS, modMatchesAxes, type ModAxes,
@@ -196,9 +196,20 @@ describe('mods are combinations, not new colours', () => {
   it('declares at least one axis a colour chip does not', () => {
     // Otherwise it is a second way to press the same button, in a section
     // that promises something more.
-    for (const m of MODS)
-      expect(m.radius !== undefined || m.size !== undefined,
-        `mod "${m.id}" sets only an accent — that is a colour, not a look`).toBe(true);
+    //
+    // Counted over what a preset CAN carry, not over a pair of fields
+    // named here. This asked for `radius` or `size` while those were the
+    // only other axes a preset had; a preset that brought a pattern, a
+    // cue set and calm motion — and left the corners alone — read as
+    // "only an accent" to it and was refused. The rule was never about
+    // geometry, it is about being more than one decision.
+    const OTHER = MOD_THEME_FIELDS.filter((f) => f !== 'accent');
+    expect(OTHER.length, 'nothing to be more than a colour WITH').toBeGreaterThan(3);
+    for (const m of MODS) {
+      const also = OTHER.filter((f) => m[f] !== undefined);
+      expect(also.length, `mod "${m.id}" sets only an accent — that is a colour, not a look`)
+        .toBeGreaterThan(0);
+    }
   });
 
   it('stays inside what the panel controls can express', () => {
