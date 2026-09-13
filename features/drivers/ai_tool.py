@@ -9,7 +9,9 @@ remains blocked for scoped users by the gate.
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from capabilities.ai.tools.scope import filter_to_scope, scope_vehicle_set
+from capabilities.ai.tools.scope import (
+    filter_to_scope, scope_from_args, scope_vehicle_set,
+)
 from features.vehicles.warehouse.service import get_driver_efficiency as _svc_drv_eff
 
 
@@ -187,6 +189,37 @@ def _scope_trucks(tool_args: dict) -> list[str] | None:
     return None if allowed is None else sorted(allowed)
 
 
+def _drivers_in_scope(rows: list[dict], tool_args: dict) -> list[dict]:
+    """Narrow driver rows to the caller's own trucks, by identity.
+
+    The service filters by NAME (``vehicle_nums`` above), which cannot
+    tell two companies' same-numbered trucks apart — so a driver who
+    only ever drove the OTHER company's "103" came back inside a scope
+    that names "103". This runs after and removes them.
+
+    A driver row is not a vehicle row: it carries a LIST of trucks under
+    ``_vehicle_summaries``, and a driver belongs to the caller when ANY
+    of those trucks does. The scope is built ONCE for the whole list.
+
+    Deliberately a NARROWING pass over the service's own result rather
+    than a change to what the service is asked for: it can only remove
+    rows, never add them, which is the safe half of this fix. Pushing
+    identity down into the KPI service is the other half and waits for
+    the scorecard work that will reshape these rows anyway.
+    """
+    scope = scope_from_args(tool_args)
+    if scope is None:
+        return rows
+    kept = []
+    for row in rows:
+        for vs in row.get("_vehicle_summaries") or []:
+            veh = (vs or {}).get("vehicle") or {}
+            if scope.allows(external_id=veh.get("id"), name=veh.get("name")):
+                kept.append(row)
+                break
+    return kept
+
+
 @register_tool({
     "name": "get_driver_efficiency",
     "description": (
@@ -209,7 +242,9 @@ async def get_driver_efficiency(tool_args: dict, samsara_client,
     days = tool_args.get("days", 7)
     if account_id is None:
         return {"error": "This tool requires account context."}
-    drivers = await _svc_drv_eff(account_id, days=days, vehicle_nums=_scope_trucks(tool_args))
+    drivers = await _svc_drv_eff(
+        account_id, days=days, vehicle_nums=_scope_trucks(tool_args))
+    drivers = _drivers_in_scope(drivers, tool_args)
     return {
         "period_days": days,
         "drivers": [
@@ -260,7 +295,9 @@ async def get_driver_scorecard(tool_args: dict, samsara_client,
     # whole account: a driver scoped to one truck who left the name out
     # got every colleague's scorecard.  With the scope applied, "all"
     # means all drivers on the trucks this caller can see.
-    drivers = await _svc_drv_eff(account_id, days=days, vehicle_nums=_scope_trucks(tool_args))
+    drivers = await _svc_drv_eff(
+        account_id, days=days, vehicle_nums=_scope_trucks(tool_args))
+    drivers = _drivers_in_scope(drivers, tool_args)
     if driver_filter:
         drivers = [
             d for d in drivers

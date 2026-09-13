@@ -66,6 +66,18 @@ def _scope_of(tool_args: dict, allowed: set[str]):
     return VehicleScope.of(*out)
 
 
+def scope_from_args(tool_args: dict):
+    """The caller's scope as a ``VehicleScope``, or ``None`` = unrestricted.
+
+    For callers whose rows are not flat vehicle rows — a driver row
+    carries a LIST of trucks, and the driver is in scope when any one of
+    them is — so neither :func:`filter_to_scope` nor a per-row
+    :func:`row_in_scope` fits. Build it once here and ask it directly.
+    """
+    allowed = scope_vehicle_set(tool_args)
+    return None if allowed is None else _scope_of(tool_args, allowed)
+
+
 def row_in_scope(row: dict, tool_args: dict, key: str = "vehicle_name",
                  external_key: str = "vehicle_id") -> bool:
     """Whether one row belongs to the caller's scope, by the strongest
