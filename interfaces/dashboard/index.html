@@ -57,7 +57,7 @@
         var pick = function (v, allowed, fallback) {
           return allowed.indexOf(v) === -1 ? fallback : v;
         };
-        var radius = pick(t.radius, ['sharp', 'rounded', 'pill'], 'rounded');
+        var radius = pick(t.radius, ['sharp', 'rounded', 'pill', 'soft-panels'], 'rounded');
         var material = pick(t.material, ['solid', 'glass'], 'solid');
         var motion = pick(t.motion, ['calm', 'default', 'snappy'], 'default');
         // The list is restated here rather than imported, like every

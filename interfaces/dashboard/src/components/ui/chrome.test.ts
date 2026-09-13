@@ -881,7 +881,7 @@ describe('UI chrome', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('keeps the three Corners presets wired to the token', () => {
+  it('keeps every Corners item wired to the token', () => {
     // The first test in this repo to read a stylesheet. Until it existed,
     // a fourth preset could ship as a silent no-op — the picker would
     // offer it, the attribute would land on <html>, and no rule would
@@ -911,9 +911,13 @@ describe('UI chrome', () => {
     // ':root' carries the middle preset — "rounded" IS the absence of an
     // override, which is why it has no file of its own.
     expect(/:root[^}]*--radius:\s*[\d.]+rem/.test(css), ':root must define --radius').toBe(true);
+    // Either kind of override counts: `--radius` slides the whole ramp
+    // (Sharp, Pill) and `--radius-<step>` changes its shape (Soft
+    // panels). What does NOT count is a corner that stamps an attribute
+    // and sets nothing.
     const missing = declared
       .filter((r) => r !== 'rounded')
-      .filter((r) => !new RegExp(`\\[data-radius="${r}"\\][^}]*--radius:`).test(css));
+      .filter((r) => !new RegExp(`\\[data-radius="${r}"\\][^}]*--radius(?:-[\\w-]+)?:`).test(css));
     expect(missing, 'a corner with no --radius override does nothing at all').toEqual([]);
 
     // EVERY value carries a unit, and that is not pedantry. `0` and `0px`

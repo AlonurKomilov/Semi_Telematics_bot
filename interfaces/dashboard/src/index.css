@@ -23,6 +23,7 @@
 @import './mods/store/items/material/glass.css';
 @import './mods/store/items/corners/sharp.css';
 @import './mods/store/items/corners/pill.css';
+@import './mods/store/items/corners/soft-panels.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

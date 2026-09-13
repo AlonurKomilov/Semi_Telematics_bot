@@ -1,0 +1,14 @@
+/* Soft panels — the big surfaces round, the controls untouched.
+   The first corner item that moves ONE end of the ramp instead of
+   sliding all of it, which is the whole reason the steps became
+   separate tokens.
+   WHICH end, measured rather than chosen: `xl` and up are reached only
+   by cards, dialogs and sheets, while `sm`/`md` belong to buttons,
+   inputs and chips — and `lg` is the workhorse BOTH use, so it stays
+   where it is. Moving it would round the buttons too and the item would
+   be Pill with extra steps. */
+  [data-radius="soft-panels"] {
+    --radius-xl: calc(var(--radius) + 10px);
+    --radius-2xl: calc(var(--radius) + 16px);
+    --radius-3xl: calc(var(--radius) + 24px);
+  }

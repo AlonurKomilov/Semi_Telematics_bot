@@ -12,6 +12,8 @@ export const CORNERS: readonly CornerPack[] = [
     description: 'The corner this app was drawn with — soft, not round' },
   { id: 'sharp', label: 'Sharp',
     description: 'Square edges, nothing softened — drawings and dense tables read flatter' },
+  { id: 'soft-panels', label: 'Soft panels',
+    description: 'Cards, dialogs and sheets round; buttons and fields exactly as they were' },
   { id: 'pill', label: 'Pill',
     description: 'Fully rounded — controls read as capsules, at arm\'s length' },
 ];
