@@ -317,3 +317,75 @@ def test_the_job_is_on_the_scheduler_and_in_the_console_catalog():
     assert 'id="billing_quantity_sync"' in src
     assert '"billing_quantity_sync":' in src, "operator console catalog entry"
     assert "run_billing_quantity_sync" in src
+
+
+# ── the extras line that did not exist yet ────────────────────────
+
+@pytest.mark.asyncio
+async def test_the_sync_opens_an_extras_line_the_checkout_never_created(pg_db, monkeypatch):
+    """An account that checked out with nothing above its plan has no
+    extras line at all — Stripe refuses one of quantity 0. The first
+    truck it gains past the included count has to CREATE that line, or
+    the extra never reaches an invoice."""
+    from capabilities.platform.billing.stripe_client import StripeBillingProvider
+    db = pg_db
+    monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
+    acct = await db.create_account("GrewLaterCo")
+    await db.get_or_create_subscription(acct.id, tier="starter")     # 10 included
+    await db.update_subscription(
+        acct.id, provider="stripe", provider_subscription_id="sub_X",
+        provider_extra_item_id="",                                   # no extras line at all
+    )
+    for i in range(12):                                              # → 2 extras now
+        await _truck(db, acct.id, f"G{i}")
+
+    created: dict = {}
+
+    class _FakeStripe:
+        class SubscriptionItem:
+            @staticmethod
+            def create(**kw):
+                if int(kw.get("quantity", 0)) < 1:
+                    raise ValueError("This value must be greater than or equal to 1.")
+                created.update(kw)
+                return {"id": "si_new"}
+
+            @staticmethod
+            def retrieve(_id):
+                raise AssertionError("there is no item to retrieve yet")
+    monkeypatch.setattr(
+        "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe)
+
+    r = await StripeBillingProvider().sync_billing_quantity(acct.id, db)
+    assert r["skipped"] is None and (r["before"], r["after"]) == (0, 2)
+    assert created["quantity"] == 2 and created["subscription"] == "sub_X"
+    sub = await db.get_subscription(acct.id)
+    assert sub["provider_extra_item_id"] == "si_new"
+    assert sub["billed_quantity"] == 2
+
+
+@pytest.mark.asyncio
+async def test_no_extras_line_is_opened_for_an_account_that_owes_none(pg_db, monkeypatch):
+    """Under the included count there is nothing to create — and Stripe
+    would refuse the quantity 0 line anyway."""
+    from capabilities.platform.billing.stripe_client import StripeBillingProvider
+    db = pg_db
+    monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
+    acct = await db.create_account("StillSmallCo")
+    await db.get_or_create_subscription(acct.id, tier="starter")
+    await db.update_subscription(
+        acct.id, provider="stripe", provider_subscription_id="sub_X",
+        provider_extra_item_id="")
+    for i in range(4):
+        await _truck(db, acct.id, f"T{i}")
+
+    class _FakeStripe:
+        class SubscriptionItem:
+            @staticmethod
+            def create(**kw):
+                raise AssertionError("nothing should be created")
+    monkeypatch.setattr(
+        "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe)
+
+    r = await StripeBillingProvider().sync_billing_quantity(acct.id, db)
+    assert r["skipped"] == "noop" and r["after"] == 0

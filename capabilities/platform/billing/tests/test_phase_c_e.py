@@ -922,43 +922,94 @@ class TestActiveVehicleBilling:
         assert "100% Special Discount" in labels
 
 
+
+def _fake_stripe_like_the_real_one(captured: dict):
+    """A Stripe stand-in that refuses what Stripe refuses.
+
+    Specifically: a line item of quantity 0. The old fake accepted it,
+    so the suite was green while every real checkout returned 500. A
+    fake that is more permissive than the thing it stands for is not a
+    test double, it is a blindfold.
+    """
+    class _Customer:
+        @staticmethod
+        def create(**kw): return {"id": "cus_new"}
+
+    class _Session:
+        @staticmethod
+        def create(**kw):
+            for item in kw["line_items"]:
+                if int(item.get("quantity", 0)) < 1:
+                    raise ValueError(
+                        "This value must be greater than or equal to 1.")
+            captured["line_items"] = kw["line_items"]
+            return {"url": "https://stripe/x", "id": "cs_test"}
+
+    class _Checkout:
+        Session = _Session
+
+    class _Stripe:
+        Customer = _Customer
+        checkout = _Checkout
+
+    return _Stripe
+
+
 class TestStripeTwoLineSubscription:
     """Checkout uses both line items; sync_billing_quantity patches extras."""
 
     @pytest.mark.asyncio
-    async def test_checkout_attaches_extras_line_item(self, pg_db, monkeypatch):
+    async def test_checkout_sends_the_real_extras_count(self, pg_db, monkeypatch):
+        """The extras line carries the trucks the account actually has
+        above its plan, because Stripe refuses a line of quantity 0 —
+        "This value must be greater than or equal to 1". This test used
+        to assert the zero, and its fake accepted one, which is how
+        every real checkout came to answer 500 (2026-09-12)."""
         from capabilities.platform.billing.stripe_client import StripeBillingProvider
         monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter_test")
         monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
-        # Capture the line_items the provider sends to Stripe
         captured: dict = {}
-        class _FakeCustomer:
-            id = "cus_new"
-            @staticmethod
-            def create(**kw): return {"id": "cus_new"}
-        class _FakeCheckout:
-            class Session:
-                @staticmethod
-                def create(**kw):
-                    captured["line_items"] = kw["line_items"]
-                    return {"url": "https://stripe/x", "id": "cs_test"}
-        class _FakeStripe:
-            Customer = _FakeCustomer
-            checkout = _FakeCheckout
         monkeypatch.setattr(
-            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe",
+            lambda: _fake_stripe_like_the_real_one(captured),
         )
         db = pg_db
         acct = await db.create_account("CheckoutCo")
-        await db.get_or_create_subscription(acct.id)
+        await db.get_or_create_subscription(acct.id, tier="starter")   # 10 included
+        for i in range(13):                                            # → 3 extras
+            await db.add_vehicle(acct.id, unit_number=f"C{i}")
+
         result = await StripeBillingProvider().create_checkout_session(
             acct.id, db, "starter", "ok", "cancel",
         )
         assert result["session_id"] == "cs_test"
         assert captured["line_items"] == [
             {"price": "price_starter_test", "quantity": 1},
-            {"price": "price_extras_test",  "quantity": 0},
+            {"price": "price_extras_test",  "quantity": 3},
         ]
+
+    @pytest.mark.asyncio
+    async def test_checkout_omits_the_extras_line_when_there_are_none(self, pg_db, monkeypatch):
+        """Under the included count there is nothing to bill, so no extras
+        line goes out at all — quantity 0 is not an option."""
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
+        monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter_test")
+        monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
+        captured: dict = {}
+        monkeypatch.setattr(
+            "capabilities.platform.billing.stripe_client._stripe",
+            lambda: _fake_stripe_like_the_real_one(captured),
+        )
+        db = pg_db
+        acct = await db.create_account("SmallCheckoutCo")
+        await db.get_or_create_subscription(acct.id, tier="starter")
+        for i in range(4):
+            await db.add_vehicle(acct.id, unit_number=f"S{i}")
+
+        await StripeBillingProvider().create_checkout_session(
+            acct.id, db, "starter", "ok", "cancel",
+        )
+        assert captured["line_items"] == [{"price": "price_starter_test", "quantity": 1}]
 
     @pytest.mark.asyncio
     async def test_checkout_single_line_when_extras_unset(self, pg_db, monkeypatch):

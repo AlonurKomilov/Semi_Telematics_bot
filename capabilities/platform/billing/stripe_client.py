@@ -169,15 +169,33 @@ class StripeBillingProvider:
             )
 
         # Two-line subscription: base tier (fixed quantity 1) + extras
-        # (variable quantity, starts at 0).  The extras quantity is
-        # nudged later by ``sync_billing_quantity`` once we know the
-        # active-vehicle count.  When STRIPE_PRICE_EXTRA_VEHICLE isn't
-        # configured we fall back to single-line so older deploys keep
-        # working — the dashboard hides the extras footer in that case.
+        # (one per truck above the plan's included count).  When
+        # STRIPE_PRICE_EXTRA_VEHICLE isn't configured we fall back to
+        # single-line so older deploys keep working — the dashboard hides
+        # the extras footer in that case.
+        #
+        # The quantity is the account's REAL extras count, read now.
+        # This line used to go out as quantity 0, to be nudged later by
+        # ``sync_billing_quantity`` — and Stripe refuses that outright
+        # ("This value must be greater than or equal to 1"), so every
+        # real checkout answered 500.  The fakes accepted it, which is
+        # why it shipped.  An account with no extras yet sends no extras
+        # line at all, and the sync opens one when it first needs it.
         extras_price_id = _extra_vehicle_price_id()
         line_items: list[dict] = [{"price": base_price_id, "quantity": 1}]
         if extras_price_id:
-            line_items.append({"price": extras_price_id, "quantity": 0})
+            try:
+                extras_now = int((await db.compute_billing(account_id))["extras"])
+            except Exception:
+                # A count we cannot read must not block a purchase: the
+                # subscription goes out with its base line and the daily
+                # sync opens the extras line on its next pass.
+                logger.exception(
+                    "checkout: could not count extras for account=%s — "
+                    "sending the base line only", account_id)
+                extras_now = 0
+            if extras_now > 0:
+                line_items.append({"price": extras_price_id, "quantity": extras_now})
 
         session = await _off_loop(stripe.checkout.Session.create,
             customer=customer_id,
@@ -680,8 +698,11 @@ class StripeBillingProvider:
             return {"skipped": "not_stripe", "account_id": account_id}
         extra_item_id = sub.get("provider_extra_item_id") or ""
         if not extra_item_id:
-            _obs.record_sync_billing_quantity("no_extras_item")
-            return {"skipped": "no_extras_item", "account_id": account_id}
+            # No extras line on this subscription — the account had none
+            # to bill when it checked out.  If it has some now, the line
+            # has to be created; without this the first extra truck an
+            # account ever gains would never reach an invoice.
+            return await self._open_extras_item(account_id, db, sub)
         if (sub.get("status") or "") not in LIVE_STATUSES:
             # A canceled or unpaid subscription has nothing to bill; a
             # PATCH would only be refused by Stripe.
@@ -767,6 +788,52 @@ class StripeBillingProvider:
             "before": current_qty, "after": target_qty,
             "account_id": account_id, **extra,
         }
+
+    async def _open_extras_item(self, account_id: int, db, sub: dict) -> dict:
+        """Add the extras line to a subscription that went out without one.
+
+        A subscription carries an extras line only when the account
+        already had trucks above its plan's included count at checkout.
+        The first time it gains one there is nothing for the sync to
+        PATCH, so the line has to be created.
+        """
+        extras_price_id = _extra_vehicle_price_id()
+        sub_id = sub.get("provider_subscription_id") or ""
+        if not extras_price_id or not sub_id:
+            _obs.record_sync_billing_quantity("no_extras_item")
+            return {"skipped": "no_extras_item", "account_id": account_id}
+        billing = await db.compute_billing(account_id)
+        target_qty = int(billing["extras"])
+        if target_qty <= 0:
+            # Nothing to bill, and Stripe refuses a line of quantity 0.
+            _obs.record_sync_billing_quantity("noop")
+            return {"skipped": "noop", "before": 0, "after": 0, "account_id": account_id}
+        stripe = _stripe()
+        try:
+            item = await _off_loop(
+                stripe.SubscriptionItem.create,
+                subscription=sub_id,
+                price=extras_price_id,
+                quantity=target_qty,
+                proration_behavior="create_prorations",
+            )
+        except Exception:
+            _obs.record_sync_billing_quantity("stripe_error")
+            logger.exception(
+                "sync_billing_quantity: could not open the extras line on "
+                "subscription=%s for account=%s (qty=%s)",
+                sub_id, account_id, target_qty)
+            return {"skipped": "stripe_error", "account_id": account_id}
+        await db.update_subscription(account_id, provider_extra_item_id=item["id"])
+        recorded = await self._record_billed_quantity(db, account_id, target_qty)
+        _obs.record_sync_billing_quantity("patched")
+        logger.info(
+            "sync_billing_quantity: opened the extras line for account=%s at "
+            "%s (item=%s)", account_id, target_qty, item["id"])
+        out = {"skipped": None, "before": 0, "after": target_qty, "account_id": account_id}
+        if not recorded:
+            out["recorded"] = False
+        return out
 
     @staticmethod
     async def _record_billed_quantity(db, account_id: int, qty: int) -> bool:
