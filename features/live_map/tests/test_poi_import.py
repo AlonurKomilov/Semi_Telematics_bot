@@ -10,6 +10,7 @@ the /pois cache used to hold a wrong answer for.
 """
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -244,3 +245,49 @@ async def test_a_box_that_refuses_even_quartered_still_fails_the_layer(store):
                                              stamp="2026-09-13T14:30:00Z")
     assert result["ok"] is False
     assert await store.poi_layer_imported_at("shower") is None
+
+
+async def test_one_expensive_region_does_not_starve_the_cheap_ones(store):
+    """Watched on a real run, 2026-09-13.
+
+    The CONUS box spent the layer's entire fifteen minutes quartering
+    itself and never reached Alaska or Hawaii — two boxes that had
+    answered in seconds four minutes earlier.  The layer fails either
+    way; what was lost was the LOG saying which regions are reachable,
+    which is the only thing that run could still have taught anyone.
+    """
+    from features.live_map.poi import viewport
+
+    asked: list[str] = []
+
+    async def _conus_hangs(query, **_kw):
+        import re as _re
+        box = _re.search(r"\(([-\d.,]+)\);", query).group(1)
+        asked.append(box)
+        south, west, north, east = (float(x) for x in box.split(","))
+        # CONUS *OR ANY PIECE OF IT* — the first version of this matched
+        # only the whole box, so every quarter answered instantly, the
+        # budget was never spent and the test passed with the fault
+        # restored.  A guard that cannot fail is not a guard.
+        in_conus = south >= 24 and north <= 50 and west >= -125 and east <= -66
+        if in_conus:
+            await asyncio.sleep(0.05)
+            raise RuntimeError("Overpass 504")
+        return _reply(_osm(len(asked), (south + north) / 2, (west + east) / 2))
+
+    # A budget small enough that a POOLED one would be spent on CONUS.
+    monkey = importer._LAYER_BUDGET_S
+    importer._LAYER_BUDGET_S = 0.3
+    try:
+        with patch("features.live_map.poi.overpass._overpass_post",
+                   new=AsyncMock(side_effect=_conus_hangs)):
+            await importer.import_layer(store, "fuel_station",
+                                        stamp="2026-09-13T15:30:00Z")
+    finally:
+        importer._LAYER_BUDGET_S = monkey
+
+    # Alaska and Hawaii were reached — the two regions that are not CONUS.
+    reached = {b for b in asked}
+    for region in viewport._USA_REGIONS[1:]:
+        want = viewport._bbox_to_str(*region)
+        assert want in reached, f"{want} never asked — CONUS ate the clock"

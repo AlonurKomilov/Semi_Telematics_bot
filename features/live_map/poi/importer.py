@@ -61,6 +61,14 @@ _MAX_SPLIT_DEPTH = 2
 #: One layer's whole wall clock, splitting included.  Without it a
 #: thoroughly dead mirror could keep one layer going for most of an hour;
 #: with it the run moves on and the layer keeps last week's points.
+#:
+#: SHARED BETWEEN THE REGIONS RATHER THAN POOLED, and a real run is why.
+#: On 2026-09-13 the CONUS box spent all fifteen minutes quartering
+#: itself and never reached Alaska or Hawaii — two boxes that had
+#: answered in seconds four minutes earlier.  One expensive region
+#: starving the cheap ones is worse than the expensive one being cut
+#: short: the layer fails either way, and at least this way the log says
+#: which regions are reachable.
 _LAYER_BUDGET_S = 900
 
 #: Between layers, so one import does not arrive as a burst.  A weekly
@@ -172,12 +180,14 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     total = 0
     failures: list[str] = []
-    deadline = asyncio.get_running_loop().time() + _LAYER_BUDGET_S
+    loop = asyncio.get_running_loop()
+    # Each region gets its own slice, so the biggest cannot eat the lot.
+    share = _LAYER_BUDGET_S / max(1, len(viewport._USA_REGIONS))
 
     for region in viewport._USA_REGIONS:
         bbox = viewport._bbox_to_str(*region)
         try:
-            points = await _fetch_box(layer, region, deadline)
+            points = await _fetch_box(layer, region, loop.time() + share)
         except Exception as exc:
             # ONE region short is the whole layer short: sweeping now
             # would delete every point that region was going to supply.
