@@ -133,7 +133,8 @@ def _require_registered(func):
         # reachable by typing it to the bot instead.
         try:
             from capabilities.security import quarantine
-            if quarantine.enabled() and await quarantine.is_held(user.id):
+            if quarantine.enabled() and await quarantine.is_request_held(
+                    user.id, user.account_id):
                 msg = "⛔ " + quarantine.MESSAGE
                 if SUPPORT_CONTACT:
                     msg += f"\nContact support: {SUPPORT_CONTACT}"

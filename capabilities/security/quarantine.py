@@ -7,13 +7,21 @@ path never read it, so a person under quarantine behaved exactly like a
 person under observation.  The account page said so in small grey text,
 which is not a substitute for the word being true.
 
-**Persons only, for now.**  Holding an ACCOUNT refuses everyone in it —
-twenty-two colleagues nobody accused, at the largest customer — which is
-the same over-reach that made per-person *recording* necessary in the
-first place.  Account-level holding is a deliberate second step with its
-own decisions (the thirty-two scheduled jobs, the fifteen public
-application routes that carry no JWT at all); this module is written so
-that step slots in beside it rather than through it.
+**Two subjects, and the difference is the point.**  Holding a PERSON
+refuses one login.  Holding an ACCOUNT refuses everyone in it — at the
+largest customer that is twenty-three people, most of whom nobody
+accused of anything — so it is the heavier instrument by far and the
+console should make an operator reach further for it.
+
+The account hold also closes a door the person hold cannot reach: the
+public application links.  A recruiter link carries no JWT, belongs to
+the company rather than to any one employee, and collects a stranger's
+full FMCSA application — licence number, employment history, consent
+signatures.  That is usually the real reason to hold a company, and it
+is why the hold is applied at the two token resolvers rather than at
+the routes: eight call sites, one place, and a held link answers with
+the same uniform 404 an unknown token already gets, so nobody outside
+learns that a company is under review.
 
 What a held person keeps, and why each one:
 
@@ -179,6 +187,120 @@ async def is_held(user_id: int | None) -> bool:
 
     _cache[key] = (held, now + _TTL_S)
     return held
+
+
+# Its own cache, keyed by account.  Deliberately NOT merged with the
+# person cache under a composite key: the two are asked at different
+# rates (every request asks both) and a shared dict would make the
+# eviction of one evict the other.
+_account_cache: dict[int, tuple[bool, float]] = {}
+
+
+def forget_account(account_id: int | None = None) -> None:
+    """Drop the cached answer for one account, or all of them."""
+    if account_id is None:
+        _account_cache.clear()
+    else:
+        _account_cache.pop(int(account_id), None)
+
+
+async def is_account_held(account_id: int | None) -> bool:
+    """Whether this whole company is held.
+
+    Fails OPEN, for the same reason the person check does and with more
+    at stake: a database hiccup that latched this closed would refuse
+    every employee of every customer at once.
+    """
+    if account_id is None:
+        return False
+    key = int(account_id)
+    now = time.monotonic()
+    hit = _account_cache.get(key)
+    if hit and hit[1] > now:
+        return hit[0]
+
+    held = False
+    try:
+        from infra.platform import get_platform_db
+        row = await get_platform_db().get_account(key)
+        held = bool(row is not None and getattr(row, "security", None) == HELD)
+    except Exception:
+        logger.warning(
+            "quarantine: account standing lookup failed for %s — "
+            "letting the request through", key, exc_info=True)
+        return False
+
+    _account_cache[key] = (held, now + _TTL_S)
+    return held
+
+
+async def is_request_held(user_id: int | None, account_id: int | None) -> bool:
+    """Whether this request is held, for either reason.
+
+    The person is asked FIRST: it is the narrower fact, it is the one
+    that is true more often, and asking it first means the common case
+    costs one cache read rather than two.
+    """
+    if await is_held(user_id):
+        return True
+    return await is_account_held(account_id)
+
+
+async def delivery_blocked(account_id: int | None) -> bool:
+    """Whether this company may still be sent anything.
+
+    The notification core gates itself at ``dispatch``, ``notify_user``
+    and ``deliver``.  This exists for the senders that do NOT go through
+    it: four bot modules reach a company's people by calling the
+    Telegram and email transports directly — maintenance overdue
+    notices, PTI reminders and digests, scheduled report PDFs, the
+    Samsara sync digest.  Each uses the alerting pipeline only as a
+    first attempt and falls back to a direct send when no group route is
+    configured, which is the ordinary case for a smaller fleet.
+
+    So "the hold covers every delivery path" was not true of the three
+    core functions alone, and the gap was exactly the deliveries a held
+    company would most notice still arriving.
+
+    Fails open, like every reader of this standing.
+    """
+    if account_id is None:
+        return False
+    try:
+        if not enabled():
+            return False
+        return await is_account_held(int(account_id))
+    except Exception:
+        logger.warning("quarantine: delivery check failed for account %s — "
+                       "sending", account_id, exc_info=True)
+        return False
+
+
+async def hold_account_sessions(platform_db, account_id: int) -> int:
+    """End every live session in the account, now.
+
+    The same reasoning as the per-person sweep, multiplied: holding a
+    company whose twenty-three people all keep working for another
+    eight hours is not holding it.
+    """
+    try:
+        revoked = await platform_db.revoke_account_sessions(account_id)
+    except Exception:
+        logger.warning("quarantine: account session sweep failed for %s",
+                       account_id, exc_info=True)
+        return 0
+    if not revoked:
+        return 0
+    from interfaces.api.auth import mark_jti_revoked
+    ended = 0
+    for row in revoked:
+        try:
+            await mark_jti_revoked(row.get("jti", ""), row.get("expires_at"))
+            ended += 1
+        except Exception:
+            logger.warning("quarantine: denylist push failed for jti %s",
+                           row.get("jti"), exc_info=True)
+    return ended
 
 
 async def hold_sessions(platform_db, user_id: int) -> int:

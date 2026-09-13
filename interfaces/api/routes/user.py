@@ -132,6 +132,12 @@ async def user_me(
         # while a person is held precisely so the banner explaining the
         # hold has something to read.
         "security": getattr(db_user, "security", "normal") or "normal",
+        # ...and their company's, which is a different fact. A person
+        # can be clean inside a held company, and the page that explains
+        # the hold has to say which one it is: telling somebody their
+        # own access is under review when it is their employer's would
+        # be an accusation against the wrong person.
+        "account_security": (getattr(acct, "security", "normal") or "normal"),
         # Sign in with Google: linked or not, and to which address.  The
         # profile draws its Google card from these the way it draws the
         # Telegram card from telegram_id.

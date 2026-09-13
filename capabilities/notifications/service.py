@@ -121,6 +121,12 @@ async def dispatch(
         raise ValueError(
             f"dispatch() is broadcast-only; {content.category!r} is targeted "
             "— use notify_user()")
+    # Broadcast categories are the fleet's own operational traffic —
+    # alerts, digests, reports. A held company is sent none of it. The
+    # mandatory exception lives on the targeted path (``notify_user``),
+    # which is where billing addresses one person.
+    if await _account_is_held(account_id):
+        return []
     audience = cat.audience if cat is not None else None
     if correlation_key:
         # Renderers need the routing address for action buttons.
@@ -272,6 +278,35 @@ async def _holders_of(db, tiers: dict, permission: str) -> set[int]:
 
 
 SERVICE_FLAG = "can_view_notifications"
+
+
+async def _account_is_held(account_id: int) -> bool:
+    """Whether this whole company is under quarantine.
+
+    Checked at the TOP of both delivery entry points, which is what
+    makes the scheduled jobs answer for themselves: thirty-two of them
+    run with no request behind them, and every one that reaches a person
+    does so through ``dispatch`` or ``notify_user``.  Gating here stops
+    the reports, the digests, the alerts and the group posts of a held
+    company without touching a single job.
+
+    What it deliberately does NOT stop is INGEST.  Telemetry keeps
+    flowing in, so the evidence keeps accumulating and lifting the hold
+    is instant.  Freezing ingest instead would punch a permanent hole in
+    the trucks' history of a company that may well turn out innocent —
+    a cost they carry forever for a review that took an afternoon.
+
+    Fails open, like every reader of this standing.
+    """
+    try:
+        from capabilities.security import quarantine
+        if not quarantine.enabled():
+            return False
+        return await quarantine.is_account_held(account_id)
+    except Exception:
+        logger.warning("dispatch: account hold check failed for %s — "
+                       "delivering", account_id, exc_info=True)
+        return False
 
 
 async def _reroute_quarantined(db, account_id: int, subs: list[dict],
@@ -488,6 +523,14 @@ async def notify_user(
             f"notify_user() is targeted-only; {content.category!r} is "
             "broadcast — use dispatch()")
     mandatory = bool(cat and cat.mandatory)
+    # A held company is sent nothing — EXCEPT the mandatory categories,
+    # which are billing and security. The inbound half of this decision
+    # already keeps /billing/* open on the grounds that a held account
+    # is still a billed account; swallowing "your card failed" on the
+    # way out would charge them for a problem we refused to tell them
+    # about. A mute cannot silence these either, for the same reason.
+    if not mandatory and await _account_is_held(account_id):
+        return []
     if not mandatory and not await _service_held(db, account_id, user_id):
         return []                              # withheld from the role: nothing is sent
     if correlation_key:

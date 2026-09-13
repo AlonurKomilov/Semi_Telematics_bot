@@ -102,6 +102,16 @@ async def deliver(db, account_id: int, plan: DeliveryPlan) -> PlanResult:
     for successful sends WITH a handle AND a correlation key — same
     rule as the personal path.
     """
+    # A held company reaches nobody, and its GROUP topics are the path
+    # that would otherwise survive: the shared fan-out below calls the
+    # channels directly rather than going through ``dispatch``, so the
+    # gate there does not cover it. A safety alert still landing in a
+    # held company's Telegram group is the platform working normally for
+    # an account we have stopped trusting.
+    from capabilities.notifications.service import _account_is_held
+    if await _account_is_held(account_id):
+        return PlanResult()
+
     result = PlanResult()
     for target in plan.shared:
         res = await _send_shared(db, account_id, plan, target)

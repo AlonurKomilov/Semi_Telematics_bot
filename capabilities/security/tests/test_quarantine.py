@@ -541,3 +541,327 @@ async def test_an_uncovered_hold_is_logged_not_silent(seeded_db, monkeypatch, ca
         out = await _reroute(db, acct.id, [_user_sub(person.id)])
     assert out == []
     assert any("not covered" in r.getMessage() for r in caplog.records), caplog.text
+
+
+# ── holding a whole company ───────────────────────────────────────
+#
+# The heavier instrument by far: it refuses everyone in the account,
+# most of whom nobody accused. What it reaches that the person hold
+# cannot is the public links — no JWT, owned by the company, collecting
+# strangers' FMCSA data.
+
+async def test_a_held_account_holds_everyone_in_it(seeded_db, monkeypatch):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    person = (await db.list_account_users(acct.id))[0]
+
+    assert await Q.is_request_held(person.id, acct.id) is False
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget(); Q.forget_account()
+
+    assert await Q.is_account_held(acct.id) is True
+    assert await Q.is_request_held(person.id, acct.id) is True
+    assert await Q.is_held(person.id) is False, (
+        "the PERSON was never accused — only their employer"
+    )
+
+
+async def test_the_two_holds_are_independent(seeded_db, monkeypatch):
+    """Neither implies the other. A person held inside a clean company
+    and a clean person inside a held company are both real, and the
+    banner has to be able to tell them apart."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    person = (await db.list_account_users(acct.id))[0]
+
+    await db.update_user(person.id, security="quarantined")
+    Q.forget(); Q.forget_account()
+    assert await Q.is_held(person.id) is True
+    assert await Q.is_account_held(acct.id) is False
+
+    await db.update_user(person.id, security="normal")
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget(); Q.forget_account()
+    assert await Q.is_held(person.id) is False
+    assert await Q.is_account_held(acct.id) is True
+
+
+async def test_monitoring_a_company_is_not_holding_it(seeded_db, monkeypatch):
+    """`monitored` must stay invisible to the account — that is what
+    makes it safe for the detector to apply on its own."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    await db.update_account(acct.id, security="monitored")
+    Q.forget_account()
+    assert await Q.is_account_held(acct.id) is False
+
+
+async def test_an_account_hold_ends_every_session_in_the_company(seeded_db):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    owner = (await db.list_account_users(acct.id))[0]
+    from adapters.storage import Role
+    other = await db.create_user_with_email(
+        email="two@premiertruckinggroup.com", password_hash="x",
+        account_id=acct.id, role=Role.DISPATCHER, display_name="Two")
+
+    pushed: list[str] = []
+    import interfaces.api.auth as auth_mod
+    orig = auth_mod.mark_jti_revoked
+
+    async def fake_push(jti, expires_at=None):
+        pushed.append(jti)
+    auth_mod.mark_jti_revoked = fake_push
+    try:
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        later = (now + timedelta(hours=8)).isoformat()
+        for uid, jti in ((owner.id, "a-1"), (other.id, "a-2")):
+            await db.create_user_session(
+                user_id=uid, jti=jti, device_label="d", user_agent="u",
+                ip="1.2.3.4", created_at=now.isoformat(),
+                last_seen=now.isoformat(), expires_at=later)
+
+        ended = await Q.hold_account_sessions(db, acct.id)
+        assert ended == 2, "both people, not just the one accused"
+        assert set(pushed) == {"a-1", "a-2"}
+    finally:
+        auth_mod.mark_jti_revoked = orig
+
+
+async def test_a_held_company_stops_collecting_strangers_data(seeded_db, monkeypatch):
+    """The recruiter link carries no JWT, so no middleware can see it.
+    It belongs to the company and collects a stranger's full FMCSA
+    application — which is usually the real reason to hold a company."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+
+    token = await db.create_application_link(
+        account_id=acct.id, created_by=1, label="Drivers wanted")
+    tok = token if isinstance(token, str) else token.get("token")
+
+    assert await db.resolve_application_link(tok) is not None
+
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+    assert await db.resolve_application_link(tok) is None, (
+        "the link stops serving the moment the company is held"
+    )
+
+
+async def test_a_watched_company_keeps_recruiting(seeded_db, monkeypatch):
+    """`monitored` changes nothing the account can see — including its
+    links. Only the hold closes them."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    token = await db.create_application_link(
+        account_id=acct.id, created_by=1, label="Still hiring")
+    tok = token if isinstance(token, str) else token.get("token")
+
+    await db.update_account(acct.id, security="monitored")
+    Q.forget_account()
+    assert await db.resolve_application_link(tok) is not None
+
+
+async def test_the_links_stay_open_while_the_switch_is_off(seeded_db, monkeypatch):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    token = await db.create_application_link(
+        account_id=acct.id, created_by=1, label="Dark")
+    tok = token if isinstance(token, str) else token.get("token")
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+    monkeypatch.setenv("QUARANTINE_ENFORCEMENT_ENABLED", "0")
+    assert await db.resolve_application_link(tok) is not None
+
+
+# ── what a held company stops SENDING ─────────────────────────────
+#
+# Thirty-two scheduled jobs run with no request behind them, so no
+# middleware sees them. Every one that reaches a person goes through
+# dispatch(), notify_user() or deliver() — so the jobs answer for
+# themselves, and none of them needed touching.
+
+async def test_a_held_company_delivers_nothing_to_anyone(seeded_db, monkeypatch):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    from capabilities.notifications.service import _account_is_held
+
+    assert await _account_is_held(acct.id) is False
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+    assert await _account_is_held(acct.id) is True
+
+
+async def test_the_group_topics_close_with_the_company(seeded_db, monkeypatch):
+    """deliver()'s shared fan-out calls the channels directly instead of
+    going through dispatch, so it needs its own gate — otherwise a
+    safety alert still lands in the Telegram group of a company we have
+    stopped trusting."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+
+    from capabilities.notifications.plan import DeliveryPlan, deliver
+    from capabilities.notifications.channels import NotificationContent
+    sent: list = []
+
+    plan = DeliveryPlan(
+        contents=[NotificationContent(category="alert.faults",
+                                      title="t", body="b")],
+        shared=[], personal=[],
+    )
+    res = await deliver(db, acct.id, plan)
+    assert res.shared == [] and res.personal == []
+    assert sent == []
+
+
+async def test_ingest_is_not_what_a_hold_stops(seeded_db, monkeypatch):
+    """Telemetry keeps flowing in, so the evidence keeps accumulating
+    and lifting the hold is instant. Freezing ingest would punch a
+    permanent hole in the trucks' history of a company that may well
+    turn out innocent — a cost they carry forever for a review that
+    took an afternoon."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+
+    # Nothing in the hold touches a write path: the account's own rows
+    # keep being writable by the ingest workers.
+    await db.update_account(acct.id, timezone="America/Chicago")
+    fresh = await db.get_account(acct.id)
+    assert fresh.timezone == "America/Chicago"
+    assert (fresh.security or "normal") == "quarantined"
+
+
+# ── the senders that never touch the notification core ────────────
+#
+# "Every job reaches people through dispatch/notify_user/deliver" was
+# NOT true. Four bot modules call the Telegram and email transports
+# directly, using the alerting pipeline only as a first attempt and
+# falling back to a direct send when no group route is configured —
+# the ordinary case for a smaller fleet. Those fallbacks were exactly
+# the deliveries a held company would most notice still arriving.
+
+async def test_the_guard_answers_for_a_held_company(seeded_db, monkeypatch):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+
+    assert await Q.delivery_blocked(acct.id) is False
+    assert await Q.delivery_blocked(None) is False
+
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+    assert await Q.delivery_blocked(acct.id) is True
+
+    # monitored is not a hold, and neither is the switch being off
+    await db.update_account(acct.id, security="monitored")
+    Q.forget_account()
+    assert await Q.delivery_blocked(acct.id) is False
+
+
+async def test_the_guard_is_off_with_the_switch(seeded_db, monkeypatch):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+    monkeypatch.setenv("QUARANTINE_ENFORCEMENT_ENABLED", "0")
+    assert await Q.delivery_blocked(acct.id) is False
+
+
+async def test_the_pti_transport_sends_nothing_for_a_held_company(
+        seeded_db, monkeypatch):
+    """Every PTI helper — reminders, digests, the real-time submission
+    ping to the fleet — funnels through this one send."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+
+    import interfaces.bot.pti as pti
+    reached: list = []
+    monkeypatch.setattr(pti, "get_app_for_account",
+                        lambda _a: reached.append(_a) or None, raising=False)
+
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+    assert await pti._send_to_telegram(acct.id, 12345, "hi") is False
+    assert reached == [], "it never even reached for the bot"
+
+
+async def test_the_pti_transport_still_serves_everyone_else(
+        seeded_db, monkeypatch):
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    import interfaces.bot.pti as pti
+    reached: list = []
+    monkeypatch.setattr(pti, "get_app_for_account",
+                        lambda _a: reached.append(_a) or None, raising=False)
+    Q.forget_account()
+    await pti._send_to_telegram(acct.id, 12345, "hi")
+    assert reached == [acct.id], "a clean company is still sent to"
+
+
+async def test_every_direct_sender_asks_before_sending():
+    """A structural guard, because the gap was a MISSING call, not a
+    wrong one — and the next module someone adds will have the same
+    shape. Each of these reaches people without going through the
+    notification core, so each must ask on its own."""
+    import pathlib
+    from tests._repo import REPO
+    for name in ("maintenance.py", "pti.py", "scheduled_reports.py",
+                 "driver_samsara_sync.py"):
+        src = (REPO / "interfaces" / "bot" / name).read_text()
+        assert "delivery_blocked" in src or "is_request_held" in src, (
+            f"interfaces/bot/{name} sends directly and never asks whether "
+            f"the company is held"
+        )
+
+
+async def test_a_held_company_is_still_told_its_card_failed(seeded_db, monkeypatch):
+    """A held account is still a BILLED account. The inbound half of
+    this already keeps /billing/* open on exactly that ground —
+    swallowing the notice on the way out would charge them for a
+    problem we refused to tell them about."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    await db.update_account(acct.id, security="quarantined")
+    Q.forget_account()
+
+    from capabilities.notifications.categories import (
+        NotificationCategory, TARGETED, get_category, register_category)
+    if get_category("billing.payment_failed") is None:
+        register_category(NotificationCategory(
+            key="billing.payment_failed", label="Payment failed",
+            kind=TARGETED, mandatory=True))
+
+    from capabilities.notifications.service import notify_user
+    from capabilities.notifications.channels import NotificationContent
+    person = (await db.list_account_users(acct.id))[0]
+
+    # It gets past the account gate — it reaches the channel loop and
+    # stops only for want of a connected channel, not for the hold.
+    res = await notify_user(
+        db, acct.id, person.id,
+        NotificationContent(category="billing.payment_failed",
+                            title="Payment failed", body="Update your card."))
+    assert isinstance(res, list), "not refused outright by the hold"
+
+    # ...while ordinary operational traffic on the same account is
+    # still stopped.
+    from capabilities.notifications.service import _account_is_held
+    assert await _account_is_held(acct.id) is True

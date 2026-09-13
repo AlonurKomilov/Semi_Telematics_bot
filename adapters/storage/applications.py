@@ -130,6 +130,18 @@ class ApplicationsMixin(_MixinBase):
         The public applicant form calls this with the /apply/<token>
         segment; a None result must surface as a uniform 404 (no oracle
         for which tokens exist).
+
+        An account under QUARANTINE resolves to None here, which is the
+        whole reason the hold is applied at this function rather than at
+        the six routes that call it.  A recruiter link carries no JWT —
+        no middleware can see it — belongs to the company rather than to
+        any employee, and collects a stranger's full FMCSA application.
+        Stopping that is usually the actual reason to hold a company.
+
+        The applicant gets the same "no longer available" 404 an expired
+        link already gives.  Telling them the company is under review
+        would publish an accusation we have not finished making, to
+        somebody with no stake in it.
         """
         cur = await self._db.execute(
             "SELECT * FROM application_links WHERE token = ? AND is_active = 1 "
@@ -137,7 +149,33 @@ class ApplicationsMixin(_MixinBase):
             (token, self._now()),
         )
         row = await cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        link = dict(row)
+        if await self._account_is_held(link.get("account_id")):
+            return None
+        return link
+
+    async def _account_is_held(self, account_id) -> bool:
+        """Whether a public link's account is under quarantine.
+
+        Fails OPEN, like every other reader of this standing: a database
+        hiccup must not take every customer's recruiting links down at
+        once.
+        """
+        if not account_id:
+            return False
+        try:
+            from capabilities.security import quarantine
+            if not quarantine.enabled():
+                return False
+            return await quarantine.is_account_held(int(account_id))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "quarantine: public-link check failed for account %s — "
+                "serving the link", account_id, exc_info=True)
+            return False
 
     async def set_application_link_active(
         self, account_id: int, link_id: int, active: bool,

@@ -289,7 +289,8 @@ _ENFORCEMENT_BYPASS_SUFFIXES = (
 
 
 class QuarantineMiddleware(BaseHTTPMiddleware):
-    """Return HTTP 403 when the JWT-bearer is a PERSON under quarantine.
+    """Return HTTP 403 when the JWT-bearer is held — as a person, or
+    because their whole company is.
 
     Mirrors BillingEnforcementMiddleware deliberately: same env-flag
     shape so it lands dark, same header-then-cookie token order so the
@@ -297,11 +298,11 @@ class QuarantineMiddleware(BaseHTTPMiddleware):
     authenticated, same fall-through on decode failure (the route's own
     dependency will 401 it).
 
-    It keys on ``user_id``, not ``account_id``.  Holding an account
-    refuses everyone inside it, and the whole reason the security axis
-    was extended to people is that an account is usually fine while one
-    person in it is not.  Account-level holding is a separate step with
-    its own decisions; nothing here assumes it away.
+    Both subjects are asked, person first — it is the narrower fact and
+    the commoner one, so the usual request costs one cache read rather
+    than two.  Neither implies the other: an account is usually fine
+    while one person in it is not, which is why the security axis was
+    extended to people in the first place.
 
     Lives OUTSIDE the billing check in the stack (added after it, so it
     runs before it): a held person should be told they are held, not
@@ -336,11 +337,15 @@ class QuarantineMiddleware(BaseHTTPMiddleware):
         # person straight through — silently, because a missing claim is
         # indistinguishable from a legacy token.
         user_id = payload.get("uid")
-        if not user_id:
-            # A token minted before the uid claim, or one of the legacy
-            # SSO-only paths.  There is no person to hold.
+        account_id = payload.get("account_id")
+        if not user_id and not account_id:
+            # A token minted before either claim. Nothing to hold.
             return await call_next(request)
-        if not await quarantine.is_held(int(user_id)):
+        held = await quarantine.is_request_held(
+            int(user_id) if user_id else None,
+            int(account_id) if account_id else None,
+        )
+        if not held:
             return await call_next(request)
         return JSONResponse(
             status_code=403,

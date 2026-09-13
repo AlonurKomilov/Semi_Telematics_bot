@@ -214,6 +214,12 @@ async def check_overdue_maintenance(app: Application):
     for account in accounts:
         async def _run(acct=account):
             nonlocal total_marked
+            # A held company is sent nothing — including by the
+            # direct fallback below, which the notification core's own
+            # gate never sees.
+            from capabilities.security import quarantine
+            if await quarantine.delivery_blocked(acct.id):
+                return
             bot_app = get_app_for_account(acct.id)
             if not bot_app:
                 logger.warning("No bot for account %d — skipping overdue date check", acct.id)
@@ -296,6 +302,12 @@ async def check_overdue_by_mileage(app: Application):
     for account in accounts:
         async def _run(acct=account):
             nonlocal total_marked
+            # A held company is sent nothing — including by the
+            # direct fallback below, which the notification core's own
+            # gate never sees.
+            from capabilities.security import quarantine
+            if await quarantine.delivery_blocked(acct.id):
+                return
             bot_app = get_app_for_account(acct.id)
             if not bot_app:
                 logger.warning("No bot for account %d — skipping mileage check", acct.id)
@@ -382,6 +394,12 @@ async def check_overdue_by_engine_hours(app: Application):
     for account in accounts:
         async def _run(acct=account):
             nonlocal total_marked
+            # A held company is sent nothing — including by the
+            # direct fallback below, which the notification core's own
+            # gate never sees.
+            from capabilities.security import quarantine
+            if await quarantine.delivery_blocked(acct.id):
+                return
             bot_app = get_app_for_account(acct.id)
             if not bot_app:
                 logger.warning("No bot for account %d — skipping engine-hours check", acct.id)
@@ -469,6 +487,12 @@ async def check_upcoming_maintenance_warnings(app: Application):
     for account in accounts:
         async def _run(acct=account):
             nonlocal total_warned
+            # A held company is sent nothing — including by the
+            # direct fallback below, which the notification core's own
+            # gate never sees.
+            from capabilities.security import quarantine
+            if await quarantine.delivery_blocked(acct.id):
+                return
             bot_app = get_app_for_account(acct.id)
             if not bot_app:
                 return
@@ -561,6 +585,13 @@ async def _notify_account_admins(app: Application, account_id: int, text: str,
     overdue evidence.  Email is best-effort and never blocks the rest
     of the fan-out.
     """
+    # A held company is sent nothing. This module reaches people by
+    # calling the Telegram and email transports directly, so the
+    # notification core's own gate never sees it.
+    from capabilities.security import quarantine
+    if await quarantine.delivery_blocked(account_id):
+        return 
+
     from capabilities.email import is_email_configured, send_email
     smtp_on = is_email_configured()
 

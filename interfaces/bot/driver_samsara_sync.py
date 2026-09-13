@@ -101,6 +101,16 @@ async def check_driver_samsara_sync(_app: Application | None = None) -> None:
             # Forum routing → Sync & System topic.  When configured the
             # whole admin team sees the digest in one place instead of
             # each admin getting an identical DM.
+            # A held company is sent nothing. Gated HERE, at the
+            # delivery, not at the top of the pass: the sync above has
+            # already run and must keep running — ingest is not what a
+            # hold stops, and freezing it would punch a permanent hole
+            # in the drivers' history of a company that may turn out
+            # innocent.
+            from capabilities.security import quarantine
+            if await quarantine.delivery_blocked(acct.id):
+                return
+
             from capabilities.alerting.pipeline import post_alert_to_topic
             posted = await post_alert_to_topic(
                 bot_app, account_id=acct.id,

@@ -107,6 +107,12 @@ export interface User {
    *  me") and a standing can change in a minute, so a claim would go
    *  stale into a lie. Only 'quarantined' changes what the app does. */
   security?: string;
+  /** Their COMPANY's standing — a different fact from their own. A
+   *  person can be clean inside a held company, and the page that
+   *  explains a hold has to say which one it is: telling somebody their
+   *  own access is under review when it is their employer's would be an
+   *  accusation against the wrong person. */
+  account_security?: string;
   /** ``null`` for users who registered via email and haven't linked
    *  their Telegram account yet.  Anything that needs a guaranteed
    *  identifier should use ``id`` instead. */

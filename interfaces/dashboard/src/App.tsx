@@ -184,24 +184,35 @@ const PUBLIC_AUTH_ROUTES: Record<string, React.ComponentType> = {
  *  stating a finding we do not have, to a person who may well be a
  *  customer's best dispatcher.
  */
-function AccessUnderReview() {
+function AccessUnderReview({ scope }: { scope: 'person' | 'account' }) {
   const { logout } = useAuth();
+  const company = scope === 'account';
   return (
     <div className="flex items-center justify-center min-h-screen bg-background px-4 py-8">
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6">
         <h1 className="text-lg font-semibold text-foreground">
-          Your access is under review
+          {company
+            ? 'This account is under review'
+            : 'Your access is under review'}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Your sign-in worked — access to the platform is paused while this
           is looked at.
         </p>
+        {/* Which subject is held is not a detail. Telling somebody their
+            OWN access is under review when it is their employer's is an
+            accusation against the wrong person; telling them their
+            colleagues are fine when the whole company is held is simply
+            false, and they will find out within the hour. */}
         <p className="mt-3 text-sm text-muted-foreground">
-          Your company&rsquo;s account is unaffected, and your colleagues are
-          working normally.
+          {company
+            ? 'This applies to everyone at your company, not to you personally.'
+            : 'Your company\u2019s account is unaffected, and your colleagues are working normally.'}
         </p>
         <p className="mt-3 text-sm text-muted-foreground">
-          Contact your account owner or support to have it reviewed.
+          {company
+            ? 'Your account owner can contact support to have it reviewed.'
+            : 'Contact your account owner or support to have it reviewed.'}
         </p>
         <button
           type="button"
@@ -273,7 +284,13 @@ export default function App() {
   // working-looking app where nothing loads, which reads as "this
   // product is broken" rather than "your access is paused".
   if (user?.security === 'quarantined') {
-    return <AccessUnderReview />;
+    return <AccessUnderReview scope="person" />;
+  }
+  // Their own standing is asked first: a person held INSIDE a held
+  // company should be told about themselves, which is the fact that
+  // outlives the company's review.
+  if (user?.account_security === 'quarantined') {
+    return <AccessUnderReview scope="account" />;
   }
 
   if (user && isOnApex()) {

@@ -189,7 +189,12 @@ class CarrierDirectoryMixin(_MixinBase):
         """Public token → the full profile row, or ``None`` when the token
         is unknown, revoked, or expired.  A ``None`` must surface as a
         uniform 404 (no oracle for which tokens exist).  Expiry is a text
-        compare — both sides are ``_now()``-style ISO strings."""
+        compare — both sides are ``_now()``-style ISO strings.
+
+        An account under QUARANTINE resolves to None, the same as an
+        expired token.  This link asks a carrier for their own details
+        in our customer's name; a company we have stopped trusting does
+        not get to keep asking."""
         if not token:
             return None
         cur = await self._db.execute(
@@ -199,7 +204,28 @@ class CarrierDirectoryMixin(_MixinBase):
             (token, self._now()),
         )
         row = await cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        profile = dict(row)
+        if await self._carrier_account_is_held(profile.get("account_id")):
+            return None
+        return profile
+
+    async def _carrier_account_is_held(self, account_id) -> bool:
+        """Whether this intake link's account is held.  Fails open."""
+        if not account_id:
+            return False
+        try:
+            from capabilities.security import quarantine
+            if not quarantine.enabled():
+                return False
+            return await quarantine.is_account_held(int(account_id))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "quarantine: carrier-intake check failed for account %s — "
+                "serving the link", account_id, exc_info=True)
+            return False
 
     async def submit_carrier_intake(
         self, profile_id: int, *, website: str, video_url: str,

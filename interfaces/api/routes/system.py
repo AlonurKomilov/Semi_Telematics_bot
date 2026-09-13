@@ -1152,8 +1152,15 @@ async def operator_set_account_security(
 
     ``monitored`` must remain invisible to the account itself — no gate
     reads it to refuse anything — which is what makes it safe for the
-    detector to apply automatically. ``quarantined`` is NOT ENFORCED
-    YET: nothing at request time consults it.
+    detector to apply automatically.
+
+    ``quarantined`` is the heavy one, and the console should make an
+    operator reach for it: it refuses EVERY person in the account, most
+    of whom nobody accused, ends all their live sessions at once, and
+    closes the company's public recruiting and carrier links.  Unlike
+    the per-person hold there is nobody inside to hand the work to —
+    everyone is held — so no notice goes out; the audit row is the whole
+    record.
 
     Marking someone monitored is a decision about a person, so it lands
     in the platform audit trail where that decision is accountable.
@@ -1170,20 +1177,36 @@ async def operator_set_account_security(
         forget_security(account_id, kind="account")
     except Exception:
         logger.exception("security cache drop failed for account %s", account_id)
+    from capabilities.security import quarantine
+    try:
+        quarantine.forget_account(account_id)
+    except Exception:
+        logger.exception("quarantine cache drop failed for account %s", account_id)
+
+    ended = 0
+    if body.security == quarantine.HELD and previous != quarantine.HELD:
+        # Holding a company whose twenty-three people all keep working
+        # for another eight hours is not holding it.
+        ended = await quarantine.hold_account_sessions(platform_db, account_id)
+
     logger.info(
-        "system: account security acct=%s %s -> %s operator_tg=%s",
-        account_id, previous, body.security, user.get("sub"),
+        "system: account security acct=%s %s -> %s operator_tg=%s sessions_ended=%s",
+        account_id, previous, body.security, user.get("sub"), ended,
     )
     if previous != body.security:
+        detail = f"{previous} -> {body.security}"
+        if ended:
+            detail += f" ({ended} live session{'s' if ended != 1 else ''} ended)"
         try:
             await platform_db.add_platform_audit(
                 "account_security", account_id=account_id,
                 actor=f"operator:{user.get('sub')}",
-                details=f"{previous} -> {body.security}",
+                details=detail,
             )
         except Exception:
             logger.exception("platform audit write failed for account %s", account_id)
-    return {"id": account_id, "security": body.security}
+    return {"id": account_id, "security": body.security,
+            "sessions_ended": ended}
 
 
 @router.patch("/users/{user_id}/security")

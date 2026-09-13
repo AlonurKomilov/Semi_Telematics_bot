@@ -74,6 +74,12 @@ async def _send_to_telegram(account_id: int, telegram_id: int, text: str,
                             keyboard: Optional[InlineKeyboardMarkup] = None) -> bool:
     """Best-effort Telegram send.  Returns False on error (no raise)
     so a single bad chat doesn't sink the rest of a fan-out loop."""
+    # A held company is sent nothing. This module reaches people by
+    # calling the Telegram and email transports directly, so the
+    # notification core's own gate never sees it.
+    from capabilities.security import quarantine
+    if await quarantine.delivery_blocked(account_id):
+        return False
     bot_app = get_app_for_account(account_id)
     if not bot_app:
         logger.debug("pti: no bot for acct=%d, skipping send to %d",
@@ -128,7 +134,8 @@ async def cmd_pti(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # account.
     try:
         from capabilities.security import quarantine
-        if quarantine.enabled() and await quarantine.is_held(user.id):
+        if quarantine.enabled() and await quarantine.is_request_held(
+                user.id, user.account_id):
             await update.effective_chat.send_message(
                 "⛔ " + quarantine.MESSAGE)
             return
