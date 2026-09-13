@@ -163,7 +163,9 @@ async def test_an_offer_moves_no_tier_and_no_subscription(pg_db):
 # ── what may be offered ───────────────────────────────────────────
 
 def test_a_public_plan_or_a_shared_stripe_price_cannot_be_offered():
-    hidden = {"tier": "premier", "public": 0, "stripe_price_id": "price_p"}
+    hidden = {"tier": "premier", "public": 0, "stripe_price_id": "price_p", "price_monthly_cents": 50000}
+    assert "comp" in offer_refusal({**hidden, "price_monthly_cents": 0}, [], provider="stripe"), \
+        "a $0 plan is a comp, and the refusal must say where comps are granted"
     assert offer_refusal({**hidden, "public": 1}, [], provider="stripe"), "public: nothing to offer"
     assert "Stripe price" in offer_refusal({**hidden, "stripe_price_id": ""}, [], provider="stripe")
     twin = {"tier": "pro", "public": 1, "stripe_price_id": "price_p"}

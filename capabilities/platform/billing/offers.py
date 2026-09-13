@@ -51,6 +51,12 @@ def offer_refusal(plan: dict, all_plans: list[dict], *, provider: str) -> str:
     """
     if plan.get("public"):
         return "This plan is already on every customer's Billing page — nothing to offer."
+    if int(plan.get("price_monthly_cents") or 0) <= 0:
+        # an offer is a thing to PAY for; a plan given away is a comp,
+        # granted on the Accounts page — sending someone to checkout
+        # for $0 would say "Create the Stripe price" for a price that
+        # does not exist
+        return "This plan has no price. Set one first — a plan given at no charge is a comp, granted from the Accounts page."
     if provider != "stripe":
         return ""
     price = (plan.get("stripe_price_id") or "").strip()
