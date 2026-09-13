@@ -331,3 +331,40 @@ async def test_feature_available_gives_the_same_answer_as_the_mask():
     assert feature_available(acct, "coaching")
     acct.tier = "gold"                                     # unknown plan → closed
     assert not feature_available(acct, "vehicles")
+
+
+@pytest.mark.asyncio
+async def test_the_bots_sync_can_honours_the_plan_after_priming(pg_db, monkeypatch):
+    """The bot cannot await in its handlers, so it primes the account's
+    permission set once per update (interfaces/bot/auth.py) and asks
+    ``can()`` from then on.  This pins that the primed set is the
+    PLAN-MASKED one: a feature the plan leaves out is refused by the bot
+    exactly as the API refuses it — and comes back the moment the plan
+    is widened and the cache invalidated, the way the operator's save
+    does it.
+    """
+    from adapters.storage import Role
+    from capabilities.permissions import roles
+
+    db = pg_db
+    monkeypatch.setattr("infra.platform._db", db)
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
+    plans.forget()
+    roles.invalidate_permissions_cache()
+
+    # maintenance is its own plan line; faults are not — they ride
+    # "vehicles" (test_an_entry_that_rides_another_is_not_a_plan_line)
+    keep = [i for i in plans.EXCLUDABLE if i != "maintenance"]
+    await db.upsert_plan("free", label="Free", included=keep)
+    acct = await db.create_account("Bot Plan Co")            # free
+    assert plans.tier_of(await db.get_account(acct.id)) == "free"
+
+    await roles.prime_account_permissions(acct.id, Role.OWNER)
+    assert not roles.can(Role.OWNER, "can_view_maintenance"), "the plan left maintenance out; the bot must say no"
+    assert roles.can(Role.OWNER, "can_view_vehicles"), "and take nothing else"
+
+    # the operator widens the plan: invalidate + the next prime sees it
+    await db.upsert_plan("free", label="Free", included=["*"])
+    plans.invalidate_plans()
+    await roles.prime_account_permissions(acct.id, Role.OWNER)
+    assert roles.can(Role.OWNER, "can_view_maintenance")
