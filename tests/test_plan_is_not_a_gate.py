@@ -98,3 +98,33 @@ def test_billing_never_reads_a_feature_flag():
     assert not offenders, (
         "billing reads a feature flag — billing tells the resolver the plan; "
         "the resolver decides what the plan includes:\n  " + "\n  ".join(offenders))
+
+
+# The third rule, added when private offers made the plan table something
+# a feature might be tempted to consult: the order of the chain.  Billing
+# tells the resolver which plan an account is on; the resolver folds that
+# into the permission; a feature asks the PERMISSION.  A feature that
+# imports the plan module and asks plan_includes() itself has skipped a
+# layer — it hears "the plan includes maintenance" while the account mask,
+# the owner-protect and the department mask have not spoken, and it will
+# disagree with the nav, the API and the bot the first time they differ.
+_PLAN_MODULE = re.compile(
+    r"from\s+capabilities\.permissions\.plans\s+import|from\s+capabilities\.permissions\s+import\s+plans\b|"
+    r"capabilities\.permissions\.plans\b")
+_FEATURE_DOORS = "roles.can / can_for_account / get_account_permissions, or modules.feature_available"
+
+
+def test_a_feature_asks_the_permission_never_the_plan_table():
+    offenders = []
+    for rel in _python_files():
+        if not rel.startswith("features/"):
+            continue
+        src = open(os.path.join(REPO, rel), encoding="utf-8").read()
+        for i, line in enumerate(src.splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            if _PLAN_MODULE.search(line):
+                offenders.append(f"{rel}:{i}: {line.strip()[:90]}")
+    assert not offenders, (
+        "a feature reads the plan table itself and skips the resolver — the door "
+        f"for a feature is {_FEATURE_DOORS}:\n  " + "\n  ".join(offenders))
