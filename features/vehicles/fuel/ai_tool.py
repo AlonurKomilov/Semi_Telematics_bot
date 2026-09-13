@@ -39,6 +39,7 @@ async def get_low_fuel_vehicles(tool_args: dict, samsara_client,
         return {"error": "This tool requires account context."}
     low = filter_to_scope(
         await _svc_low_fuel(account_id, threshold=threshold), tool_args, key="name",
+        external_key="id",
     )
     return {
         "threshold_pct": threshold,

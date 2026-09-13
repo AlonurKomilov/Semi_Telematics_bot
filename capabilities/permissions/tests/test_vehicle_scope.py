@@ -332,19 +332,37 @@ class TestTheLadderReadsWhatRowsActuallyCarry:
             "the task's own primary key is not a provider vehicle id"
         )
 
-    def test_a_row_with_no_provider_id_key_still_uses_its_id(self):
-        """Live-position rows carry no `vehicle_id`; there, `id` IS the
-        provider vehicle. That path has to keep working."""
+    def test_rows_that_key_the_vehicle_on_id_say_so(self):
+        """Live positions and the vehicle overview carry no dedicated
+        vehicle key — there `id` IS the provider vehicle, and those two
+        call sites pass external_key="id" rather than relying on a
+        fallback that is wrong for every other shape."""
         from capabilities.permissions.vehicle_scope import (
             VehicleIdentity, VehicleScope,
         )
         scope = VehicleScope.of(
             VehicleIdentity.make(registry_id=None, external_id="sam_60", name="230")
         )
-        assert scope.allows_row({"id": "sam_60", "name": "230"})
-        assert not scope.allows_row({"id": "sam_99", "name": "230"}), (
+        assert scope.allows_row({"id": "sam_60", "name": "230"}, external_key="id")
+        assert not scope.allows_row({"id": "sam_99", "name": "230"}, external_key="id"), (
             "a different provider id is a different truck, whatever it is called"
         )
+
+    def test_a_foreign_primary_key_is_never_read_as_a_provider_id(self):
+        """An inspection row carries no vehicle key at all, so `id` is
+        the INSPECTION. Reading it as a provider id compared 4821 against
+        a telematics ref, and `allows` treats a rung both sides carry as
+        decisive — so the driver assigned to that truck was denied their
+        own inspections and the tool said there were none."""
+        from capabilities.permissions.vehicle_scope import (
+            VehicleIdentity, VehicleScope,
+        )
+        scope = VehicleScope.of(
+            VehicleIdentity.make(registry_id=60, external_id="sam_60", name="230")
+        )
+        assert scope.allows_row(
+            {"id": 4821, "vehicle_name": "230"}, name_key="vehicle_name"
+        ), "an inspection id is not a provider vehicle id"
 
     def test_a_real_provider_id_still_decides_over_the_name(self):
         from capabilities.permissions.vehicle_scope import (

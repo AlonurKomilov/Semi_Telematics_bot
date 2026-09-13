@@ -176,7 +176,11 @@ async def overview_stats(
         my_truck = None
         if scope is not None and not scope.empty:
             my_truck = next(
-                (v for v in overview if scope.allows_row(v, name_key="name")),
+                # Overview rows key the provider vehicle on ``id``
+                # (readers.py builds it from vehicle_id, or
+                # "registry:<n>" for a truck with no telematics).
+                (v for v in overview
+                 if scope.allows_row(v, name_key="name", external_key="id")),
                 None,
             )
         elif trucks:

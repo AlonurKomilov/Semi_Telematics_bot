@@ -95,7 +95,8 @@ async def get_weather(tool_args: dict, samsara_client,
                       account_id: int | None = None, db=None) -> dict:
     if account_id is None:
         return {"error": "This tool requires account context."}
-    weather = filter_to_scope(await _svc_weather(account_id), tool_args, key="name")
+    weather = filter_to_scope(await _svc_weather(account_id), tool_args, key="name",
+                              external_key="id")
 
     def _row(v: dict) -> dict:
         return {

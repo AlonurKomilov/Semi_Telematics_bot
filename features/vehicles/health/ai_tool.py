@@ -29,7 +29,8 @@ async def get_vehicle_health(tool_args: dict, samsara_client,
                              account_id: int | None = None, db=None) -> dict:
     if account_id is None:
         return {"error": "This tool requires account context."}
-    health = filter_to_scope(await _svc_health(account_id), tool_args, key="name")
+    health = filter_to_scope(await _svc_health(account_id), tool_args, key="name",
+                             external_key="id")
     return {
         "total_vehicles": len(health),
         "vehicles_with_alerts": sum(1 for v in health if v.get("_health_alerts")),

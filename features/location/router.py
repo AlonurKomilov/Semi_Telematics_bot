@@ -395,7 +395,10 @@ async def map_vehicles_live(
             return {"positions": {}}
         allowed_ids = {
             str(v.get("id")) for v in location_raw
-            if v.get("id") is not None and scope.allows_row(v)
+            # Live-position rows have no dedicated vehicle key — here
+            # ``id`` IS the provider vehicle, so say so rather than
+            # relying on a fallback that is wrong for every other shape.
+            if v.get("id") is not None and scope.allows_row(v, external_key="id")
         }
         positions = {vid: pos for vid, pos in positions.items() if vid in allowed_ids}
 

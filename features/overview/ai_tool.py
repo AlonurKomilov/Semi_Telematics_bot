@@ -36,7 +36,8 @@ async def get_account_stats(tool_args: dict, samsara_client,
                             account_id: int | None = None, db=None) -> dict:
     if account_id is None:
         return {"error": "This tool requires account context."}
-    fleet = filter_to_scope(await _svc_fleet(account_id), tool_args, key="name")
+    fleet = filter_to_scope(await _svc_fleet(account_id), tool_args, key="name",
+                           external_key="id")
     faulted = []
     # Severity comes from the single source of truth, not from a
     # hand-rolled lamp check.  This loop used to read stopIsOn /
@@ -75,7 +76,8 @@ async def get_account_stats(tool_args: dict, samsara_client,
     alerts: int | None = None
     health_error = ""
     try:
-        health = filter_to_scope(await _svc_health(account_id), tool_args, key="name")
+        health = filter_to_scope(await _svc_health(account_id), tool_args, key="name",
+                                external_key="id")
         alerts = sum(1 for v in health if v.get("_health_alerts"))
     except Exception as e:  # noqa: BLE001 — one source failing must not fail the rollup
         logger.warning("account stats: health source unavailable: %s", e)

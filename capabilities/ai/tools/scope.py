@@ -66,7 +66,8 @@ def _scope_of(tool_args: dict, allowed: set[str]):
     return VehicleScope.of(*out)
 
 
-def row_in_scope(row: dict, tool_args: dict, key: str = "vehicle_name") -> bool:
+def row_in_scope(row: dict, tool_args: dict, key: str = "vehicle_name",
+                 external_key: str = "vehicle_id") -> bool:
     """Whether one row belongs to the caller's scope, by the strongest
     rung both sides share.  Unrestricted callers admit everything.
 
@@ -77,15 +78,24 @@ def row_in_scope(row: dict, tool_args: dict, key: str = "vehicle_name") -> bool:
     allowed = scope_vehicle_set(tool_args)
     if allowed is None:
         return True
-    return _scope_of(tool_args, allowed).allows_row(row, name_key=key)
+    return _scope_of(tool_args, allowed).allows_row(
+        row, name_key=key, external_key=external_key)
 
 
 def filter_to_scope(rows: list[dict], tool_args: dict,
-                    key: str = "vehicle_name") -> list[dict]:
+                    key: str = "vehicle_name",
+                    external_key: str = "vehicle_id") -> list[dict]:
     """Keep only rows in the caller's scope.
 
     Unrestricted callers get ``rows`` unchanged; a scoped caller gets only
     their allowed vehicles (``[]`` scope → empty list, fail-closed).
+
+    ``external_key`` names the column carrying the PROVIDER vehicle id.
+    Vehicle-overview rows (and anything derived from them — health,
+    weather, efficiency, low fuel, engine states) key it on ``id`` and
+    must pass ``external_key="id"``; domain rows — tasks, alerts,
+    events, inspections, fuel summaries — key their OWN primary key
+    there, and reading it as a vehicle id denied people their own data.
 
     The scope is built ONCE for the whole list.  This used to call
     ``row_in_scope`` per row, which re-read ``_scope_identities``,
@@ -98,4 +108,5 @@ def filter_to_scope(rows: list[dict], tool_args: dict,
     if allowed is None:
         return rows
     scope = _scope_of(tool_args, allowed)
-    return [r for r in rows if scope.allows_row(r, name_key=key)]
+    return [r for r in rows if scope.allows_row(
+        r, name_key=key, external_key=external_key)]

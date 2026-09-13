@@ -101,6 +101,7 @@ async def get_rolling_stopped(tool_args: dict, samsara_client,
         return {"error": "This tool requires account context."}
     vehicles = filter_to_scope(
         await _svc_vehicles(account_id), tool_args, key="name",
+        external_key="id",
     )
     engine_states = await _svc_engine_states(account_id)
     # Index engine states by vehicle ID
@@ -184,6 +185,7 @@ async def search_vehicles(tool_args: dict, samsara_client,
         return {"error": "This tool requires account context."}
     vehicles = filter_to_scope(
         await _svc_vehicles(account_id), tool_args, key="name",
+        external_key="id",
     )
 
     # Only fetch engine states when status filter is requested

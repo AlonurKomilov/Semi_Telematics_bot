@@ -195,22 +195,24 @@ class VehicleScope:
         can split same-numbered twins, never fired for the tools built
         on those rows.
 
-        ``id`` is the provider vehicle id ONLY on rows that carry no
-        dedicated one. A row that DECLARES ``external_key`` and leaves
-        it empty is saying it has no provider id; reading its own
-        primary key there compares a task, alert or item id against a
-        vehicle id, and ``allows`` treats a rung both sides carry as
-        decisive — including when the answer is no. So a dashboard-
-        created maintenance task, which stores ``vehicle_id = ''``, was
-        DENIED to the very driver assigned to its truck, and the tool
-        reported nothing due.
+        The provider id is read from ``external_key`` and NOWHERE else.
+        This used to fall back to ``row["id"]``, which is the provider
+        vehicle only on the two shapes that have no dedicated key —
+        live positions and the vehicle overview. On every other row
+        ``id`` is that table's OWN primary key, so the fallback compared
+        a task, alert, inspection or item id against a vehicle id; and
+        ``allows`` treats a rung both sides carry as decisive, including
+        when the answer is no. A dashboard-created maintenance task
+        (``vehicle_id = ''``) and every inspection row (no vehicle key
+        at all) were therefore DENIED to the very driver assigned to
+        that truck, and the tools reported nothing.
+
+        The two shapes that really do key on ``id`` pass
+        ``external_key="id"`` and say so at the call site.
         """
-        external_id = row.get(external_key)
-        if not external_id and external_key not in row:
-            external_id = row.get("id")
         return self.allows(
             registry_id=row.get("registry_id") or row.get("_registry_id"),
-            external_id=external_id,
+            external_id=row.get(external_key),
             name=row.get(name_key) or row.get("vehicle_name"),
         )
 

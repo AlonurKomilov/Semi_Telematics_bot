@@ -63,6 +63,7 @@ async def get_efficiency_summary(tool_args: dict, samsara_client,
         return {"error": "This tool requires account context."}
     eff = filter_to_scope(
         await _svc_fleet_eff(account_id, days=days), tool_args, key="name",
+        external_key="id",
     )
 
     def _row(v: dict) -> dict:

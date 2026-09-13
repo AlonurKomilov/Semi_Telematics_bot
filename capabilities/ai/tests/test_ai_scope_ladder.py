@@ -130,6 +130,17 @@ class TestInjectionSafety:
 
     def test_row_in_scope_reads_overview_id_key(self):
         # Overview rows carry the provider id under "id", not
-        # "vehicle_id" — both spellings reach the external rung.
+        # "vehicle_id" — and the call site SAYS so now. The helper used
+        # to read `id` for every row shape, which meant a maintenance
+        # task's or an inspection's own primary key was compared against
+        # a provider vehicle id and the row was denied to the driver
+        # assigned to that truck.
         args = _args(names=["229"], exts=["sam_60"])
-        assert row_in_scope({"id": "sam_60", "name": "renamed"}, args, key="name")
+        assert row_in_scope({"id": "sam_60", "name": "renamed"}, args,
+                            key="name", external_key="id")
+
+    def test_a_domain_rows_own_primary_key_is_not_a_vehicle_id(self):
+        args = _args(names=["229"], exts=["sam_60"])
+        # An inspection row: no vehicle key at all, `id` is the inspection.
+        assert row_in_scope({"id": 4821, "vehicle_name": "229"}, args,
+                            key="vehicle_name")
