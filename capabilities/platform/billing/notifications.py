@@ -250,7 +250,7 @@ async def notify_payment_failed(
     )
     if hosted_invoice_url:
         text += f"• Invoice: {hosted_invoice_url}\n"
-    text += f"• Subscription page: <code>{_portal_link(account_id)}</code>"
+    text += f"• Billing page: <code>{_portal_link(account_id)}</code>"
     return await _send_and_record("payment_failed", account_id, text)
 
 
@@ -261,7 +261,7 @@ async def notify_payment_recovered(account_id: int, amount_paid_cents: int) -> i
         "<b>✅ Payment recovered</b>\n\n"
         f"We received your payment{' of ' + amount if amount else ''} "
         "and your account is back to <b>active</b>.\n"
-        "Thanks for keeping your fleet on 4truck!"
+        "Thanks for staying with 4truck!"
     )
     return await _send_and_record("payment_recovered", account_id, text)
 
@@ -279,10 +279,10 @@ async def notify_comp_granted(
         "<b>🎁 Complimentary access granted</b>\n\n"
         "4truck is covering your subscription at no charge through "
         f"<b>{nice_date}</b>.\n"
-        "You'll see the would-be bill on your Subscription page with a "
+        "You'll see the would-be bill on your Billing page with a "
         "100% Special Discount line — that's what we're covering for "
         f"you.{reason_line}\n\n"
-        f"Subscription page: <code>{_portal_link(account_id)}</code>"
+        f"Billing page: <code>{_portal_link(account_id)}</code>"
     )
     return await _send_and_record("comp_granted", account_id, text)
 
@@ -295,10 +295,10 @@ async def notify_comp_expiring(
     day_word = "day" if days_left == 1 else "days"
     text = (
         f"<b>⏳ Complimentary plan expires in {days_left} {day_word}</b>\n\n"
-        f"Your comp window ends on <b>{nice_date}</b>.  After that you'll "
-        "be billed normally based on your tier + active-vehicle count.\n\n"
+        f"Your complimentary period ends on <b>{nice_date}</b>. After that you'll "
+        "be billed normally: your plan, plus the trucks in your vehicle list.\n\n"
         "If you'd like to extend or move to a paid plan, reach out to your "
-        "4truck contact or pick a plan from the Subscription page:\n"
+        "4truck contact or pick a plan from the Billing page:\n"
         f"<code>{_portal_link(account_id)}</code>"
     )
     return await _send_and_record("comp_expiring", account_id, text)
@@ -308,11 +308,11 @@ async def notify_comp_expired(account_id: int) -> int:
     """Fired when ``expire_lapsed_comps`` flips an account back to paid."""
     text = (
         "<b>📅 Complimentary period ended</b>\n\n"
-        "Your comp window has closed; your account is now billed normally "
-        "based on tier + the trucks in your vehicle list.\n\n"
-        "If this was an error or you'd like another comp window, contact "
-        "4truck support.\n"
-        f"Subscription page: <code>{_portal_link(account_id)}</code>"
+        "Your complimentary period has ended, so your account is billed normally "
+        "from now on: your plan, plus the trucks in your vehicle list.\n\n"
+        "If this was a mistake, or you'd like another complimentary period, "
+        "contact 4truck support.\n"
+        f"Billing page: <code>{_portal_link(account_id)}</code>"
     )
     return await _send_and_record("comp_expired", account_id, text)
 

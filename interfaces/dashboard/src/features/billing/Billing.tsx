@@ -266,7 +266,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
         <Stat label="Extra Trucks" value={String(summary.extra_vehicles)}
               accent={isOverLimit ? 'text-warn' : 'text-foreground'} />
         <Stat
-          label={summary.is_comped ? 'Total Due' : 'Est. Monthly'}
+          label={summary.is_comped ? 'Total due' : 'Estimated monthly'}
           value={usd(summary.amount_due_cents)}
           accent={summary.is_comped ? 'text-foreground' : 'text-ok'}
         />
@@ -328,7 +328,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <span className="inline-flex items-center gap-1.5 text-warn"><AlertTriangle className="size-3.5" aria-hidden />Trial ends {formatDay(summary.trial_ends_at, { timeZone: tz })}</span>
         )}
         {summary.provider === 'stub' && (
-          <Badge tone="warn"><FlaskConical className="size-3" aria-hidden />No real charges — billing provider is the stub</Badge>
+          <Badge tone="warn"><FlaskConical className="size-3" aria-hidden />No charges — payments are not switched on for this account yet</Badge>
         )}
       </div>
     </Card>
@@ -487,7 +487,7 @@ function PlanCard({
             rows={3}
             maxLength={2000}
             required
-            placeholder="How many trucks, how many companies, what you need it to do."
+            placeholder="How many trucks, how many companies, and what you need it to do"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
@@ -524,8 +524,7 @@ function PlanCard({
         >
           {loading ? 'Opening Stripe…'
             : current ? 'Current Plan'
-            : askable ? 'Talk to sales'
-            : !buyable ? 'Contact us'
+            : !buyable ? 'Contact Sales'
             : 'Upgrade'}
         </button>
       )}
@@ -583,7 +582,7 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-8">
-        No billing history yet — snapshots are recorded at the end of each billing period.
+        No billing history yet — a summary is recorded at the end of each billing period.
       </p>
     );
   }
@@ -776,7 +775,7 @@ export default function Billing() {
       // whole point of saying anything.
       setAskResult((r) => ({ ...r, [tier]: res.message }));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'We could not record that — please email us.');
+      setError(e instanceof Error ? e.message : 'We could not record that request. Please try again.');
     }
   };
 
@@ -822,7 +821,7 @@ export default function Billing() {
       }
     } catch (e: unknown) {
       tab?.close();
-      setError(e instanceof Error ? e.message : 'Checkout failed');
+      setError(e instanceof Error ? e.message : 'We could not start the checkout. Please try again.');
       setCheckoutLoading(null);
     }
   };
@@ -834,7 +833,7 @@ export default function Billing() {
       const res = await apiJSON<{ url?: string }>('/billing/portal', { method: 'POST', body: {} });
       if (res.url) window.location.href = res.url;
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Portal failed');
+      setError(e instanceof Error ? e.message : 'We could not open the payment portal. Please try again.');
     } finally {
       setPortalLoading(false);
     }
@@ -870,7 +869,7 @@ export default function Billing() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-xs font-medium hover:bg-muted transition disabled:opacity-60 min-h-tap"
             >
               <ExternalLink className="size-3" />
-              {portalLoading ? 'Opening…' : 'Manage payment'}
+              {portalLoading ? 'Opening Stripe…' : 'Manage payment'}
             </button>
           ) : undefined
         }
@@ -953,7 +952,7 @@ export default function Billing() {
           )}
           <li>Every truck in your Vehicles list is billed — whether it came from your telematics provider or you added it yourself. Archive a truck to stop billing it. Archived trucks and trailers are never billed.</li>
           <li>AI usage (tokens) is included — no per-query fees on any plan.</li>
-          <li>Invoices generated at the end of each billing period, with mid-cycle vehicle changes pro-rated automatically.</li>
+          <li>Invoices are generated at the end of each billing period, and mid-cycle vehicle changes are pro-rated automatically.</li>
         </ul>
       </Card>
 
