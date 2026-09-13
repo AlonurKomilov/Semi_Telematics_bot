@@ -15,6 +15,6 @@ import type { Mod } from '../../../catalogue';
 export const nightHaul: Mod = {
   id: 'night-haul', label: 'Night Haul', accent: 'azure', motion: 'calm',
   wallpaper: 'night-haul', wallpaperPage: 'night-haul',
-  sound: 'night-haul',
+  sound: 'night-haul', keys: 'night-haul',
   description: 'For the end of a long shift — low light, low sound, nothing in a hurry',
 };

@@ -198,6 +198,17 @@ export interface Mod extends ItemMeta {
   /** The light — a `SHADER_PACKS` id. The axis that changes a look's
    *  DEPTH without changing one of its colours. */
   readonly shader?: string;
+  /**
+   * The cue set the keys play.
+   *
+   * Its own field beside `sound` rather than part of it: one is what
+   * the app says back to you, the other is what your own typing sounds
+   * like, and a pack can reasonably ship one and not the other. Night
+   * Haul shipped a keyboard before this field existed and its preset
+   * could not wear it — the pack promised everything ready and left the
+   * keys on whatever was there.
+   */
+  readonly keys?: string;
   /** The pointer set — a `CURSOR_PACKS` id. A look may carry it, and a
    *  look is the only thing that should: it is per-device by nature and
    *  replaces an operating-system setting, so nothing account-wide may
@@ -296,7 +307,7 @@ export const MOD_FIELD_APPLIER: Record<
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
   wallpaper: 'theme', wallpaperLive: 'theme', wallpaperPage: 'theme', cursor: 'theme', shader: 'theme',
-  size: 'size', sound: 'sound',
+  size: 'size', sound: 'sound', keys: 'sound',
 };
 
 /**
@@ -331,7 +342,7 @@ export const MOD_FIELD_APPLIER: Record<
 export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
   shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
-  sound: 'item',
+  sound: 'item', keys: 'item',
   radius: 'item',
   size: 'value', motion: 'value', icons: 'value',
   entrance: 'value', wallpaperLive: 'value',

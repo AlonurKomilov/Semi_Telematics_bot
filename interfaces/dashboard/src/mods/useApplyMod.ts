@@ -17,6 +17,7 @@ import type { ModSetting } from '../preferences/registry';
 export function useApplyMod(): (m: Mod) => void {
   const { theme, setTheme, size, setSize } = useMods();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
+  const { value: keyPack, setValue: setKeyPack } = usePreference('mods.sound.keyboard.pack');
 
   return (m: Mod) => {
     // Snapshot BEFORE the write. Installing a mod overwrites accent,
@@ -35,6 +36,7 @@ export function useApplyMod(): (m: Mod) => void {
     };
     const previousSize = size.global;
     const previousSound = soundPack;
+    const previousKeys = keyPack;
     setTheme({
       // Stored, so it survives an axis being edited afterwards. Clicking
       // an already-installed mod therefore RESTORES it — the useful
@@ -55,6 +57,9 @@ export function useApplyMod(): (m: Mod) => void {
     // Not part of the theme preference — sound is its own key, and a mod
     // sets the pack without touching the volume.
     if (m.sound !== undefined) setSoundPack(m.sound);
+    // Its own preference, like the cue set beside it — a pack that
+    // ships a keyboard wears it here or nowhere.
+    if (m.keys !== undefined) setKeyPack(m.keys);
     if (m.size !== undefined) setSize({ global: m.size });
 
     undoableAction({
@@ -63,6 +68,7 @@ export function useApplyMod(): (m: Mod) => void {
         setTheme(previous);
         setSize({ global: previousSize });
         setSoundPack(previousSound);
+        setKeyPack(previousKeys);
       },
     });
   };

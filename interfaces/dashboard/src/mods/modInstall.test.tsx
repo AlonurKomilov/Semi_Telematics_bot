@@ -16,8 +16,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-const { setTheme, setSize, setSoundPack, undoableAction } = vi.hoisted(() => ({
-  setTheme: vi.fn(), setSize: vi.fn(), setSoundPack: vi.fn(), undoableAction: vi.fn(),
+const { setTheme, setSize, setSoundPack, setKeyPack, undoableAction } = vi.hoisted(() => ({
+  setTheme: vi.fn(), setSize: vi.fn(), setSoundPack: vi.fn(), setKeyPack: vi.fn(), undoableAction: vi.fn(),
 }));
 
 vi.mock('react-i18next', async (orig) => ({
@@ -35,7 +35,11 @@ vi.mock('./context', () => ({
 }));
 vi.mock('../preferences', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  usePreference: () => ({ value: 'chime', setValue: setSoundPack }),
+  // Keyed, because the installer now reaches two preferences and a
+  // single spy for both would pass whichever one it wrote.
+  usePreference: (k: string) => (k === 'mods.sound.keyboard.pack'
+    ? { value: 'soft', setValue: setKeyPack }
+    : { value: 'chime', setValue: setSoundPack }),
 }));
 vi.mock('../components/banners/stagedAction', () => ({ undoableAction }));
 
@@ -54,7 +58,7 @@ const { EVERYTHING, THIN } = vi.hoisted(() => ({
     id: 'everything', label: 'Everything', why: 'carries every field a mod can',
     accent: 'green', radius: 'pill', material: 'glass', motion: 'calm',
     icons: 'bold', iconPack: 'phosphor', font: 'serif', entrance: true,
-    wallpaper: 'grid', wallpaperLive: true, wallpaperPage: 'mesh', cursor: 'sharp', shader: 'studio', size: 1.25, sound: 'blip',
+    wallpaper: 'grid', wallpaperLive: true, wallpaperPage: 'mesh', cursor: 'sharp', shader: 'studio', size: 1.25, sound: 'blip', keys: 'click',
   },
   THIN: { id: 'thin', label: 'Thin', accent: 'green', why: 'carries almost nothing' },
 }));
@@ -73,7 +77,7 @@ const field = (m: unknown, f: string) => (m as Record<string, unknown>)[f];
 beforeEach(() => {
   cleanup();
   setTheme.mockClear(); setSize.mockClear();
-  setSoundPack.mockClear(); undoableAction.mockClear();
+  setSoundPack.mockClear(); setKeyPack.mockClear(); undoableAction.mockClear();
 });
 
 const install = (label: string) => {
@@ -112,12 +116,33 @@ describe('a look that carries everything installs everything', () => {
     expect(install('Everything').iconPack).toBe('phosphor');
   });
 
-  it('sends size and sound to their own homes, not through the theme', () => {
+  it('sends size, sound and the keyboard to their own homes, not through the theme', () => {
     const wrote = install('Everything');
     expect(wrote).not.toHaveProperty('size');
     expect(wrote).not.toHaveProperty('sound');
+    expect(wrote).not.toHaveProperty('keys');
     expect(setSize).toHaveBeenCalledWith({ global: 1.25 });
     expect(setSoundPack).toHaveBeenCalledWith('blip');
+    // Night Haul shipped a keyboard its own preset could not wear: the
+    // field did not exist, so the pack promised everything ready and
+    // left the keys on whatever was there.
+    expect(setKeyPack).toHaveBeenCalledWith('click');
+  });
+
+  it('offers a way back to everything it overwrote', () => {
+    // Seven axes in one click, three of them in homes of their own. The
+    // banner is the only way back, and an undo that forgets one of them
+    // is worse than none: the person believes they are restored.
+    install('Everything');
+    expect(undoableAction, 'installing a look said nothing').toHaveBeenCalledTimes(1);
+    setTheme.mockClear(); setSize.mockClear();
+    setSoundPack.mockClear(); setKeyPack.mockClear();
+    return (undoableAction.mock.calls[0][0].undo as () => Promise<void>)().then(() => {
+      expect(setSize, 'undo left the app resized').toHaveBeenCalledWith({ global: 1 });
+      expect(setSoundPack, 'undo left the new cue set playing').toHaveBeenCalledWith('chime');
+      expect(setKeyPack, 'undo left the new keyboard clicking').toHaveBeenCalledWith('soft');
+      expect(setTheme, 'undo wrote no theme fields back').toHaveBeenCalled();
+    });
   });
 
   it('and stores the identity, so editing an axis afterwards does not uninstall it', () => {
@@ -131,6 +156,7 @@ describe('a look that carries little writes little', () => {
     expect(Object.keys(wrote).sort()).toEqual(['accent', 'mod']);
     expect(setSize, 'a look with no size resized the app').not.toHaveBeenCalled();
     expect(setSoundPack, 'a look with no sound changed the pack').not.toHaveBeenCalled();
+    expect(setKeyPack, 'a look with no keyboard changed the keys').not.toHaveBeenCalled();
   });
 });
 

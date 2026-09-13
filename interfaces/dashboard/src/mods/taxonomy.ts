@@ -158,7 +158,10 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       { id: 'interface', title: 'Interface sounds',
         axes: [], prefs: ['mods.sound.ui'], modFields: ['sound'] },
       { id: 'keyboard',  title: 'Keyboard',
-        axes: [], prefs: ['mods.sound.keyboard', 'mods.sound.keyboard.pack'] },
+        axes: [], prefs: ['mods.sound.keyboard', 'mods.sound.keyboard.pack'],
+        // A pack that ships a keyboard can now wear it: `keys` is the
+        // field, and this is what files it under Sounds.
+        modFields: ['keys'] },
       { id: 'alerts',    title: 'Live alerts',
         axes: [], prefs: ['dispatch.soundOn'] },
     ],
