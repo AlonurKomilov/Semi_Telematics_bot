@@ -26,7 +26,17 @@ from capabilities.security import detector as D
     ("masstest@example.com", True),
     ("x@yopmail.com", True),
     ("someone@thing.test", True),
+    # The list will always be one spelling behind: temp-mail.org was in
+    # it while tempmail.com walked past on 2026-09-10, creating four
+    # accounts nobody classified. The SHAPE is what these share.
+    ("masstest1@tempmail.com", True),
+    ("x@tempmail.org", True),
+    ("x@my-throwaway-inbox.net", True),
+    ("x@mailinator.co.uk", True),
     ("owner@premiertruckinggroup.com", False),
+    # ...and a carrier's real domain must never trip the shape match.
+    ("dispatch@templeton-freight.com", False),
+    ("ops@disposalservicesinc.com", False),
     ("adam@gmail.com", False),
     ("", False),
     (None, False),

@@ -48,9 +48,19 @@ logger = logging.getLogger(__name__)
 SUSPECT_EMAIL_DOMAINS: frozenset[str] = frozenset({
     "mailinator.com", "guerrillamail.com", "guerrillamailblock.com",
     "wearehackerone.com", "sharklasers.com", "getnada.com",
-    "temp-mail.org", "10minutemail.com", "yopmail.com", "trashmail.com",
+    "temp-mail.org", "tempmail.com", "tempmail.org", "temp-mail.io",
+    "10minutemail.com", "yopmail.com", "trashmail.com", "throwawaymail.com",
     "example.com", "example.net", "example.org", "example.edu", "test.com",
 })
+# Throwaway providers sell the same idea under a dozen spellings, and a
+# list of exact hosts will always be one behind: `temp-mail.org` was in
+# the list while `tempmail.com` walked past it on 2026-09-10. Matching
+# the SHAPE catches the family — and a real carrier's domain never
+# contains "tempmail", "throwaway" or "guerrillamail".
+SUSPECT_DOMAIN_MARKS: tuple[str, ...] = (
+    "tempmail", "temp-mail", "throwaway", "guerrillamail", "mailinator",
+    "trashmail", "10minutemail", "fakemail", "disposable",
+)
 RESERVED_TLDS: tuple[str, ...] = (".test", ".example", ".invalid", ".localhost")
 
 # User agents that are not a person's browser.  A signup or login from
@@ -210,7 +220,9 @@ def _suspect_domain(email: str | None) -> bool:
     if not email or "@" not in email:
         return False
     domain = email.rsplit("@", 1)[1].strip().lower()
-    return domain in SUSPECT_EMAIL_DOMAINS or domain.endswith(RESERVED_TLDS)
+    if domain in SUSPECT_EMAIL_DOMAINS or domain.endswith(RESERVED_TLDS):
+        return True
+    return any(mark in domain for mark in SUSPECT_DOMAIN_MARKS)
 
 
 # ── rules — each reads one durable source, returns Signals ────────
