@@ -166,28 +166,17 @@ async def post_init(app: Application):
         from infra import system_bot
         # The card used to show only the customer counts, which answered
         # "how many companies use this" and nothing else — so a signup
-        # burst was invisible until someone opened the console. It shows
-        # the whole census now, with the commercial number in bold and
-        # the rest beside it, because the useful reading is the SHAPE:
-        # `real` jumping is growth, `test` jumping is someone testing.
+        # burst was invisible on it until someone opened the console.
+        # It shows the whole census now, because the useful reading is
+        # the SHAPE: `real` climbing is growth, `test` climbing is
+        # someone testing.
         #
-        # `normal` is the word the column and the console use. It is not
-        # "safe" — nobody examined those accounts, and claiming they were
-        # cleared is the one thing this card must not do.
-        census = await db.account_census()
-        acc, usr, sec = census["accounts"], census["users"], census["security"]
-        sys_msg = (
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "  ⚙️  <b>Bot is Online</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "\n"
-            f"  🏢 {acc['total']} accounts — <b>{acc['real']}</b> real · {acc['test']} test\n"
-            f"  👥 {usr['total']} users — <b>{usr['real']}</b> real · {usr['test']} test\n"
-            f"  🛡 {sec['monitored']} monitored · {sec['quarantined']} quarantined"
-            f" · {sec['normal']} normal\n"
-            "\n"
-            "  Operator console: <code>system.4truck.us</code>"
-        )
+        # It lives in capabilities/formatting/system_card.py with the
+        # bot's other cards, so it can be tested — it has branches now,
+        # and a boot message is exactly the thing that rots quietly
+        # because nobody re-reads what they have learned to skim.
+        from capabilities.formatting.system_card import format_system_card
+        sys_msg = format_system_card(await db.account_census())
         sent = await system_bot.send_to_owners(
             SYSTEM_OWNER_IDS,
             sys_msg,
