@@ -289,3 +289,40 @@ async def test_a_user_security_change_is_written_to_the_audit_trail(api):
         "SELECT details FROM platform_audit_log WHERE event = 'user_security'")
     rows = await cur.fetchall()
     assert rows and f"user {owner.id}: normal -> monitored" in rows[-1]["details"]
+
+
+async def test_the_board_reports_watched_people_beside_watched_accounts(api):
+    """The console's two subjects, from one read. An account is often
+    fine while one person inside it is not, and the page must be able to
+    show that pair without claiming anything about the company."""
+    app, db, acct = api
+    owner = (await db.list_account_users(acct.id))[0]
+    await db.update_user(owner.id, security="monitored")
+
+    body = (await _get(app, "/api/system/security/candidates?hours=168")).json()
+    assert "watching_people" in body, "the page reads this key"
+    assert isinstance(body["watching_people"], list)
+    # the shape the page joins on, whether or not a rule fired this run
+    for person in body["watching_people"]:
+        assert {"user_id", "email", "account_id", "account_security",
+                "rules", "severity"} <= set(person)
+
+
+async def test_the_watching_tile_counts_people_separately_from_accounts(api):
+    """One number would hide whichever subject it left out: watching a
+    person is not watching their company."""
+    app, db, acct = api
+    owner = (await db.list_account_users(acct.id))[0]
+
+    body = (await _get(app, "/api/system/security/summary?hours=24")).json()
+    assert body["monitored_users"] == 0
+
+    await db.update_user(owner.id, security="monitored")
+    body = (await _get(app, "/api/system/security/summary?hours=24")).json()
+    assert body["monitored_users"] == 1
+    assert body["monitored_accounts"] == 0, "their employer was never marked"
+
+    # ...and deactivating them takes them out of the count
+    await db.update_user(owner.id, is_active=0)
+    body = (await _get(app, "/api/system/security/summary?hours=24")).json()
+    assert body["monitored_users"] == 0

@@ -156,6 +156,13 @@ class Signal:
     # Without it such hits collapse into one nameless row that tells an
     # operator nothing.
     subject: str | None = None
+    # The PERSON this is about, when the rule knows one.  Two of the
+    # rules are already person-shaped — a throwaway signup address, a
+    # flood of resets at one mailbox — and until this field existed the
+    # only thing an operator could act on was the employer, which
+    # records every one of its people to observe the one.
+    user_id: int | None = None
+    email: str | None = None
 
 
 @dataclass
@@ -168,6 +175,10 @@ class Candidate:
     kind: str | None = None            # what it is: real | test
     security: str | None = None        # how it stands: normal | monitored | quarantined
     signals: list[Signal] = field(default_factory=list)
+    # user_id -> standing, for the people above; filled the same way the
+    # account's own standing is, so the page can show that a person is
+    # already watched inside an account that is not.
+    people_security: dict[int, str] = field(default_factory=dict)
 
     @property
     def weight(self) -> int:
@@ -178,6 +189,23 @@ class Candidate:
     def severity(self) -> str:
         """The strongest thing said about this subject."""
         return max((s.severity for s in self.signals), key=lambda x: SEVERITY_RANK.get(x, 0), default="low")
+
+    @property
+    def people(self) -> list[tuple[int, str | None]]:
+        """The people this candidate's signals named, in first-seen order.
+
+        A candidate stays keyed on its ACCOUNT — a signup burst and a
+        throwaway address about the same account are one finding, not
+        two — but it now says WHO, so the operator can put the person
+        under observation instead of their twenty-two colleagues.
+        """
+        out: list[tuple[int, str | None]] = []
+        seen: set[int] = set()
+        for s in self.signals:
+            if s.user_id is not None and s.user_id not in seen:
+                seen.add(s.user_id)
+                out.append((s.user_id, s.email))
+        return out
 
     @property
     def rules(self) -> list[str]:
@@ -255,7 +283,7 @@ async def rule_signup_burst(db, hours: int) -> list[Signal]:
 async def rule_disposable_email(db, hours: int) -> list[Signal]:
     """Owner signed up with a throwaway / reserved domain (accounts+users)."""
     cur = await db.execute(
-        "SELECT a.id AS account_id, u.email FROM accounts a "
+        "SELECT a.id AS account_id, u.id AS user_id, u.email FROM accounts a "
         "JOIN users u ON u.account_id = a.id AND u.is_primary_owner = 1 "
         "WHERE a.created_at >= ?",
         (_cutoff(hours),))
@@ -265,7 +293,8 @@ async def rule_disposable_email(db, hours: int) -> list[Signal]:
             out.append(Signal(
                 rule="disposable_email", severity="med",
                 account_id=r["account_id"], ip=None, count=1,
-                evidence=f"owner email {r['email']}"))
+                evidence=f"owner email {r['email']}",
+                user_id=r["user_id"], email=r["email"]))
     return out
 
 
@@ -348,13 +377,15 @@ async def rule_ip_rotation(db, hours: int) -> list[Signal]:
 async def rule_reset_flood(db, hours: int) -> list[Signal]:
     """Many password-reset tokens for one user (password_reset_tokens)."""
     cur = await db.execute(
-        "SELECT u.account_id, u.email, COUNT(*) AS n "
+        "SELECT u.id AS user_id, u.account_id, u.email, COUNT(*) AS n "
         "FROM password_reset_tokens t JOIN users u ON u.id = t.user_id "
-        "WHERE t.created_at >= ? GROUP BY u.account_id, u.email HAVING COUNT(*) > ?",
+        "WHERE t.created_at >= ? GROUP BY u.id, u.account_id, u.email "
+        "HAVING COUNT(*) > ?",
         (_cutoff(hours), T_RESETS_PER_USER))
     return [Signal(rule="reset_flood", severity="med", account_id=r["account_id"],
                    ip=None, count=int(r["n"]),
-                   evidence=f"{r['n']} password-reset tokens for {r['email']}")
+                   evidence=f"{r['n']} password-reset tokens for {r['email']}",
+                   user_id=r["user_id"], email=r["email"])
             for r in await cur.fetchall()]
 
 
@@ -479,18 +510,50 @@ async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
         for c in cands.values():
             if c.account_id in meta:
                 c.name, c.kind, c.security = meta[c.account_id]
-        # An account we have already classified as ours is not a finding:
-        # the rules describe our own fixtures exactly as well as they
-        # describe a stranger, so without this the page shows the same
-        # test accounts forever and stops being read.
-        #
-        # Unless we are WATCHING it — seeing that a rule still fires on
-        # someone under observation is the entire point of observing
-        # them, and since the two axes split, "ours" and "watched" are
-        # both true of every account watched so far. Dropping on kind
-        # alone would have emptied the watching table.
-        cands = {k: c for k, c in cands.items()
-                 if not (c.kind == "test" and (c.security or "normal") == "normal")}
+
+    # The people the signals named, with the standing each currently
+    # holds.  Read separately from the account's: the case this whole
+    # field exists for is a watched person inside an account that is
+    # NOT watched, and an account's standing says nothing about theirs.
+    user_ids = sorted({s.user_id for c in cands.values()
+                       for s in c.signals if s.user_id is not None})
+    if user_ids:
+        placeholders = ",".join("?" * len(user_ids))
+        cur = await handle.execute(
+            f"SELECT id, security FROM users WHERE id IN ({placeholders})",
+            user_ids)
+        standings = {r["id"]: (r["security"] or "normal")
+                     for r in await cur.fetchall()}
+        for c in cands.values():
+            for uid, _ in c.people:
+                if uid in standings:
+                    c.people_security[uid] = standings[uid]
+
+    # An account we have already classified as ours is not a finding:
+    # the rules describe our own fixtures exactly as well as they
+    # describe a stranger, so without this the page shows the same
+    # test accounts forever and stops being read.
+    #
+    # Two things bring such a row back, and they are the same reason
+    # said of two subjects: we are WATCHING somebody here.  Seeing that
+    # a rule still fires on someone under observation is the entire
+    # point of observing them.  The account is one such subject; a
+    # PERSON inside it is the other, and the person is the case that
+    # used to be unreachable — the only way to watch them was to watch
+    # their employer, which records all twenty-three of its people.
+    #
+    # Read both off the security axis, never the kind axis: a watched
+    # customer is real + monitored, and since the two axes split,
+    # "ours" and "watched" are both true of every account watched so
+    # far.  Dropping on kind alone would have emptied the watching
+    # table.
+    def _ours_and_quiet(c: Candidate) -> bool:
+        if c.kind != "test" or (c.security or "normal") != "normal":
+            return False
+        return all(c.people_security.get(uid, "normal") == "normal"
+                   for uid, _ in c.people)
+
+    cands = {k: c for k, c in cands.items() if not _ours_and_quiet(c)}
 
     ranked = sorted(cands.values(), key=lambda c: (c.weight, len(c.signals)), reverse=True)
     return [_as_dict(c) for c in ranked]
@@ -504,6 +567,13 @@ def _as_dict(c: Candidate) -> dict[str, Any]:
         "name": c.name,
         "kind": c.kind,
         "security": c.security or "normal",
+        # WHO, beside WHERE. An operator reading this row can put the
+        # person under observation instead of their whole company.
+        "people": [
+            {"user_id": uid, "email": email,
+             "security": c.people_security.get(uid, "normal")}
+            for uid, email in c.people
+        ],
         "severity": c.severity,
         "weight": c.weight,
         "rules": c.rules,
@@ -528,11 +598,30 @@ def board(candidates: list[dict]) -> dict[str, Any]:
     see this — keyed for the watching table to join, not repeated as
     candidates. Read off the security axis, never the kind axis: a
     watched customer is real + monitored.
+
+    ``watching_people`` is the same list for watched PERSONS, and it is
+    separate on purpose: their employer is usually not watched, so
+    folding them into the account list would either hide them or claim
+    something about the company that is not true.  A candidate can
+    appear in both lists — as an account still awaiting a decision, and
+    as evidence about the one person in it already under observation.
     """
     watching = [
         {"account_id": c["account_id"], "rules": c["rules"], "severity": c["severity"]}
         for c in candidates if c.get("security") == "monitored"
     ]
+    watching_people = [
+        {"user_id": person["user_id"], "email": person.get("email"),
+         "account_id": c["account_id"], "account_name": c.get("name"),
+         "account_security": c.get("security") or "normal",
+         "rules": c["rules"], "severity": c["severity"]}
+        for c in candidates
+        for person in c.get("people", [])
+        if person.get("security") == "monitored"
+    ]
+    # A watched PERSON does not move their employer's row out of `new`:
+    # the account may still be carrying a finding nobody has decided
+    # about, and watching one of its people is not that decision.
     fresh = [c for c in candidates if c.get("security") != "monitored"]
 
     by_ip: dict[str, list[dict]] = {}
@@ -577,4 +666,5 @@ def board(candidates: list[dict]) -> dict[str, Any]:
     new = sorted(groups + rest,
                  key=lambda c: (SEVERITY_RANK.get(c["severity"], 0), c["weight"]),
                  reverse=True)
-    return {"new": new, "watching": watching}
+    return {"new": new, "watching": watching,
+            "watching_people": watching_people}

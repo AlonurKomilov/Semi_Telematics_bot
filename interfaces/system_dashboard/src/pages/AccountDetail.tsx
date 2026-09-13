@@ -110,7 +110,7 @@ export default function AccountDetailPage() {
                   load();
                 } catch { /* transient — row keeps its current kind */ }
               }}
-              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
+              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs"
             >
               {ACCOUNT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
@@ -139,7 +139,7 @@ export default function AccountDetailPage() {
                   load();
                 }
               }}
-              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
+              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs"
             >
               {ACCOUNT_SECURITY.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
@@ -1107,7 +1107,7 @@ function PlanSelect({ accountId, tier, onMoved }: { accountId: number; tier: str
             setBusy(false);
           }
         }}
-        className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
+        className="bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs"
       >
         {!known && <option value={tier}>{tier} (no plan row)</option>}
         {(plans ?? []).map((p) => (

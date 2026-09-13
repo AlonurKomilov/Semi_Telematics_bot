@@ -39,6 +39,7 @@ function formatLastSeen(iso: string | null): { label: string; tone: string; titl
 export default function UsersPage() {
   const [rows, setRows] = useState<SystemUser[]>([]);
   const [search, setSearch] = useState('');
+  const [securityFilter, setSecurityFilter] = useState<'' | AccountSecurity>('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   // Which row's sessions panel is open.  Sessions are lazy-loaded on
@@ -83,6 +84,7 @@ export default function UsersPage() {
     setErr('');
     const qs = new URLSearchParams({ limit: '200' });
     if (search.trim()) qs.set('search', search.trim());
+    if (securityFilter) qs.set('security', securityFilter);
     apiJSON<{ items: SystemUser[] }>(`/system/users?${qs}`)
       .then((r) => setRows(r.items))
       .catch((e: unknown) => {
@@ -103,7 +105,8 @@ export default function UsersPage() {
         <h1 className="text-lg font-semibold text-slate-100">Users</h1>
         <p className="text-xs text-slate-500 mt-0.5">
           Every user across every account.  Search by name, email, or exact Telegram id.
-          Read-only — tenant user management stays in the customer dashboard.
+          Security standing is the one thing settable here; the rest is read-only — tenant user
+          management stays in the customer dashboard.
         </p>
       </header>
 
@@ -115,6 +118,15 @@ export default function UsersPage() {
           placeholder="Name, email, or telegram id…"
           className="bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm flex-1 min-w-[220px]"
         />
+        {/* The column below answers "how does this person stand"; without
+            this the page cannot be ASKED "who is watched" — and hunting a
+            watched person through 200 rows is not an answer. */}
+        <select value={securityFilter}
+                onChange={(e) => setSecurityFilter(e.target.value as '' | AccountSecurity)}
+                className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm">
+          <option value="">Any security</option>
+          {ACCOUNT_SECURITY.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
         <button onClick={load}
                 className="bg-accent text-white text-xs px-3 py-1.5 rounded hover:bg-accent/90">
           Search
@@ -190,7 +202,7 @@ export default function UsersPage() {
                             load();
                           }
                         }}
-                        className={`bg-slate-950 border rounded px-1.5 py-0.5 text-xs ${
+                        className={`bg-slate-950 border rounded px-1.5 py-1 text-xs ${
                           (u.security ?? 'normal') === 'normal'
                             ? 'border-slate-700 text-slate-500'
                             : 'border-accent/40 text-accent'}`}

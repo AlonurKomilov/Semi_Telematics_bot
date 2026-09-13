@@ -5,6 +5,7 @@ import { apiJSON, ApiError } from '../api/client';
 import type {
   AccountSecurity, MonitoredAccountRow, SecurityBoard, SecurityCandidate, SecurityEndpointRow,
   SecurityRequestRow, SecurityRule, SecuritySeverity, SecuritySummary, SecurityWatching,
+  SecurityWatchingPerson,
 } from '../types';
 
 /** Windows the ledger is read over.  Hours, because that is what the API
@@ -85,6 +86,7 @@ export default function SecurityPage() {
   const [monitored, setMonitored] = useState<MonitoredAccountRow[]>([]);
   const [decide, setDecide] = useState<SecurityCandidate[]>([]);
   const [watching, setWatching] = useState<SecurityWatching[]>([]);
+  const [watchingPeople, setWatchingPeople] = useState<SecurityWatchingPerson[]>([]);
   const [rules, setRules] = useState<Record<string, SecurityRule>>({});
   const [map, setMap] = useState<SecurityEndpointRow[]>([]);
   const [rows, setRows] = useState<SecurityRequestRow[]>([]);
@@ -120,6 +122,7 @@ export default function SecurityPage() {
         setRows(r.items);
         setDecide(b.new);
         setWatching(b.watching);
+        setWatchingPeople(b.watching_people ?? []);
         setRules(Object.fromEntries(ru.items.map((x) => [x.id, x])));
       })
       .catch((e: unknown) => {
@@ -169,6 +172,48 @@ export default function SecurityPage() {
     }
     setPromoting(null);
     load();
+  };
+
+  /** Watch one PERSON. The account-sized control above records every
+   *  request from everyone in the company — twenty-three people at the
+   *  largest customer, to observe one. When the rules have named the
+   *  person, this is the honest size of the decision. */
+  const watchPerson = async (key: string, userId: number, email: string | null) => {
+    setPromoting(key);
+    setErr('');
+    try {
+      await apiJSON(`/system/users/${userId}/security`, {
+        method: 'PATCH', body: { security: 'monitored' as AccountSecurity },
+      });
+    } catch (e: unknown) {
+      setErr(`Could not watch ${email ?? `user ${userId}`} — ` +
+             (e instanceof Error ? e.message : 'the server refused'));
+    } finally {
+      setPromoting(null);
+      load();
+    }
+  };
+
+  /** Stop watching one person — the way back out, on the row that shows
+   *  the watching, and confirmed for the same reason the account one is:
+   *  it silently stops recording. */
+  const stopWatchingPerson = async (userId: number, email: string | null) => {
+    const ok = window.confirm(
+      `Stop watching ${email ?? `user ${userId}`}?\n\nNew requests from them will no longer be ` +
+      `recorded. What is already in the ledger stays, and the rules can surface them again.`);
+    if (!ok) return;
+    setPromoting(`stopuser:${userId}`);
+    setErr('');
+    try {
+      await apiJSON(`/system/users/${userId}/security`, {
+        method: 'PATCH', body: { security: 'normal' as AccountSecurity },
+      });
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Could not stop watching that person');
+    } finally {
+      setPromoting(null);
+      load();
+    }
   };
 
   /** Stop watching — the way back out, on the row that shows the
@@ -241,11 +286,15 @@ export default function SecurityPage() {
 
       {/* Always rendered: a region that mounts when data arrives shoves the
           whole page down on first paint.  Placeholders hold the height. */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         <Tile label={`Refused · ${WINDOWS.find((w) => w.hours === hours)?.label.toLowerCase() ?? `${hours}h`}`} value={summary?.refused} hint="401 + 403 — held" tone="text-ok" />
         <Tile label="Throttled" value={summary?.throttled} hint="429" tone="text-warn" />
         <Tile label="Broke" value={summary?.broke} hint="5xx — look here" tone={(summary?.broke ?? 0) > 0 ? 'text-danger' : undefined} />
         <Tile label="Watching" value={summary?.monitored_accounts} hint="accounts · security = monitored" tone="text-accent" />
+        {/* People are their own tile, never folded into the one above:
+            watching a person is not watching their company, and a single
+            number would hide whichever subject it left out. */}
+        <Tile label="Watching people" value={summary?.monitored_users} hint="users · security = monitored" tone="text-accent" />
       </div>
 
       {err && (
@@ -333,6 +382,22 @@ export default function SecurityPage() {
                             {c.security && c.security !== 'normal'
                               ? <> · <span className="text-accent">{c.security}</span></> : null}
                           </div>
+                          {/* WHO, under WHERE. Two of the rules are about a
+                              person, not a company, and until the row said
+                              so the only thing to act on was the employer. */}
+                          {c.people?.length ? (
+                            <ul className="mt-1 space-y-0.5 text-xs">
+                              {c.people.map((person) => (
+                                <li key={person.user_id} className="text-slate-400">
+                                  <span aria-hidden className="text-slate-600 mr-1">·</span>
+                                  {person.email ?? `user ${person.user_id}`}
+                                  {person.security !== 'normal' && (
+                                    <span className="ml-1 text-accent">{person.security}</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
                         </>
                       ) : (
                         <>
@@ -361,11 +426,45 @@ export default function SecurityPage() {
                           {busy ? 'Setting…' : `Monitor all ${c.members!.length}`}
                         </button>
                       ) : c.account_id != null ? (
-                        <button type="button" disabled={busy}
-                                onClick={() => promote(key, [c.account_id!])}
-                                className="text-xs px-2 py-1 rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-50">
-                          {busy ? 'Setting…' : 'Monitor'}
-                        </button>
+                        // Two sizes of one decision, and the weight goes
+                        // to the SMALLER one when the rules named a
+                        // person: the account button records everyone in
+                        // the company, and making the record-everyone
+                        // button the bright one is a ranking we would not
+                        // be able to explain to the operator. Both are
+                        // spelled out, because "Monitor" alone would now
+                        // mean two different things on the same row.
+                        <div className="inline-flex flex-col items-stretch gap-1">
+                          {c.people?.map((person) => (
+                            person.security === 'normal' ? (
+                              <button key={person.user_id} type="button"
+                                      disabled={promoting === `${key}:u${person.user_id}`}
+                                      onClick={() => watchPerson(`${key}:u${person.user_id}`, person.user_id, person.email)}
+                                      title={`Record only ${person.email ?? `user ${person.user_id}`}, not the rest of the account`}
+                                      className="text-xs px-2 py-1 rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-50">
+                                {promoting === `${key}:u${person.user_id}` ? 'Setting…' : 'Monitor person'}
+                              </button>
+                            ) : (
+                              // The slot stays, at the same height: the
+                              // button vanishing was the only signal the
+                              // click worked, and it shifted every row
+                              // below by its own height mid-sequence.
+                              <span key={person.user_id}
+                                    className="text-xs px-2 py-1 rounded border border-accent/40 text-accent text-center">
+                                Person watched
+                              </span>
+                            )
+                          ))}
+                          <button type="button" disabled={busy}
+                                  onClick={() => promote(key, [c.account_id!])}
+                                  title="Records every request from everyone in this account"
+                                  className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${
+                                    c.people?.length
+                                      ? 'border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500'
+                                      : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'}`}>
+                            {busy ? 'Setting…' : 'Monitor account'}
+                          </button>
+                        </div>
                       ) : looksLikeEndpoint(c.subject) ? (
                         <button type="button" onClick={() => showEndpoint(c.subject!)}
                                 className="text-xs px-2 py-1 rounded border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500">
@@ -387,8 +486,9 @@ export default function SecurityPage() {
       <section className="mb-5">
         <h2 className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-1">Watching</h2>
         <p className="text-xs text-slate-500 mb-2">
-          Accounts marked monitored. Every request they make is recorded; "still firing" is what the
-          rules say about them this week. Filter narrows the activity tables below to one account.
+          Subjects marked monitored — accounts first, then people. Every request they make is
+          recorded; "still firing" is what the rules say about them this week. Filter narrows the
+          activity tables below to one account.
         </p>
         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
@@ -406,7 +506,8 @@ export default function SecurityPage() {
             <tbody>
               {!loading && monitored.length === 0 && (
                 <tr><td colSpan={7} className="text-center text-slate-500 py-6">
-                  No account is marked <span className="text-accent">monitored</span>. Use Monitor above, or set it from an account page.
+                  No account is marked <span className="text-accent">monitored</span>. Use Monitor account above, or set it from an account page.
+                  {watchingPeople.length > 0 && <> {watchingPeople.length === 1 ? 'One person is' : `${watchingPeople.length} people are`} watched — below.</>}
                 </td></tr>
               )}
               {loading && monitored.length === 0 && (
@@ -453,6 +554,68 @@ export default function SecurityPage() {
             </tbody>
           </table>
         </div>
+
+        {/* People, not companies. Their own block because their employer
+            is usually NOT watched: putting them in the table above would
+            say something about the company that is not true. It renders
+            only when somebody is watched — an empty second table would
+            read as a second thing that is broken. */}
+        {watchingPeople.length > 0 && (
+          <section className="mt-4 border-l border-slate-800 pl-3">
+            <h3 className="text-xs font-semibold text-slate-500 mb-1">People</h3>
+            <p className="text-xs text-slate-500 mb-2">
+              Watched inside an account of their own standing. Only their requests are recorded —
+              marking the company instead would record everyone in it.
+            </p>
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="text-left px-3 py-2">Person</th>
+                  <th className="text-left px-3 py-2">Account</th>
+                  <th className="text-left px-3 py-2">Still firing</th>
+                  <th className="text-right px-3 py-2">Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {watchingPeople.map((person) => (
+                  <tr key={person.user_id} className="border-b border-slate-800/50 hover:bg-slate-800/40">
+                    <td className="px-3 py-2">
+                      <div className="text-slate-100">{person.email ?? `user ${person.user_id}`}</div>
+                      <div className="text-xs text-slate-500">{person.user_id}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {person.account_id != null ? (
+                        <>
+                          <Link to={`/accounts/${person.account_id}`} className="text-slate-300 hover:text-accent">
+                            {person.account_name ?? person.account_id}
+                          </Link>
+                          <div className="text-xs text-slate-500">
+                            {person.account_security === 'normal'
+                              ? 'not watched'
+                              : <span className="text-accent">{person.account_security}</span>}
+                          </div>
+                        </>
+                      ) : <span className="text-xs text-slate-600">—</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1">{person.rules.map((r) => <RuleChip key={r} id={r} />)}</div>
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <button type="button"
+                              disabled={promoting === `stopuser:${person.user_id}`}
+                              onClick={() => stopWatchingPerson(person.user_id, person.email)}
+                              className="text-xs px-2 py-0.5 rounded border border-slate-700 text-slate-500 hover:text-slate-200 disabled:opacity-50">
+                        {promoting === `stopuser:${person.user_id}` ? 'Stopping…' : 'Stop'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </section>
+        )}
       </section>
 
       {/* ── 3. Activity: the ledger, filtered ────────────────── */}

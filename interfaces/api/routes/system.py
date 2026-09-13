@@ -1690,7 +1690,13 @@ async def security_summary(
     _user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
-    """Header tiles: refused (the wall held), throttled, broke (a bug they found)."""
+    """Header tiles: refused (the wall held), throttled, broke (a bug they found).
+
+    The watched count is two numbers, not one: a tile that counted only
+    accounts would read 3 while the page below listed three accounts and
+    two people — and the second kind of subject exists precisely because
+    watching a person is NOT watching their company.
+    """
     refused = await platform_db.count_security_requests(since_hours=hours, statuses=(401, 403))
     throttled = await platform_db.count_security_requests(since_hours=hours, statuses=(429,))
     rows = await platform_db.list_security_requests(since_hours=hours, limit=5000)
@@ -1702,6 +1708,7 @@ async def security_summary(
         "throttled": throttled,
         "broke": broke,
         "monitored_accounts": len(monitored),
+        "monitored_users": await platform_db.count_users_with_security("monitored"),
     }
 
 
@@ -1768,6 +1775,11 @@ async def security_candidates(
         # what needs a decision (bursts folded) / what the rules still say
         # about accounts already watched — the page's two questions.
         "new": arranged["new"], "watching": arranged["watching"],
+        # ...and the same, said of PEOPLE. Its own key because a watched
+        # person's employer is usually not watched, and an account is
+        # often fine while one person inside it is not. Watching the
+        # account to watch them records all of its people.
+        "watching_people": arranged["watching_people"],
     }
 
 

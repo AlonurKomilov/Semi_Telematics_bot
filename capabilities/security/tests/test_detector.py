@@ -446,3 +446,95 @@ async def test_injection_evidence_does_not_repeat_its_subject(seeded_db):
     assert sigs
     assert "GET /api/reports/export" not in sigs[0].evidence
     assert "' OR '1'='1" in sigs[0].evidence
+
+
+# ── naming the person, not only the company ───────────────────────
+
+@pytest.mark.asyncio
+async def test_a_person_shaped_rule_names_the_person_it_fired_on(seeded_db):
+    """`disposable_email` has always been about somebody's mailbox, but
+    until it carried a user_id the only thing an operator could act on
+    was the employer — and watching the employer records every request
+    from everyone in it."""
+    db = seeded_db["db"]
+    acct = await _signup(db, "Throwaway Co", "203.0.113.77", "opener@guerrillamailblock.com")
+
+    cands = await D.find_candidates(db, hours=24)
+    row = next(c for c in cands if c["account_id"] == acct.id)
+    assert "disposable_email" in row["rules"]
+
+    people = row["people"]
+    assert len(people) == 1, "one signup, one person"
+    assert people[0]["email"] == "opener@guerrillamailblock.com"
+    assert people[0]["security"] == "normal", "nobody has said anything yet"
+
+    # the id is the point: it is what the promote control PATCHes
+    user = await db.get_user_by_id(people[0]["user_id"])
+    assert user is not None and user.email == "opener@guerrillamailblock.com"
+    assert user.account_id == acct.id
+
+
+@pytest.mark.asyncio
+async def test_a_watched_person_keeps_their_row_inside_an_account_we_own(seeded_db):
+    """Our own fixtures are dropped as noise — they trip every rule
+    exactly as a stranger would. Watching somebody INSIDE one is a
+    decision to see what still fires, and dropping the row would throw
+    away the only evidence that decision was for."""
+    db = seeded_db["db"]
+    acct = await _signup(db, "Ours", "203.0.113.78", "inside@guerrillamailblock.com")
+    await db.update_account(acct.id, kind="test")          # ours, and quiet
+
+    assert not [c for c in await D.find_candidates(db, hours=24)
+                if c["account_id"] == acct.id], "our own fixture is noise"
+
+    users = await db.list_account_users(acct.id)
+    await db.update_user(users[0].id, security="monitored")
+
+    cands = await D.find_candidates(db, hours=24)
+    row = next(c for c in cands if c["account_id"] == acct.id)
+    assert row["security"] == "normal", "the company was never accused"
+    assert row["people"][0]["security"] == "monitored"
+
+    b = D.board(cands)
+    watched = [p for p in b["watching_people"] if p["user_id"] == users[0].id]
+    assert len(watched) == 1
+    assert watched[0]["account_security"] == "normal", (
+        "the pair is what the operator reads: a watched person in a clean account"
+    )
+    # ...and the account is NOT claimed to be under observation
+    assert acct.id not in {w["account_id"] for w in b["watching"]}
+
+
+@pytest.mark.asyncio
+async def test_watching_a_person_is_not_a_decision_about_their_employer(seeded_db):
+    """The account may still carry a finding nobody has ruled on. A
+    person's standing must not quietly retire their company's row."""
+    db = seeded_db["db"]
+    acct = await _signup(db, "Real Co", "203.0.113.79", "owner@guerrillamailblock.com")
+    users = await db.list_account_users(acct.id)
+    await db.update_user(users[0].id, security="monitored")
+
+    b = D.board(await D.find_candidates(db, hours=24))
+    assert acct.id in {c["account_id"] for c in b["new"]}, (
+        "the company still needs a decision"
+    )
+    assert users[0].id in {p["user_id"] for p in b["watching_people"]}
+
+
+@pytest.mark.asyncio
+async def test_a_reset_flood_names_the_mailbox_being_flooded(seeded_db):
+    """Two person-shaped rules, one contract: both say WHO."""
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+    from adapters.storage import Role
+    user = await db.create_user_with_email(
+        email="flooded@premiertruckinggroup.com", password_hash="x",
+        account_id=acct.id, role=Role.DISPATCHER, display_name="d")
+    for _ in range(D.T_RESETS_PER_USER + 1):
+        await db.create_password_reset_token(user.id)
+
+    row = next(c for c in await D.find_candidates(db, hours=24)
+               if c["account_id"] == acct.id)
+    assert "reset_flood" in row["rules"]
+    assert (user.id, "flooded@premiertruckinggroup.com") in {
+        (p["user_id"], p["email"]) for p in row["people"]}

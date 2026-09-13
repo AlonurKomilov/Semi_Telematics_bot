@@ -519,6 +519,9 @@ export interface SecuritySummary {
   throttled: number;     // 429
   broke: number;         // 5xx — something they found
   monitored_accounts: number;
+  /** Watched PEOPLE. Its own number: watching a person is not watching
+   *  their company, and one count would hide whichever it left out. */
+  monitored_users?: number;
 }
 
 export interface MonitoredAccountRow {
@@ -597,6 +600,17 @@ export interface SecurityCandidate {
    *  address", and the members live inside it. */
   group?: 'burst';
   members?: SecurityBurstMember[];
+  /** The people the rules named — a throwaway signup address, a mailbox
+   *  under a reset flood. The row can now be acted on at either size:
+   *  the company, or the one person in it the rules are about. */
+  people?: SecurityCandidatePerson[];
+}
+
+export interface SecurityCandidatePerson {
+  user_id: number;
+  email: string | null;
+  /** THEIR standing, not their employer's. */
+  security: AccountSecurity;
 }
 
 /** What the rules still say about an account already being watched. */
@@ -606,10 +620,24 @@ export interface SecurityWatching {
   severity: SecuritySeverity;
 }
 
+/** The same, for a watched PERSON. Separate from the account list
+ *  because their employer is usually not watched, and folding the two
+ *  together would claim something about the company that is not true. */
+export interface SecurityWatchingPerson {
+  user_id: number;
+  email: string | null;
+  account_id: number | null;
+  account_name: string | null;
+  account_security: AccountSecurity;
+  rules: string[];
+  severity: SecuritySeverity;
+}
+
 export interface SecurityBoard {
   items: SecurityCandidate[];
   new: SecurityCandidate[];
   watching: SecurityWatching[];
+  watching_people: SecurityWatchingPerson[];
   count: number;
   hours: number;
 }

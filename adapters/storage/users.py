@@ -929,6 +929,22 @@ class UsersMixin:
         rows = await cur.fetchall()
         return [self._row_to_user(r) for r in rows]
 
+    async def count_users_with_security(self, security: str) -> int:
+        """How many ACTIVE people hold one security standing.
+
+        Counted across accounts and independent of the account's own
+        standing: the case this exists for is a watched person inside a
+        company nobody has accused of anything.
+        """
+        from adapters.storage.models import ACCOUNT_SECURITY
+        if security not in ACCOUNT_SECURITY:
+            raise ValueError(f"unknown user security: {security!r}")
+        cur = await self._db.execute(
+            "SELECT COUNT(*) FROM users WHERE security = ? AND is_active = 1",
+            (security,))
+        row = await cur.fetchone()
+        return int(row[0]) if row else 0
+
     async def count_all_users(
         self, active_only: bool = True, kinds: tuple[str, ...] | None = None,
     ) -> int:
