@@ -209,6 +209,14 @@ export default function UsersPage() {
                       >
                         {ACCOUNT_SECURITY.map((k) => <option key={k} value={k}>{k}</option>)}
                       </select>
+                      {/* `quarantined` is a word that promises containment and
+                          currently delivers only recording. An operator
+                          setting it must not believe they have contained
+                          anyone — the account page says so, and so must
+                          this one. */}
+                      {(u.security ?? 'normal') === 'quarantined' && (
+                        <div className="text-[10px] text-warn mt-0.5">not enforced yet</div>
+                      )}
                       {u.account_security && u.account_security !== 'normal' && (
                         <div className="text-[10px] text-slate-500 mt-0.5">
                           account: {u.account_security}
