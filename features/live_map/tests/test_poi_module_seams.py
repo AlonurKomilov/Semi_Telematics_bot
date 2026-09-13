@@ -93,6 +93,41 @@ def test_the_network_is_reached_through_the_module_not_by_name():
                 f"would go to the real Overpass mirror while the test passed")
 
 
+#: The raw plumbing.  Reaching it outside overpass.py means building a
+#: second Overpass client by hand — which is exactly how one got built
+#: and then missed a fix the other one got.
+RAW_PLUMBING = {"_get_http_session", "_OVERPASS_ENDPOINTS", "_http_session"}
+
+
+def test_nobody_builds_a_second_overpass_client():
+    """/custom-layers/from-pin used to POST to the mirrors itself.
+
+    Forty lines duplicated from preview-pin, with their own endpoint
+    loop — so when the soft-refusal check was added, preview-pin got it
+    and from-pin did not.  A mirror answering 200 with a `remark` gave
+    from-pin zero elements, and it told the owner "No branded POI within
+    50 m of the click": blaming where they clicked for what the source
+    had done.
+
+    Every request now goes through _fetch_overpass, _overpass_post or a
+    helper built on them.  The plumbing under those is off limits.
+    """
+    for filename, tree in _modules().items():
+        if filename == "overpass.py":
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Attribute) and node.attr in RAW_PLUMBING):
+                continue
+            owner = node.value
+            if isinstance(owner, ast.Name) and owner.id == "overpass":
+                raise AssertionError(
+                    f"{filename} reaches overpass.{node.attr} — that is the raw "
+                    f"client, and a second caller of it is a second Overpass "
+                    f"client to keep in step with this one.  Call "
+                    f"_fetch_overpass / _overpass_post, or add a helper beside "
+                    f"them.")
+
+
 def test_only_the_router_may_import_the_api_layer():
     """docs/FEATURES.md's dependency exception, checked where it now has
     five files to stay true across."""

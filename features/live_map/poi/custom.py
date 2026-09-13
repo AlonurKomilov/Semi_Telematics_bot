@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from interfaces.bot.state import get_tenant_db
@@ -94,8 +95,18 @@ async def _serve_custom_layer(
             try:
                 features = await overpass._fetch_overpass([query], bbox)
             except Exception as exc:
+                # The built-in layers stopped doing this the week the
+                # owner opened Chicago and read "None in this view": a
+                # source that did not answer was becoming an empty list,
+                # and the empty list was being CACHED for five minutes,
+                # so the wrong answer outlived the outage that caused
+                # it.  That fix landed one branch over and left this one
+                # — a custom layer is not a lesser layer.
                 logger.warning("custom Overpass layer %s failed: %s", layer_id, exc)
-                features = []
+                raise HTTPException(
+                    status_code=502,
+                    detail="The map-data source is not answering — try again shortly.",
+                ) from exc
 
     _poi_cache[cache_key] = features
     return {"type": "FeatureCollection", "features": features}
@@ -140,12 +151,6 @@ class _PinDropRequest(BaseModel):
 class _PreviewPinRequest(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     lng: float = Field(..., ge=-180, le=180)
-
-
-class _BrandSearchResult(BaseModel):
-    brand: str
-    amenity: str
-    count: int
 
 
 class _FromBrandRequest(BaseModel):

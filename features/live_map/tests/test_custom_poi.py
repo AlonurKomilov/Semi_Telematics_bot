@@ -7,6 +7,7 @@ Covers:
   * Overpass validator rejects unsafe tokens (`;`, `out`, recursion, …)
   * CSV upload happy path + invalid-row skipping + size guard
   * Pin-drop discovery (network is mocked)
+  * A custom layer whose source refuses is a 502, never an empty layer
 
 The fixture mirrors `tests/test_api_routes.py` so tests run against a real
 ASGI app with a temp SQLite database.
@@ -486,6 +487,59 @@ class TestPinDrop:
                 json={"lat": 0.0, "lng": 0.0},
             )
             assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# A source that did not answer
+# ---------------------------------------------------------------------------
+
+class TestCustomLayerSourceFailure:
+    """The fault this codebase has now shipped four times: a refusal
+    arriving as an empty answer.
+
+    The built-in layers were fixed after the owner opened Chicago and
+    read "None in this view".  The custom branch kept the old shape —
+    `except Exception: features = []` and then a five-minute cache write,
+    so an account's OWN layer went blank during an outage and STAYED
+    blank for five minutes after it ended.
+    """
+
+    async def test_a_layer_whose_source_refused_is_a_502_and_is_not_cached(self, app_ctx):
+        async with _client(app_ctx["app"]) as c:
+            r = await c.post(
+                "/api/map/custom-layers",
+                headers=_h(app_ctx["owner_a_token"]),
+                json={
+                    "label": "Truck Washes", "color": "#7c3aed", "icon": "🚿",
+                    "source_type": "overpass",
+                    "overpass_query": 'node["amenity"="car_wash"]["hgv"="yes"]',
+                    "default_on": False,
+                },
+            )
+            assert r.status_code == 201, r.text
+            lid = r.json()["id"]
+
+            calls = 0
+
+            async def _refuse(_parts, _bbox):
+                nonlocal calls
+                calls += 1
+                raise RuntimeError("Overpass: the server is probably too busy")
+
+            # Patched on the MODULE, which is the only reason this reaches
+            # the call site — see test_poi_module_seams.py.
+            with patch("features.live_map.poi.overpass._fetch_overpass", new=_refuse):
+                url = f"/api/map/pois?type=custom_{lid}&bbox=41.0,-88.0,42.0,-87.0"
+                first = await c.get(url, headers=_h(app_ctx["owner_a_token"]))
+                assert first.status_code == 502, first.text
+                assert "not answering" in first.json()["detail"]
+
+                # And the failure is not remembered: the next request asks
+                # again rather than serving five more minutes of it.
+                second = await c.get(url, headers=_h(app_ctx["owner_a_token"]))
+                assert second.status_code == 502, second.text
+
+            assert calls == 2, f"the second request was served from cache ({calls} fetch)"
 
 
 # ---------------------------------------------------------------------------

@@ -7,17 +7,33 @@ this module's real job; the rest is the client that makes the request.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 
 import aiohttp
 from fastapi import HTTPException
 
+logger = logging.getLogger(__name__)
+
 
 # Lazily-created shared aiohttp session — safe in single-threaded asyncio.
 _http_session: aiohttp.ClientSession | None = None
 
+#: Measured from this host on 2026-09-13, and the first line is why this
+#: comment exists: ``overpass-api.de`` REFUSES 443 on every address it
+#: publishes — 162.55.144.139, 65.109.112.52 and both IPv6 — while the
+#: same host answers 200 on port 80.  So the canonical URL has never once
+#: worked from this server; every request has been spending an attempt on
+#: an instant refusal before reaching a mirror that answers.
+#:
+#: ``lambert.openstreetmap.de`` is that same instance: it is what
+#: ``overpass-api.de/api/status`` names as its "Announced endpoint", and
+#: it serves HTTPS here (TLS in 0.097s).  Not a new operator and not a new
+#: recipient of anyone's viewport — the same service, by a hostname this
+#: host can reach.  If the canonical name's TLS is ever fixed, it can come
+#: back and this note should go.
 _OVERPASS_ENDPOINTS = [
-    "https://overpass-api.de/api/interpreter",
+    "https://lambert.openstreetmap.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
 
@@ -40,6 +56,23 @@ _OVERPASS_ENDPOINTS = [
 _OVERPASS_ATTEMPT_S = 35
 _OVERPASS_ATTEMPTS = 2
 _OVERPASS_RETRY_PAUSE_S = 1.5
+
+#: The whole ladder's wall-clock budget — and it is a BUDGET, not another
+#: per-attempt number, because the per-attempt number could not promise
+#: what this has to promise.
+#:
+#: nginx gives /api/ sixty seconds (nginx/4truck.conf, `proxy_read_timeout
+#: 60s`).  Past that nginx answers with its OWN 504: an HTML gateway page,
+#: which the dashboard reads — correctly — as the platform being down, and
+#: reloads the whole page for, taking a half-filled form somewhere else in
+#: the app with it.  So this app has to give up first, with its own JSON,
+#: while it still can.
+#:
+#: Two passes over two mirrors at 35s each is 141.5 seconds.  The guard
+#: that was meant to hold this under the browser's patience multiplied the
+#: passes but not the MIRRORS — it read 71.5 and passed.  A budget is
+#: arithmetic nobody has to redo when a third mirror is added.
+_OVERPASS_TOTAL_S = 50
 
 _MAX_POI_RESULTS = 6000  # Caps response at ~5200 fuel stops / ~4300 weigh stations CONUS-wide.
 
@@ -109,6 +142,8 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
 
     session = await _get_http_session()
     last_exc: Exception = RuntimeError("No Overpass endpoint reachable")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _OVERPASS_TOTAL_S
 
     data: dict = {}
     for attempt in range(_OVERPASS_ATTEMPTS):
@@ -118,12 +153,20 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
             # or it is not.
             await asyncio.sleep(_OVERPASS_RETRY_PAUSE_S)
         for endpoint in _OVERPASS_ENDPOINTS:
+            # OUTSIDE the try on purpose: raised inside it, the handler
+            # below would swallow the deadline and the ladder would keep
+            # spending time it no longer has.
+            left = deadline - loop.time()
+            if left <= 0:
+                raise TimeoutError(
+                    f"Overpass ladder spent its {_OVERPASS_TOTAL_S}s budget"
+                ) from last_exc
             try:
                 async with session.post(
                     endpoint,
                     data=overpass_query,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    timeout=aiohttp.ClientTimeout(total=_OVERPASS_ATTEMPT_S),
+                    timeout=aiohttp.ClientTimeout(total=min(_OVERPASS_ATTEMPT_S, left)),
                 ) as resp:
                     if resp.status != 200:
                         last_exc = RuntimeError(f"Overpass returned HTTP {resp.status}")
@@ -237,25 +280,115 @@ def _validate_overpass_query(raw: str) -> str:
 # ── Pin-drop preview + brand search ───────────────────────────────────────────
 
 async def _overpass_post(query: str, timeout: int = 30) -> dict:
-    """Single Overpass POST with mirror failover. Raises 502 on total failure."""
+    """Single Overpass POST with mirror failover. Raises 502 on total failure.
+
+    One pass, no retry: every caller here is interactive (a pin the owner
+    just dropped, a name they are still typing) and already makes two or
+    three of these in a row.
+    """
     session = await _get_http_session()
     last_exc: Exception = RuntimeError("Overpass unreachable")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _OVERPASS_TOTAL_S
     for endpoint in _OVERPASS_ENDPOINTS:
+        # `timeout` is this caller's patience; the budget is nginx's.
+        # Whichever runs out first ends the attempt.
+        left = deadline - loop.time()
+        if left <= 0:
+            break
         try:
             async with session.post(
                 endpoint,
                 data=query,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=aiohttp.ClientTimeout(total=timeout),
+                timeout=aiohttp.ClientTimeout(total=min(timeout, left)),
             ) as resp:
                 if resp.status != 200:
                     last_exc = RuntimeError(f"Overpass returned HTTP {resp.status}")
                     continue
-                return await resp.json(content_type=None)
+                data = await resp.json(content_type=None)
+            # The same check _fetch_overpass makes, and it was missing
+            # here — which matters more on this path, not less.  Read as
+            # data, a `remark` reply is a result set with nothing in it,
+            # and nothing in it becomes "this chain has no locations in
+            # the United States" on the screen that asks the owner to
+            # save a layer covering all of them.
+            if _overpass_gave_up(data):
+                last_exc = RuntimeError(f"Overpass: {str(data.get('remark'))[:160]}")
+                continue
+            return data
         except Exception as exc:
             last_exc = exc
             continue
-    raise HTTPException(status_code=502, detail=f"Overpass unreachable: {last_exc}")
+    # The reason belongs in the log, not in the reply: the caller cannot
+    # act on a dispatcher's words, and the refusal is upstream's either
+    # way.  Same sentence the built-in layers use, because it is the same
+    # thing that happened.
+    logger.warning("Overpass POST failed on every endpoint: %s", last_exc)
+    raise HTTPException(
+        status_code=502,
+        detail="The map-data source is not answering — try again shortly.",
+    ) from last_exc
+
+
+async def _discover_brand_at(lat: float, lng: float) -> tuple[str, str]:
+    """The brand of the closest branded OSM feature within ~50 m of a click.
+
+    Returns ``(brand, amenity)``; amenity is "" when the feature has none.
+    Raises 404 when there is genuinely nothing branded there, and 502 —
+    through _overpass_post — when the source did not answer.
+
+    ONE COPY, and that is the point.  This lived twice: once in
+    /custom-layers/from-pin and once in /custom-layers/preview-pin, the
+    same forty lines with the same three error messages.  When the
+    soft-refusal check was added, only the copy that went through
+    _overpass_post got it; from-pin kept its own hand-rolled endpoint
+    loop, so a mirror answering 200 with a `remark` gave it zero
+    elements and it told the owner "No branded POI within 50 m of the
+    click" — blaming where they clicked for what the source had done.
+    """
+    query = (
+        f"[out:json][timeout:25];"
+        f"(nwr(around:50,{lat},{lng})[brand];);"
+        f"out center tags 50;"
+    )
+    data = await _overpass_post(query, timeout=30)
+    elements = data.get("elements", []) or []
+    if not elements:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No branded POI within 50 m of the click. "
+                "For a single-location marker use a Geofence instead."
+            ),
+        )
+
+    def _dist(el: dict) -> float:
+        c = el.get("center") or {}
+        elat = el.get("lat") if el.get("lat") is not None else c.get("lat")
+        elon = el.get("lon") if el.get("lon") is not None else c.get("lon")
+        if elat is None or elon is None:
+            return float("inf")
+        return (float(elat) - lat) ** 2 + (float(elon) - lng) ** 2
+
+    elements.sort(key=_dist)
+    chosen = next(
+        (el for el in elements if (el.get("tags") or {}).get("brand")),
+        None,
+    )
+    if not chosen:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Closest POI has no `brand` OSM tag. "
+                "For a single-location marker use a Geofence instead."
+            ),
+        )
+    tags = chosen.get("tags") or {}
+    brand = (tags.get("brand") or "").strip()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Closest POI has empty brand tag")
+    return brand, (tags.get("amenity") or "").strip()
 
 
 def _build_brand_query(brand: str, amenity: str | None) -> str:
@@ -266,8 +399,18 @@ def _build_brand_query(brand: str, amenity: str | None) -> str:
     return f'node["brand"~"^{brand_re}$",i]'
 
 
-async def _count_brand_in_usa(brand: str, amenity: str | None) -> int:
-    """Return the number of OSM nodes matching the brand inside the US."""
+async def _count_brand_in_usa(brand: str, amenity: str | None) -> int | None:
+    """How many OSM nodes match the brand inside the US — or None if the
+    source did not answer.
+
+    NONE AND ZERO ARE DIFFERENT ANSWERS and every caller has to keep them
+    apart.  This used to `return 0` on any failure, so a mirror too busy
+    to run the query told the owner that the truck stop they had just
+    clicked on does not exist anywhere in the country — on the one screen
+    that then offers to save a layer covering "all 0" of them.  Measured
+    2026-09-13: the only mirror this host can reach answered that exact
+    query with HTTP 504 after 178 seconds.
+    """
     clause = _build_brand_query(brand, amenity)
     q = (
         '[out:json][timeout:25];'
@@ -278,17 +421,21 @@ async def _count_brand_in_usa(brand: str, amenity: str | None) -> int:
     try:
         data = await _overpass_post(q, timeout=30)
     except HTTPException:
-        return 0
+        logger.warning("brand count unavailable for %r (%s)", brand, amenity)
+        return None
     for el in data.get("elements", []) or []:
         if el.get("type") == "count":
             return int((el.get("tags") or {}).get("total") or el.get("count") or 0)
-    return 0
+    # A 200 with no count element is not a count of zero either.
+    return None
 
 
 async def _sample_brand_in_usa(
     brand: str, amenity: str | None, limit: int = 5,
-) -> list[dict]:
-    """Up to ``limit`` representative locations of the brand in the US."""
+) -> list[dict] | None:
+    """Up to ``limit`` representative locations of the brand in the US —
+    or None if the source did not answer.  An empty LIST means the query
+    ran and found none; None means it never ran."""
     clause = _build_brand_query(brand, amenity)
     q = (
         '[out:json][timeout:25];'
@@ -299,7 +446,8 @@ async def _sample_brand_in_usa(
     try:
         data = await _overpass_post(q, timeout=30)
     except HTTPException:
-        return []
+        logger.warning("brand sample unavailable for %r (%s)", brand, amenity)
+        return None
     out: list[dict] = []
     for el in (data.get("elements", []) or [])[:limit]:
         c = el.get("center") or {}

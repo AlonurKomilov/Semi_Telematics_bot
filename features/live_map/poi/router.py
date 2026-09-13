@@ -8,7 +8,6 @@ import csv as _csv
 import io
 import re
 
-import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from interfaces.api.deps import require_permission
@@ -37,6 +36,12 @@ from .viewport import (
 )
 
 router = APIRouter(prefix="/map", tags=["map"])
+
+#: How many branded nodes the type-ahead asks for.  It is a SAMPLE SIZE,
+#: not a page: hit it and every per-brand tally below is a floor, which
+#: is why the reply says which of the two it is rather than leaving the
+#: client to guess from the number.
+_BRAND_SEARCH_CAP = 1000
 
 
 @router.get("/pois")
@@ -301,77 +306,11 @@ async def create_layer_from_pin(
 ):
     """Pin-drop UX shortcut. Auto-builds a USA-wide Overpass query for the
     closest branded POI within ~50 m of the click."""
-    discovery = (
-        f"[out:json][timeout:25];"
-        f"(nwr(around:50,{body.lat},{body.lng})[brand];);"
-        f"out center tags 50;"
-    )
-    session = await overpass._get_http_session()
-    data: dict = {}
-    last_exc: Exception = RuntimeError("Overpass unreachable")
-    for endpoint in overpass._OVERPASS_ENDPOINTS:
-        try:
-            async with session.post(
-                endpoint,
-                data=discovery,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                if resp.status != 200:
-                    last_exc = RuntimeError(f"Overpass returned HTTP {resp.status}")
-                    continue
-                data = await resp.json(content_type=None)
-                break
-        except Exception as exc:
-            last_exc = exc
-            continue
-    else:
-        raise HTTPException(status_code=502, detail=f"Overpass discovery failed: {last_exc}")
-
-    elements = data.get("elements", []) or []
-    if not elements:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "No branded POI within 50 m of the click. "
-                "For a single-location marker use a Geofence instead."
-            ),
-        )
-
-    def _dist(el: dict) -> float:
-        c = el.get("center") or {}
-        elat = el.get("lat") if el.get("lat") is not None else c.get("lat")
-        elon = el.get("lon") if el.get("lon") is not None else c.get("lon")
-        if elat is None or elon is None:
-            return float("inf")
-        return (float(elat) - body.lat) ** 2 + (float(elon) - body.lng) ** 2
-
-    elements.sort(key=_dist)
-    chosen = next(
-        (el for el in elements if (el.get("tags") or {}).get("brand")),
-        None,
-    )
-    if not chosen:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "Closest POI has no `brand` OSM tag. "
-                "For a single-location marker use a Geofence instead."
-            ),
-        )
-
-    tags = chosen.get("tags") or {}
-    brand = tags.get("brand", "").strip()
-    if not brand:
-        raise HTTPException(status_code=404, detail="Closest POI has empty brand tag")
-
-    brand_re = re.escape(brand)
-    amenity = tags.get("amenity")
-    if amenity:
-        query = f'node["amenity"="{amenity}"]["brand"~"^{brand_re}$",i]'
-    else:
-        query = f'node["brand"~"^{brand_re}$",i]'
-
+    # Shared with preview-pin.  It used to be a second copy of the same
+    # forty lines with its own endpoint loop, and the copy is why the
+    # soft-refusal check reached only one of them.
+    brand, amenity = await overpass._discover_brand_at(body.lat, body.lng)
+    query = overpass._build_brand_query(brand, amenity or None)
     overpass._validate_overpass_query(query)
 
     tenant = await get_tenant_db(user["account_id"])
@@ -404,47 +343,12 @@ async def preview_pin(
     user: dict = Depends(require_permission("can_manage_poi_layers")),
 ):
     """Detect the brand at the pinned point and return a USA-wide preview.
-    Returns ``{brand, amenity, count, sample[]}`` — no DB writes."""
-    discovery = (
-        f"[out:json][timeout:25];"
-        f"(nwr(around:50,{body.lat},{body.lng})[brand];);"
-        f"out center tags 50;"
-    )
-    data = await overpass._overpass_post(discovery, timeout=30)
-    elements = data.get("elements", []) or []
-    if not elements:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "No branded POI within 50 m of the click. "
-                "For a single-location marker use a Geofence instead."
-            ),
-        )
 
-    def _dist(el: dict) -> float:
-        c = el.get("center") or {}
-        elat = el.get("lat") if el.get("lat") is not None else c.get("lat")
-        elon = el.get("lon") if el.get("lon") is not None else c.get("lon")
-        if elat is None or elon is None:
-            return float("inf")
-        return (float(elat) - body.lat) ** 2 + (float(elon) - body.lng) ** 2
-
-    elements.sort(key=_dist)
-    chosen = next(
-        (el for el in elements if (el.get("tags") or {}).get("brand")),
-        None,
-    )
-    if not chosen:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "Closest POI has no `brand` OSM tag. "
-                "For a single-location marker use a Geofence instead."
-            ),
-        )
-    tags = chosen.get("tags") or {}
-    brand = (tags.get("brand") or "").strip()
-    amenity = tags.get("amenity") or ""
+    Returns ``{brand, amenity, count, sample[]}`` — no DB writes.  `count`
+    and `sample` are null when the source refused that query; null is not
+    zero and the client must not print it as one.
+    """
+    brand, amenity = await overpass._discover_brand_at(body.lat, body.lng)
     count = await overpass._count_brand_in_usa(brand, amenity or None)
     sample = await overpass._sample_brand_in_usa(brand, amenity or None, limit=5)
     return {
@@ -460,7 +364,20 @@ async def brand_search(
     q: str = Query(..., min_length=2, max_length=64),
     user: dict = Depends(require_permission("can_manage_poi_layers")),
 ):
-    """Type-ahead search for OSM brands matching ``q`` inside the USA."""
+    """Type-ahead search for OSM brands matching ``q`` inside the USA.
+
+    ONE Overpass query, not eleven.  This used to take the sampled list
+    below and then re-count each of the top ten chains nationwide — ten
+    more area-wide queries, sequential, 30 seconds budgeted apiece, per
+    settled keystroke.  On a healthy mirror that was merely wasteful; on
+    the one mirror this host can still reach it is the whole feature
+    failing, and it points 11 nationwide scans at a volunteer server for
+    a list the owner is only skimming to pick a name from.
+
+    The exact total is not what this list is for — it is for telling
+    Pilot from Pilot Travel Center.  The precise count arrives one step
+    later, from preview-pin, on the screen that actually spends it.
+    """
     safe = re.escape(q.strip())
     if not safe:
         return {"results": []}
@@ -468,11 +385,16 @@ async def brand_search(
         '[out:json][timeout:25];'
         'area["ISO3166-1"="US"][admin_level=2]->.us;'
         f'node["brand"~"^{safe}",i](area.us);'
-        'out 1000 tags;'
+        f'out {_BRAND_SEARCH_CAP} tags;'
     )
     data = await overpass._overpass_post(overpass_q, timeout=30)
+    elements = data.get("elements", []) or []
+    # The cap is on the whole reply, so it decides the whole reply: under
+    # it, every bucket below IS that chain's count; at it, every bucket is
+    # a floor and the client must not print any of them as a total.
+    exact = len(elements) < _BRAND_SEARCH_CAP
     buckets: dict[tuple[str, str], int] = {}
-    for el in data.get("elements", []) or []:
+    for el in elements:
         tags = el.get("tags") or {}
         b = (tags.get("brand") or "").strip()
         a = (tags.get("amenity") or "").strip()
@@ -480,12 +402,10 @@ async def brand_search(
             continue
         buckets[(b, a)] = buckets.get((b, a), 0) + 1
     top = sorted(buckets.items(), key=lambda kv: -kv[1])[:10]
-    results: list[dict] = []
-    for (brand, amenity), _sample_count in top:
-        precise = await overpass._count_brand_in_usa(brand, amenity or None)
-        results.append({"brand": brand, "amenity": amenity, "count": precise})
-    results.sort(key=lambda r: -r["count"])
-    return {"results": results}
+    return {"results": [
+        {"brand": brand, "amenity": amenity, "count": n, "exact": exact}
+        for (brand, amenity), n in top
+    ]}
 
 
 @router.post("/custom-layers/from-brand", status_code=201)

@@ -73,25 +73,39 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
   // The new "preview-then-confirm" flow runs in two steps:
   //   1. preview-pin  → returns { brand, amenity, count, sample[] }
   //   2. from-brand   → persists the layer covering EVERY US match
+  // `count` and `sample` are NULLABLE and null is not zero: it means the
+  // map-data source refused that one query.  Saying "0 in USA" for a
+  // chain the owner is looking at is worse than saying nothing, and this
+  // is the screen that then asks them to save a layer covering all of
+  // them.
   // The preview lives in state so the same render path is reused by both
   // the Pin-drop and Brand-search tabs.  Each tab owns its own preview ref
   // because the user might switch tabs and we shouldn't carry state across.
   interface BrandPreview {
     brand: string;
     amenity: string;
-    count: number;
-    sample: { lat: number; lng: number; name: string; address?: string | null }[];
+    /** null = the source did not answer.  Never render it as a number. */
+    count: number | null;
+    /** null = not asked successfully; [] = asked, found none. */
+    sample: { lat: number; lng: number; name: string; address?: string | null }[] | null;
   }
   const [pinPreview, setPinPreview]       = useState<BrandPreview | null>(null);
   const [pinPreviewing, setPinPreviewing] = useState(false);
 
   // ── Brand-search (Overpass tab) state ─────────────────────────────────────
   const [brandQuery, setBrandQuery]   = useState('');
-  const [brandResults, setBrandResults] =
-    useState<{ brand: string; amenity: string; count: number }[]>([]);
+  // `exact` false = the search hit its sample cap, so every tally is a
+  // FLOOR.  The server sends it rather than letting the client infer a
+  // total from a number that isn't one.
+  interface BrandHit { brand: string; amenity: string; count: number; exact?: boolean }
+  const [brandResults, setBrandResults] = useState<BrandHit[]>([]);
   const [brandLoading, setBrandLoading] = useState(false);
-  const [brandSelected, setBrandSelected] =
-    useState<{ brand: string; amenity: string; count: number } | null>(null);
+  // "No matching brands found" is an ANSWER.  This is the absence of one,
+  // and they used to render as the same sentence: the catch below set an
+  // empty result list, so a map-data source that refused the query told
+  // the owner the chain they were typing does not exist.
+  const [brandError, setBrandError] = useState<string | null>(null);
+  const [brandSelected, setBrandSelected] = useState<BrandHit | null>(null);
   /** Power-user escape hatch: write a raw Overpass clause instead of picking
    *  a brand.  Hidden behind a collapsible because the typical admin should
    *  never need it. */
@@ -210,17 +224,22 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
     if (mode !== 'create' || tab !== 'overpass') return;
     if (showAdvancedOverpass) return;
     const q = brandQuery.trim();
-    if (q.length < 2) { setBrandResults([]); return; }
+    if (q.length < 2) { setBrandResults([]); setBrandError(null); return; }
     let cancelled = false;
     const t = setTimeout(async () => {
       setBrandLoading(true);
       try {
-        const data = await apiJSON<{ results: typeof brandResults }>(
+        const data = await apiJSON<{ results: BrandHit[] }>(
           `/map/custom-layers/brand-search?q=${encodeURIComponent(q)}`,
         );
-        if (!cancelled) setBrandResults(data.results || []);
-      } catch {
-        if (!cancelled) setBrandResults([]);
+        if (!cancelled) { setBrandResults(data.results || []); setBrandError(null); }
+      } catch (e) {
+        if (!cancelled) {
+          setBrandResults([]);
+          // The server's own sentence when it has one — it says the
+          // source is busy, which is what the owner needs to know.
+          setBrandError((e as Error).message || 'The brand search did not answer.');
+        }
       } finally {
         if (!cancelled) setBrandLoading(false);
       }
@@ -464,7 +483,11 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                   {brandLoading && (
                     <p className="text-2xs text-muted-foreground">Searching…</p>
                   )}
-                  {!brandLoading && brandQuery.trim().length >= 2 && brandResults.length === 0 && (
+                  {!brandLoading && brandError && (
+                    <p className="text-2xs text-destructive">{brandError}</p>
+                  )}
+                  {!brandLoading && !brandError && brandQuery.trim().length >= 2
+                    && brandResults.length === 0 && (
                     <p className="text-2xs text-muted-foreground">No matching brands found.</p>
                   )}
                   {brandResults.length > 0 && (
@@ -491,7 +514,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                                 )}
                               </span>
                               <span className="shrink-0 text-2xs font-mono px-1.5 py-0.5 rounded bg-background border border-border text-muted-foreground">
-                                {r.count.toLocaleString()} locations
+                                {r.count.toLocaleString()}{r.exact === false ? '+' : ''} locations
                               </span>
                             </button>
                           </li>
@@ -644,15 +667,19 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
 }
 
 /** Inline preview card showing the discovered brand, the total US-wide
- *  location count and a few representative addresses.  Pure presentational. */
+ *  location count and a few representative addresses.  Pure presentational.
+ *
+ *  A null count is the source having refused the question, and it is drawn
+ *  as that sentence — not as 0, and not as a blank where a number goes. */
 function BrandPreviewCard({
   preview,
 }: {
   preview: {
-    brand: string; amenity: string; count: number;
-    sample: { lat: number; lng: number; name: string; address?: string | null }[];
+    brand: string; amenity: string; count: number | null;
+    sample: { lat: number; lng: number; name: string; address?: string | null }[] | null;
   };
 }) {
+  const counted = preview.count !== null;
   return (
     <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -666,17 +693,23 @@ function BrandPreviewCard({
             </p>
           )}
         </div>
-        <span className="shrink-0 text-xs font-bold px-2 py-1 rounded bg-primary/15 text-foreground ring-1 ring-primary">
-          {preview.count.toLocaleString()} in USA
-        </span>
+        {counted ? (
+          <span className="shrink-0 text-xs font-bold px-2 py-1 rounded bg-primary/15 text-foreground ring-1 ring-primary">
+            {preview.count!.toLocaleString()} in USA
+          </span>
+        ) : (
+          <span className="shrink-0 text-2xs px-2 py-1 rounded bg-muted text-muted-foreground ring-1 ring-border">
+            Count unavailable
+          </span>
+        )}
       </div>
-      {preview.sample.length > 0 && (
+      {preview.sample && preview.sample.length > 0 && (
         <div>
           <p className="text-2xs uppercase tracking-wide text-muted-foreground mb-1">
             Sample locations
           </p>
           <ul className="text-2xs text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
-            {preview.sample.map((s, i) => (
+            {preview.sample!.map((s, i) => (
               <li key={i} className="truncate">
                 • {s.name || preview.brand}
                 {s.address ? <span className="text-foreground/70"> — {s.address}</span> : null}
@@ -686,8 +719,20 @@ function BrandPreviewCard({
         </div>
       )}
       <p className="text-2xs text-muted-foreground">
-        Saving will create a layer covering <strong>all {preview.count.toLocaleString()}</strong>{' '}
-        matching locations across the United States.
+        {counted ? (
+          <>
+            Saving will create a layer covering{' '}
+            <strong>all {preview.count!.toLocaleString()}</strong> matching locations
+            across the United States.
+          </>
+        ) : (
+          <>
+            The map-data source did not answer the count — it is busy or
+            behind. Saving still creates the layer covering every{' '}
+            <strong>{preview.brand}</strong> in the United States; only the
+            number is missing.
+          </>
+        )}
       </p>
     </div>
   );
