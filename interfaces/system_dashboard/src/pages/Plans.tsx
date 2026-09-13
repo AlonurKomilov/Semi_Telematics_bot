@@ -425,6 +425,11 @@ export default function PlansPage() {
       restored.length ? `\nGiven: ${restored.join(', ')}` : '',
       d.everything && !p.everything ? '\nBack to everything included.' : '',
       cat.public !== p.public ? (cat.public ? '\nShown on the customer Billing page from now on.' : '\nHidden from the customer Billing page (accounts already on it keep it).') : '',
+      // Making it public ends every private offer on it — said here,
+      // before the save, because afterwards there is nothing left to see.
+      cat.public && !p.public && (p.offered_to ?? []).length
+        ? `\nThe offer to ${(p.offered_to ?? []).map((o) => o.account_name).join(', ')} is withdrawn — every customer has this plan now. Anyone already subscribed to it stays on it.`
+        : '',
       cat.trial_default && !p.trial_default ? '\nNew self-serve signups start their trial on this plan from now on.' : '',
       cat.price_monthly_cents !== p.price_monthly_cents
         ? `\nPrice: $${dollars(p.price_monthly_cents)} → $${dollars(cat.price_monthly_cents)} per month. ${data?.billing_provider === 'stripe' ? 'A Stripe price is created now; new checkouts use it at once. Accounts already on the plan keep paying the old price until you roll it out.' : 'New checkouts only.'}` : '',

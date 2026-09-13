@@ -291,3 +291,87 @@ async def test_the_neighbour_cannot_check_out_the_offered_plan_by_name(customers
     assert "not available" in r.json()["detail"]
     r = await c["client"].post("/api/billing/checkout", json={"tier": "premier"}, headers=c["mine_hdr"])
     assert r.status_code == 200, r.text
+
+
+# ── the two ways an offer row could outlive its meaning ────────────
+
+@pytest.mark.asyncio
+async def test_making_a_plan_public_withdraws_its_private_offers(api):
+    """The trap this closes: a plan goes public, the offer rows stay
+    inert behind it, and the day someone hides it again those accounts
+    silently get it back — a door nobody remembers opening."""
+    app, db = api
+    await _private_plan(db)
+    acct = await db.create_account("Premier Trucking Group")
+    await db.offer_plan("premier", acct.id, created_by="operator:1")
+    plan = await db.get_plan("premier")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.put("/api/system/plans/premier", json={
+            "label": plan["label"], "included": ["*"], "quotas": {},
+            "price_monthly_cents": plan["price_monthly_cents"],
+            "base_vehicles": plan["base_vehicles"], "extra_vehicle_cents": 0,
+            "public": True, "sort": 0, "trial_default": False,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["offers_withdrawn"] == 1
+        assert r.json()["plan"]["offered_to"] == []
+    assert not await db.plan_offered_to("premier", acct.id)
+
+    # and hiding it again does NOT bring the old offer back
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.put("/api/system/plans/premier", json={
+            "label": plan["label"], "included": ["*"], "quotas": {},
+            "price_monthly_cents": plan["price_monthly_cents"],
+            "base_vehicles": plan["base_vehicles"], "extra_vehicle_cents": 0,
+            "public": False, "sort": 0, "trial_default": False,
+        })
+        assert r.status_code == 200 and r.json()["offers_withdrawn"] == 0
+    assert await purchasable_plan(db, "premier", acct.id) is None
+
+
+@pytest.mark.asyncio
+async def test_purging_an_account_takes_its_offers_with_it(pg_db):
+    """The purge finds tenant tables by their ``account_id`` column, so a
+    new table joins the sweep by having one — this pins that plan_offers
+    does, rather than leaving a row pointing at an account that is gone."""
+    db = pg_db
+    await _private_plan(db)
+    doomed = await db.create_account("Closing Down LLC")
+    kept = await db.create_account("Still Here LLC")
+    await db.offer_plan("premier", doomed.id, created_by="operator:1")
+    await db.offer_plan("premier", kept.id, created_by="operator:1")
+    await db.purge_account_data(doomed.id)
+    assert not await db.plan_offered_to("premier", doomed.id)
+    assert await db.plan_offered_to("premier", kept.id), "the purge took only its own"
+
+
+def test_every_checkout_asks_the_one_gate_rather_than_reading_the_flag():
+    """The rule that must not fork.
+
+    Two providers already answer "may this account buy this plan", and a
+    third (or a new route) is one file away.  Written inline as
+    ``if not plan["public"]`` it is right until the day offers exist —
+    which is today.  So every ``create_checkout_session`` must ASK
+    purchasable_plan; a provider that reads the flag itself fails here
+    with the name of the file to fix.
+    """
+    import ast
+    from pathlib import Path
+
+    billing = Path(__file__).resolve().parents[1]
+    offenders = []
+    for path in sorted(billing.glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name != "create_checkout_session":
+                continue
+            body = ast.get_source_segment(path.read_text(), node) or ""
+            if "..." in body and len(body) < 400:
+                continue                      # the Protocol's stub, not an answer
+            if "purchasable_plan" not in body:
+                offenders.append(f"{path.name}:{node.lineno} {node.name}")
+    assert not offenders, (
+        "these decide who may buy a plan without asking offers.purchasable_plan:\n    "
+        + "\n    ".join(offenders))

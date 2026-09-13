@@ -1227,8 +1227,15 @@ async def operator_set_user_security(
 
     from capabilities.security import quarantine
     ended = 0
+    told = False
     if body.security == quarantine.HELD and previous != quarantine.HELD:
         ended = await quarantine.hold_sessions(platform_db, user_id)
+        # Their alerts start arriving at the owner from this moment. An
+        # alert that turns up with no explanation is a mystery, not a
+        # hand-over, so the reason is said once, here, by name.
+        told = await quarantine.tell_the_owner(
+            platform_db, account_id=target.account_id,
+            person=target, ended=ended)
 
     logger.info(
         "system: user security user=%s %s -> %s operator_tg=%s sessions_ended=%s",
@@ -1246,7 +1253,8 @@ async def operator_set_user_security(
             )
         except Exception:
             logger.exception("platform audit write failed for user %s", user_id)
-    return {"id": user_id, "security": body.security, "sessions_ended": ended}
+    return {"id": user_id, "security": body.security,
+            "sessions_ended": ended, "owner_told": told}
 
 
 @router.patch("/accounts/{account_id}/billing-email")
@@ -2536,6 +2544,23 @@ async def system_put_plan(
         stripe_price_id=stripe_price_id, stripe_product_id=stripe_product_id,
         public=body.public, sort=body.sort, trial_default=body.trial_default)
     invalidate_plans()
+    # A plan that becomes public has no private offers left to keep:
+    # "only this account" says nothing once every account has it.  The
+    # rows go HERE, at the moment the operator decides it, rather than
+    # lingering to re-open the plan to those accounts the day someone
+    # hides it again — a door nobody would remember opening.
+    withdrawn = 0
+    if row.get("public") and not before.get("public"):
+        withdrawn = await platform_db.revoke_all_plan_offers(tier)
+        if withdrawn:
+            try:
+                await platform_db.add_platform_audit(
+                    "plan_offers_withdrawn", account_id=0, actor=actor,
+                    details=json.dumps({"tier": tier, "offers": withdrawn, "why": "plan made public"}),
+                )
+            except Exception:
+                logger.exception("platform audit write failed for offers withdrawn on %s", tier)
+            logger.info("system: plan %s made public — %d offer(s) withdrawn by %s", tier, withdrawn, actor)
     if archived and archived != row.get("stripe_price_id"):
         from capabilities.platform.billing import get_provider
         provider = get_provider()
@@ -2548,7 +2573,8 @@ async def system_put_plan(
     if row.get("stripe_price_id"):
         on_old = sum(1 for s_ in await platform_db.subscriptions_on_tier(tier)
                      if (s_.get("provider_base_price_id") or "") != row["stripe_price_id"])
-    return {"plan": _plan_view(row, counts), "subscribers_on_old_price": on_old}
+    return {"plan": _plan_view(row, counts, await _offers_by_tier(platform_db)),
+            "subscribers_on_old_price": on_old, "offers_withdrawn": withdrawn}
 
 
 # ── The operator moves an account to a plan ────────────────────────

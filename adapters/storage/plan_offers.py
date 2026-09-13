@@ -61,6 +61,17 @@ class PlanOffersMixin:
         )
         return bool(getattr(cur, "rowcount", 0))
 
+    async def revoke_all_plan_offers(self, tier: str) -> int:
+        """Withdraw every offer on *tier*; how many there were.
+
+        Used when a plan becomes public: "only this account" has no
+        content once everyone has the plan, and a row left behind would
+        silently re-open the plan to that account the day someone hides
+        it again.
+        """
+        cur = await self._db.execute("DELETE FROM plan_offers WHERE tier = ?", (tier,))
+        return int(getattr(cur, "rowcount", 0) or 0)
+
     async def get_plan_offer(self, tier: str, account_id: int) -> Optional[dict]:
         cur = await self._db.execute(
             "SELECT * FROM plan_offers WHERE tier = ? AND account_id = ?",
