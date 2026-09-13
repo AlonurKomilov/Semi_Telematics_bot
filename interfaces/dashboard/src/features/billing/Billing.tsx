@@ -655,8 +655,10 @@ export default function Billing() {
   };
   const words = {
     everything: 'Every feature and service',
-    unlimitedUsers: 'Unlimited users', users: (n: number) => `Up to ${n} users`,
-    unlimitedCompanies: 'Unlimited companies', companies: (n: number) => `Up to ${n} companies`,
+    unlimitedUsers: 'Unlimited users',
+    users: (n: number) => `Up to ${n} user${n === 1 ? '' : 's'}`,
+    unlimitedCompanies: 'Unlimited companies',
+    companies: (n: number) => `Up to ${n} compan${n === 1 ? 'y' : 'ies'}`,
     trucks: (n: number) => `${n} trucks included`, extra: (p: string) => `${p}/month per extra active truck`,
   };
 
@@ -677,7 +679,13 @@ export default function Billing() {
     // tab while it can still see the gesture that asked for one — open
     // it after the round trip and it is a popup, and blocked. The tab
     // waits on about:blank until the session URL arrives.
-    const tab = window.open('', '_blank', 'noopener');
+    //
+    // NOT with 'noopener': that feature makes window.open return null by
+    // definition, so the handle needed to point the tab at Stripe never
+    // arrives — the blank tab sits there and the customer's own page
+    // navigates away instead, which is what this was supposed to stop.
+    // The opener reference is cut below, once the tab has its URL.
+    const tab = window.open('', '_blank');
     try {
       const res = await apiJSON<{ url?: string }>(
         '/billing/checkout',
@@ -686,6 +694,9 @@ export default function Billing() {
       if (res.url) {
         if (tab) {
           tab.location.href = res.url;
+          // Cut the back-reference now that the tab is on its way: the
+          // page we just opened has no business reaching into this one.
+          try { tab.opener = null; } catch { /* cross-origin by then, which is the point */ }
           tab.focus();
           // The billing page stays where it was, so the customer comes
           // back to their own account rather than to whatever Stripe
