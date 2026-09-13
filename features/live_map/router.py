@@ -361,7 +361,14 @@ async def map_vehicles_live(
     # to match — which encoded "wide grant absent" as a side effect
     # of dependency ordering.  member_unit_scope asks it directly
     # and additionally honours a member-level override.
-    if await member_unit_scope(user, "location") == "assigned":
+    # The NOUN, and it must match the pair table's key — which the
+    # generator derives from the canonical flag, so it moved with
+    # the rename to `can_view_live_map`.  `unit_width` raises
+    # KeyError on a noun it does not know rather than failing
+    # closed, so a stale one here is a 500 on the five-second poll
+    # — which the panel swallows by design, leaving every marker
+    # frozen while the thirty-second list goes on working.
+    if await member_unit_scope(user, "live_map") == "assigned":
         from interfaces.api.deps import get_user_vehicle_assignments
         from infra.platform import get_router as _get_router
         from capabilities.permissions.vehicle_scope import build_vehicle_scope
