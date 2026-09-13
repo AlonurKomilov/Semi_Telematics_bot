@@ -163,6 +163,13 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Shared',
     flags: [
       { key: 'can_view_live_map', kind: 'feature', label: 'Live Map' },
+      // Reserved, and the description says so rather than implying a
+      // power the tick does not carry: the basemap engine is an
+      // account-wide config setting and POI layers have the grant
+      // below.  It exists because the owner asked for the pair before
+      // something needs it, and it is VISIBLE because this codebase
+      // does not allow a flag an owner cannot tick.
+      { key: 'can_manage_live_map', kind: 'action', label: 'Manage', indented: true, description: 'Reserved for map-level settings — nothing uses it yet (the basemap is an account setting, POI layers have their own grant below)' },
       // The row is the OBJECT, the column supplies the verb: POI layers
       // are a flag-gated part of Live Map's surface (features/live_map/
       // pois.py — a file, not a home of its own), manage-only.

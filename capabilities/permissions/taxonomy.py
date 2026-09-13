@@ -124,6 +124,18 @@ TAXONOMY: dict[str, Verdict] = {
         V, "can_view_live_map",
         "the pair's _all half despite the odd historic name"),
     "can_location_vehicle":  Verdict(S, "can_view_live_map"),
+    # The manage verb beside it, added on the owner's call so the pair
+    # exists before something needs it.  It governs NOTHING today, and
+    # the owner knows: the basemap engine is account-wide config
+    # (`can_manage_config_all` — Google's tiles are billed, so the
+    # choice is one truth for the account) and POI layers carry
+    # `can_manage_poi_layers`.  It is shown in the matrix rather than
+    # hidden because this codebase does not allow a flag an owner
+    # cannot tick — `test_permissions.py` holds that nothing is exempt
+    # but tier-only flags — so its row says plainly that nothing uses
+    # it yet.  A tick that lies about doing something is the thing to
+    # avoid; a tick that says it does nothing is merely early.
+    "can_manage_live_map":   Verdict(M, "can_manage_live_map"),
     "can_route_all":         Verdict(V, "can_view_routes"),
     "can_route_vehicle":     Verdict(S, "can_view_routes"),
     "can_events_all":        Verdict(V, "can_view_events"),

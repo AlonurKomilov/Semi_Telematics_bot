@@ -121,9 +121,11 @@ ENTRIES: tuple[Entry, ...] = (
     _e("tours", kind="service", modules=["core"], opens=["can_view_tours"],
        note="the interactive walkthroughs — a service like Mods: per person, no account data, withheld per role"),
     _e("live_map", tier="shared", modules=["core"], opens=["can_view_live_map"],
-       flags=["can_view_live_map", "can_manage_poi_layers"],
+       flags=["can_view_live_map", "can_manage_live_map", "can_manage_poi_layers"],
        note="named for the product: the backend package and the flag now "
-            "agree with this id (features/live_map/, can_view_live_map)"),
+            "agree with this id (features/live_map/, can_view_live_map). "
+            "`can_manage_live_map` is reserved — nothing reads it yet, and "
+            "its matrix row says so"),
     _e("vehicles", tier="shared", modules=["core"], opens=["can_view_vehicles"],
        flags=["can_view_vehicles", "can_manage_vehicles",
               "can_view_health", "can_view_faults", "can_view_fuel", "can_view_efficiency"]),
