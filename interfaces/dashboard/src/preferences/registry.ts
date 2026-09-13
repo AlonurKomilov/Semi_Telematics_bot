@@ -41,7 +41,7 @@ import { SHADER_IDS } from '../mods/store/items/shader';
 import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
 import { MATERIAL_IDS } from '../mods/store/items/material';
 import { MODS } from '../mods/store/items/mods';
-import { ITEM_AXES } from '../mods/store/items';
+import { packById, removable } from '../mods/store/packs';
 import { THEME_PACKS } from '../mods/store/items/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
@@ -535,41 +535,38 @@ export const DEFS = {
    * the blip wants it on every machine — so it syncs.
    */
   /**
-   * Which packs this person has taken OFF their shelves.
+   * Which packs this person has taken off this device.
    *
    * Removals, not keeps — and the direction is the whole design. A
-   * stored list of what you keep would freeze the shelves on the day it
+   * stored list of what you keep would freeze the store on the day it
    * was written: every pack shipped afterwards would arrive already
-   * hidden, and nobody would ever know it existed. A stored list of what
-   * you dropped leaves the default answer "everything", so a new pack
-   * appears for everyone and only what a person actually refused stays
-   * gone.
+   * uninstalled, and nobody would ever know it existed. A stored list
+   * of what you dropped leaves the default answer "everything", so a
+   * new pack appears for everyone and only what a person actually
+   * refused stays gone.
+   *
+   * PACK ids, not item ids: a pack is what gets installed and removed,
+   * and its items arrive and leave with it. An item on its own cannot
+   * be taken off a shelf — it has no existence apart from the pack that
+   * ships it.
    *
    * DEVICE, like `mods.theme`: what a screen is dressed in, and which
-   * packs its pickers offer, are the same question asked twice.
+   * packs it has, are the same question asked twice.
    *
-   * Validity only, as every id sanitiser here is: an unknown axis or an
-   * unknown id is dropped, because it can only be a pack that no longer
-   * ships. Whether a pack may be dropped AT ALL — an axis default may
-   * not — is the reader's rule, in `store/useOffered.ts`, so it is
-   * asked once and cannot be half-enforced from two sides.
+   * Validity only, as every id sanitiser here is: an id no pack answers
+   * to is dropped, because it can only be a pack that no longer ships.
+   * The base pack is dropped too — it carries every axis's fallback, so
+   * "removed" is not a state it can be in, and a stored one could only
+   * come from an older shape or a hand-edited store.
    */
-  'mods.packs.removed': def<Record<string, string[]>>({
-    default: {},
+  'mods.packs.removed': def<string[]>({
+    default: [],
     scope: 'device',
-    sanitize: (v) => {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
-      const kept: Record<string, string[]> = {};
-      for (const axis of ITEM_AXES) {
-        const list = (v as Record<string, unknown>)[axis.axis];
-        if (!Array.isArray(list)) continue;
-        const ids = list.filter((id): id is string =>
-          typeof id === 'string' && axis.items.some((p) => p.id === id));
-        if (ids.length) kept[axis.axis] = [...new Set(ids)];
-      }
-      return kept;
-    },
-    note: 'Packs taken off this device\'s shelves. Everything not listed is offered.',
+    sanitize: (v) => (Array.isArray(v)
+      ? [...new Set(v.filter((id): id is string =>
+        typeof id === 'string' && packById(id) !== undefined && removable(id)))]
+      : undefined),
+    note: 'Packs taken off this device. Everything not listed is installed.',
   }),
 
   'mods.sound.pack': def<string>({

@@ -1,70 +1,76 @@
 /**
- * What this person KEPT — the picker's door, and the store's shelves.
+ * What this person has INSTALLED — the picker's door, and the store's
+ * install state.
  *
  * Two questions stack here, and they are not the same one:
  *
- *   `local.ts`      does this install CARRY the item?  (a fact about the app)
- *   this file       did this person KEEP it?           (a choice they made)
+ *   `local.ts`      does this build CARRY the item?   (a fact about the app)
+ *   this file       is its PACK installed?            (a choice they made)
  *
- * A picker offers the intersection. The store page draws everything
- * carried, marking what was kept — otherwise something you removed
- * could never be found again, which is not removal, it is loss.
+ * A picker offers the intersection. The store draws every pack whether
+ * installed or not — otherwise one you removed could never be found
+ * again, which is not removal, it is loss.
+ *
+ * The unit is the PACK. An item cannot be installed or removed on its
+ * own: it arrives with the pack that ships it and leaves with it. What
+ * a person still chooses item by item is which of the installed ones to
+ * WEAR, and that is the pickers' job, not the store's.
  *
  * It lives in React and reads a preference, which is exactly why
- * `local.ts` may not: `preferences/registry.ts` asks the store for its
- * valid ids, so a `local` that read preferences would close a ring and
- * an ESM cycle would boot one side `undefined`. The pure half stays a
- * leaf; the choice half is a hook.
+ * `local.ts` may not: `preferences/registry.ts` asks the store what a
+ * valid id is, so a `local` that read preferences would close a ring
+ * and an ESM cycle would boot one side `undefined`. The pure half stays
+ * a leaf; the choice half is a hook.
  */
 import { useCallback } from 'react';
 import { usePreference } from '../../preferences';
 import { isInstalled } from './local';
-import { defaultOf } from './axes';
+import { packOf, packById, removable } from './packs';
 
 export interface Shelves {
-  /** Does this person keep it — and does this install even have it? */
+  /** Is this pack on this device? */
+  hasPack: (packId: string) => boolean;
+  /** Does this person have the item — is its pack installed? */
   isKept: (axis: string, id: string) => boolean;
-  /** What a picker may draw: carried, and kept. */
+  /** What a picker may draw: carried by the build, shipped by a pack
+   *  that is installed. */
   offered: <T>(axis: string, items: readonly T[], idOf: (item: T) => string) => readonly T[];
-  /** Put it back on the shelf. */
-  keep: (axis: string, id: string) => void;
-  /** Take it off. A shelf's default is refused — an axis with nothing
-   *  on it is an axis nobody can leave. */
-  drop: (axis: string, id: string) => void;
-  /** Whether taking it off is allowed at all, so a surface can say so
-   *  instead of offering a control that quietly does nothing. */
-  canDrop: (axis: string, id: string) => boolean;
+  /** Put a pack back. */
+  install: (packId: string) => void;
+  /** Take a pack off. The base pack is refused — it carries every
+   *  axis's fallback, so removing it would empty every shelf. */
+  uninstall: (packId: string) => void;
 }
 
 export function useShelves(): Shelves {
   const { value, setValue } = usePreference('mods.packs.removed');
-  const removed = value ?? {};
+  const removed = value ?? [];
 
-  const canDrop = useCallback(
-    (axis: string, id: string) => id !== defaultOf(axis), []);
+  const hasPack = useCallback(
+    (packId: string) => packById(packId) !== undefined && !removed.includes(packId),
+    [removed]);
 
-  const isKept = useCallback((axis: string, id: string) =>
-    isInstalled(axis, id)
-    && (!canDrop(axis, id) || !(removed[axis] ?? []).includes(id)),
-  [removed, canDrop]);
+  const isKept = useCallback((axis: string, id: string) => {
+    if (!isInstalled(axis, id)) return false;
+    const pack = packOf(axis, id);
+    return pack ? hasPack(pack.id) : false;
+  }, [hasPack]);
 
   const offered = useCallback(<T,>(
     axis: string, items: readonly T[], idOf: (item: T) => string,
   ) => items.filter((i) => isKept(axis, idOf(i))), [isKept]);
 
-  const keep = useCallback((axis: string, id: string) => {
-    const next = (removed[axis] ?? []).filter((x) => x !== id);
-    setValue({ ...removed, [axis]: next });
+  const install = useCallback((packId: string) => {
+    if (!removed.includes(packId)) return;
+    setValue(removed.filter((x) => x !== packId));
   }, [removed, setValue]);
 
-  const drop = useCallback((axis: string, id: string) => {
-    if (!canDrop(axis, id)) return;
-    const was = removed[axis] ?? [];
-    if (was.includes(id)) return;
-    setValue({ ...removed, [axis]: [...was, id] });
-  }, [removed, setValue, canDrop]);
+  const uninstall = useCallback((packId: string) => {
+    if (!removable(packId) || removed.includes(packId)) return;
+    setValue([...removed, packId]);
+  }, [removed, setValue]);
 
-  return { isKept, offered, keep, drop, canDrop };
+  return { hasPack, isKept, offered, install, uninstall };
 }
 
 /** The picker's half, on its own, so a chip row does not import a

@@ -527,22 +527,27 @@ describe('the axis set itself', () => {
 describe('a shelf remembers only packs that still ship', () => {
   const sanitize = DEFS['mods.packs.removed'].sanitize!;
 
-  it('keeps a real removal, by axis', () => {
-    expect(sanitize({ font: ['serif'] })).toEqual({ font: ['serif'] });
+  it('keeps a real removal', () => {
+    expect(sanitize(['cab'])).toEqual(['cab']);
   });
 
-  it('drops an axis nobody ships, and an id nobody ships', () => {
-    expect(sanitize({ zzz: ['serif'], font: ['not-a-font'] })).toEqual({});
+  it('drops a pack nobody ships — it can only be one that stopped shipping', () => {
+    expect(sanitize(['not-a-pack', 'cab'])).toEqual(['cab']);
   });
 
-  it('an id listed twice is one removal', () => {
-    expect(sanitize({ font: ['serif', 'serif'] })).toEqual({ font: ['serif'] });
+  it('drops the base pack: "removed" is not a state it can be in', () => {
+    // It carries every axis's fallback. A stored one could only come
+    // from an older shape or a hand-edited store.
+    expect(sanitize(['classic'])).toEqual([]);
   });
 
-  it('refuses a shape that is not a record of lists', () => {
-    expect(sanitize('serif')).toBeUndefined();
-    expect(sanitize(['serif'])).toBeUndefined();
-    // A value that is not a list is skipped rather than trusted.
-    expect(sanitize({ font: 'serif' })).toEqual({});
+  it('a pack listed twice is one removal', () => {
+    expect(sanitize(['cab', 'cab'])).toEqual(['cab']);
+  });
+
+  it('refuses a shape that is not a list of ids', () => {
+    expect(sanitize('cab')).toBeUndefined();
+    expect(sanitize({ font: ['serif'] })).toBeUndefined();
+    expect(sanitize([1, null])).toEqual([]);
   });
 });

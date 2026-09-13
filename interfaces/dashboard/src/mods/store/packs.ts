@@ -34,13 +34,26 @@ export interface Pack extends ItemMeta {
 }
 
 /**
- * Packs that bring their own items. Empty today, and that is the honest
- * state: everything this app ships was drawn before packs existed, so
- * it all belongs to the base pack below. The first themed pack adds its
- * entry here and its item files beside the others, and the base pack
- * gives up exactly what the new one claims — no list to edit twice.
+ * Packs beside the base one.
+ *
+ * The two prepared looks are each their own pack, and that is not a
+ * technicality: a pack is what a person installs, and "give me the
+ * whole thing ready" is exactly what these two are for. Each ships one
+ * item — its preset — which sets five shelves at once out of what the
+ * base pack already brought. A themed pack later will ship more: its
+ * own wallpaper, its own cue set, and a preset that ties them together.
+ *
+ * Listed rather than derived from `MODS`, because a preset that arrives
+ * as part of a themed pack belongs to THAT pack, and a rule of "every
+ * preset is its own pack" would be wrong the day one does. A preset
+ * nobody packs falls to the base pack, which is also correct.
  */
-const THEMED: readonly Pack[] = [];
+const THEMED: readonly Pack[] = [
+  { id: 'cab', label: 'Cab', publisher: PUBLISHER, items: { mods: ['cab'] },
+    description: 'Ready for a moving truck — bigger targets, a cue that cuts through road noise' },
+  { id: 'wall', label: 'Wall', publisher: PUBLISHER, items: { mods: ['wall'] },
+    description: 'Ready for a wall display — read from across the room' },
+];
 
 const key = (axis: string, id: string) => `${axis}/${id}`;
 const CLAIMED = new Set(

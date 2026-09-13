@@ -334,6 +334,7 @@ export default function AppRouter() {
             it is the shelf /mods draws from, not a second product. A
             static segment, so it is matched ahead of `:category`. */}
         <Route path="mods/store" element={<P perm={MODS_PERMISSION}><ModsStorePage /></P>} />
+        <Route path="mods/store/:pack" element={<P perm={MODS_PERMISSION}><ModsStorePage /></P>} />
         <Route path="mods/:category" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
         <Route path="mods/:category/:item" element={<P perm={MODS_PERMISSION}><ModsPage /></P>} />
         {/* Notifications are a cross-source PERSONAL surface on their own

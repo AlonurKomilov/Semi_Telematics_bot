@@ -9,10 +9,11 @@ import { join } from 'node:path';
 
 // `vi.mock` is hoisted above the file, so the spy has to be hoisted too
 // or the factory closes over a variable that does not exist yet.
-const { setTheme, undoSpy, setPref, removed } = vi.hoisted(() => ({
+const { setTheme, undoSpy, setPref, removed, at } = vi.hoisted(() => ({
+  at: { current: {} as Record<string, string> },
   setTheme: vi.fn(), undoSpy: vi.fn(), setPref: vi.fn(),
-  // What this person has taken off their shelves, per test.
-  removed: { current: {} as Record<string, string[]> },
+  // Which PACKS this device has taken off, per test.
+  removed: { current: [] as string[] },
 }));
 
 // Spread the real modules: the preferences barrel pulls in AuthContext,
@@ -37,6 +38,9 @@ vi.mock('react-router-dom', async (orig) => ({
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),
+  // Which level of the store this render is at: the shelf of packs, or
+  // one pack's own page.
+  useParams: () => at.current,
 }));
 vi.mock('./context', () => ({
   useMods: () => ({
@@ -91,8 +95,19 @@ vi.mock('../components/banners/stagedAction', () => ({ undoableAction: undoSpy }
 import { ModsStorePage } from './store/StorePage';
 import { AXIS_UI } from './store/axes';
 import { ITEM_AXES } from './store/items';
-import { itemsOf } from './store/index';
+import { PACKS, packById } from './store/packs';
 import { TAXONOMY, headingsOf } from './taxonomy';
+
+const tileOf = (label: string, axis?: string) => {
+  const scope = axis ? within(screen.getByTestId(`store-axis-${axis}`)) : screen;
+  return scope.getByText(label).closest('div[class*="p-3"]') as HTMLElement;
+};
+
+beforeEach(() => {
+  at.current = {};
+  removed.current = [];
+  setPref.mockClear(); setTheme.mockClear(); undoSpy.mockClear();
+});
 
 describe('every shelf has a home', () => {
   it('the table and the catalogue name the same axes', () => {
@@ -102,7 +117,7 @@ describe('every shelf has a home', () => {
   it('the presets shelf does not name the service it sits inside', () => {
     // "Mods" is the service. A shelf of that name inside it made the
     // page point at itself, and produced the question it was meant to
-    // answer. A preset is a pack like any other; it just carries
+    // answer. A preset is an item like any other; it just carries
     // several shelves' settings at once.
     expect(AXIS_UI.mods.label).not.toBe('Mods');
     const row = readFileSync(join(__dirname, 'panel', 'ModsRow.tsx'), 'utf8');
@@ -110,7 +125,6 @@ describe('every shelf has a home', () => {
     expect(said, 'the panel row no longer names itself in one place').not.toBeNull();
     expect(said![1], 'the panel and the store call the presets shelf different things')
       .toBe(AXIS_UI.mods.label);
-    // And the taxonomy, which is what the panel's own section guard reads.
     expect(headingsOf('mods'), 'the taxonomy calls it something else again')
       .toEqual([AXIS_UI.mods.label]);
   });
@@ -118,7 +132,6 @@ describe('every shelf has a home', () => {
   it('a shelf is called what the rest of the product calls it', () => {
     const titles = TAXONOMY.flatMap((c) => c.items.map((i) => i.title));
     for (const [axis, ui] of Object.entries(AXIS_UI)) {
-      // `mods` is the looks row, which is not a settings item anywhere.
       if (axis === 'mods') continue;
       expect(titles, `the store calls ${axis} "${ui.label}", and nothing else does`)
         .toContain(ui.label);
@@ -126,138 +139,78 @@ describe('every shelf has a home', () => {
   });
 });
 
-describe('the store page', () => {
-  it('draws a tile per pack, with the sentence the pack carries', () => {
+describe('the store sells packs, not items', () => {
+  it('every pack is on the shelf, with what it brings', () => {
     render(<ModsStorePage />);
-    const wallpapers = itemsOf('wallpaper');
-    expect(wallpapers.length).toBeGreaterThan(1);
-    for (const row of wallpapers) {
-      expect(screen.getByText(row.label)).toBeTruthy();
-      expect(screen.getByText(row.description)).toBeTruthy();
-    }
+    for (const p of PACKS) expect(screen.getByText(p.label)).toBeTruthy();
+    expect(within(screen.getByTestId('store-packs')).getAllByText(/items across/).length)
+      .toBe(PACKS.length);
   });
 
-  it('asks the same door every picker asks', () => {
+  it('an item cannot be installed on its own — only its pack can', () => {
     render(<ModsStorePage />);
-    expect(screen.queryByText('Mono'), 'a pack the store withheld is on the shelf').toBeNull();
-    expect(screen.getByText('Serif')).toBeTruthy();
+    // No item names appear on the shelf at all: this level is packs.
+    expect(screen.queryByText('Mesh'), 'an item is being sold on the pack shelf').toBeNull();
+    expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull();
   });
 
-  it('Apply writes the field the axis declares', () => {
+  it('what a pack brings is one level in', () => {
+    at.current = { pack: 'classic' };
     render(<ModsStorePage />);
-    const serif = screen.getByText('Serif').closest('div[class*="p-3"]') as HTMLElement;
-    fireEvent.click(within(serif).getByRole('button', { name: /apply/i }));
-    expect(setTheme).toHaveBeenCalledWith({ font: 'serif' });
+    expect(tileOf('Mesh', 'wallpaper')).toBeTruthy();
+    expect(within(tileOf('Mesh', 'wallpaper')).queryByRole('button'),
+      'an item inside a pack is offering a verb of its own').toBeNull();
   });
 
-  it('one wallpaper pick lands on both grounds', () => {
+  it('a pack that is not there says so instead of drawing an empty page', () => {
+    at.current = { pack: 'not-a-pack' };
     render(<ModsStorePage />);
-    const tile = screen.getByText('Mesh').closest('div[class*="p-3"]') as HTMLElement;
-    fireEvent.click(within(tile).getByRole('button', { name: /apply/i }));
-    expect(setTheme).toHaveBeenCalledWith({ wallpaper: 'mesh', wallpaperPage: 'mesh' });
+    expect(screen.getByText(/Not a pack/)).toBeTruthy();
   });
 });
 
-describe('applying is as cheap to undo as it was to try', () => {
-  it('says what changed, and puts the old value back', async () => {
-    undoSpy.mockClear(); setTheme.mockClear();
+describe('installing and removing a pack', () => {
+  it('the base pack cannot be removed — it carries every fallback', () => {
     render(<ModsStorePage />);
-    const tile = screen.getByText('Sharp').closest('div[class*="p-3"]') as HTMLElement;
-    fireEvent.click(within(tile).getByRole('button', { name: /apply/i }));
-
-    expect(undoSpy, 'a quiet axis changed with nothing said').toHaveBeenCalledTimes(1);
-    const call = undoSpy.mock.calls[0][0];
-    expect(call.label, 'the banner does not name the shelf and the pack')
-      .toBe('Cursor set to Sharp');
-    setTheme.mockClear();
-    await call.undo();
-    expect(setTheme, 'undo did not restore the cursor it replaced')
-      .toHaveBeenCalledWith({ cursor: 'system' });
+    const classic = tileOf(packById('classic')!.label);
+    expect(within(classic).getByText('Installed')).toBeTruthy();
+    expect(within(classic).queryByRole('button', { name: /remove/i })).toBeNull();
   });
 
-  it('what IS does not wear what you can DO', () => {
+  it('removing a pack records it, and says so with a way back', () => {
     render(<ModsStorePage />);
-    // The harness wears the blue accent, so its tile is the applied one.
-    const tile = screen.getByText('Blue').closest('div[class*="p-3"]') as HTMLElement;
-    expect(within(tile).queryByRole('button'), 'the applied state is still a button').toBeNull();
-    expect(within(tile).getByText('Applied')).toBeTruthy();
+    fireEvent.click(within(tileOf('Cab')).getByRole('button', { name: /remove cab/i }));
+    expect(setPref).toHaveBeenCalledWith(['cab']);
+    expect(undoSpy, 'a pack left with nothing said').toHaveBeenCalledTimes(1);
+    expect(undoSpy.mock.calls[0][0].label).toBe('Cab removed');
+  });
+
+  it('removing the pack you are WEARING from takes it off you too', () => {
+    // The harness wears the Cab preset.
+    render(<ModsStorePage />);
+    fireEvent.click(within(tileOf('Cab')).getByRole('button', { name: /remove cab/i }));
+    expect(setTheme, 'the app is left wearing an item no picker offers')
+      .toHaveBeenCalledWith({ mod: '' });
+  });
+
+  it('a removed pack stays on the shelf, offering the way back', () => {
+    removed.current = ['cab'];
+    render(<ModsStorePage />);
+    const cab = tileOf('Cab');
+    expect(within(cab).queryByText('Installed')).toBeNull();
+    expect(within(cab).getByRole('button', { name: /install/i })).toBeTruthy();
   });
 });
 
-describe('a shelf is what this person kept', () => {
-  /** Scoped to its shelf: two axes ship a pack called Soft, which is
-   *  fine on a page where each sits under its own heading. */
-  const tileOf = (label: string, axis?: string) => {
-    const scope = axis ? within(screen.getByTestId(`store-axis-${axis}`)) : screen;
-    return scope.getByText(label).closest('div[class*="p-3"]') as HTMLElement;
-  };
-
-  beforeEach(() => {
-    removed.current = {};
-    setPref.mockClear(); setTheme.mockClear();
-  });
-
-  it('taking a pack off the shelf records it, by axis', () => {
-    render(<ModsStorePage />);
-    undoSpy.mockClear();
-    fireEvent.click(within(tileOf('Serif')).getByRole('button', { name: /remove serif/i }));
-    expect(setPref).toHaveBeenCalledWith({ font: ['serif'] });
-    // The X sits a thumb from Apply, so the click has to be reversible.
-    expect(undoSpy, 'a shelf emptied by a mis-click says nothing').toHaveBeenCalledTimes(1);
-    expect(undoSpy.mock.calls[0][0].label).toBe('Serif removed');
-  });
-
-  it('what a shelf falls back to cannot be taken off it', () => {
-    render(<ModsStorePage />);
-    // Blue IS the base accent; a Color shelf with nothing on it is one
-    // nobody could leave.
-    expect(within(tileOf('Blue')).queryByRole('button', { name: /remove/i })).toBeNull();
-    expect(within(tileOf('Serif')).getByRole('button', { name: /remove/i })).toBeTruthy();
-  });
-
-  it('removing what you are WEARING puts the shelf default back on', () => {
-    render(<ModsStorePage />);
-    // The harness wears the Soft shader — the one pack in this mock that
-    // is not its shelf's default, so it is the only one where removing
-    // and wearing are the same gesture.
-    const soft = tileOf('Soft', 'shader');
-    expect(within(soft).getByText('Applied'), 'the harness is not wearing it').toBeTruthy();
-    fireEvent.click(within(soft).getByRole('button', { name: /remove soft/i }));
-    expect(setPref).toHaveBeenCalledWith({ shader: ['soft'] });
-    expect(setTheme, 'the app is left wearing a pack no shelf offers')
-      .toHaveBeenCalledWith({ shader: 'flat' });
-  });
-
-  it('removing the look you WEAR stops you wearing it, and leaves the axes it wrote', () => {
-    render(<ModsStorePage />);
-    const cab = tileOf('Cab', 'mods');
-    fireEvent.click(within(cab).getByRole('button', { name: /remove cab/i }));
-    expect(setPref).toHaveBeenCalledWith({ mods: ['cab'] });
-    // No shelf default here — wearing no look is a fine answer — so the
-    // reset is the look itself, not the seven axes it wrote.
-    expect(setTheme).toHaveBeenCalledWith({ mod: '' });
-  });
-
-  it('a pack taken off stays on the page, offering the way back', () => {
-    removed.current = { font: ['serif'] };
-    render(<ModsStorePage />);
-    const tile = tileOf('Serif');
-    expect(within(tile).queryByRole('button', { name: /^apply$/i })).toBeNull();
-    expect(within(tile).getByRole('button', { name: /add/i })).toBeTruthy();
-  });
-});
-
-describe('the shelf whose packs are not one setting says so', () => {
+describe('the shelf whose items are not one setting says so', () => {
   it('explains itself under its own heading', () => {
+    at.current = { pack: 'cab' };
     render(<ModsStorePage />);
-    const shelf = within(screen.getByTestId('store-axis-mods'));
     expect(AXIS_UI.mods.note, 'the shelf that needs a line has none').toBeTruthy();
-    expect(shelf.getByText(AXIS_UI.mods.note!)).toBeTruthy();
+    expect(within(screen.getByTestId('store-axis-mods')).getByText(AXIS_UI.mods.note!)).toBeTruthy();
   });
 
   it('and the shelves that are one setting do not', () => {
-    // A note on every heading is noise; only the one that is not a
-    // single choice has to explain what it is.
     for (const axis of ['theme', 'font', 'cursor']) {
       expect(AXIS_UI[axis].note, `${axis} explains what needs no explaining`).toBeUndefined();
     }
