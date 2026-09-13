@@ -195,7 +195,7 @@ def _check_plan_prices(plans: list[dict], mode: str) -> dict:
     """Every plan a customer can buy needs its own Stripe Price.
 
     A priced plan whose row has no ``stripe_price_id`` is the step people
-    skip: the plan is offered, and its checkout falls back to the
+    skip: the plan is public, and its checkout falls back to the
     ``STRIPE_PRICE_<TIER>`` env or refuses.  Ids do not carry between
     modes, so this also catches the sandbox ids left behind after a dry
     run.
@@ -205,7 +205,7 @@ def _check_plan_prices(plans: list[dict], mode: str) -> dict:
                 if p.get("public") and int(p.get("price_monthly_cents") or 0) > 0]
     if not sellable:
         return _check("plan_prices", label, _PROBLEM,
-                      "No plan is both offered to customers and priced — "
+                      "No plan is both shown to all customers and priced — "
                       "the Billing page has nothing to sell.")
     without = [p["tier"] for p in sellable if not (p.get("stripe_price_id") or "").strip()]
     if without:
@@ -213,7 +213,7 @@ def _check_plan_prices(plans: list[dict], mode: str) -> dict:
                       f"No Stripe price yet for {', '.join(sorted(without))} — "
                       "press Create Stripe price on each of them below.")
     return _check("plan_prices", label, _OK,
-                  f"{len(sellable)} offered plan{'s' if len(sellable) != 1 else ''} "
+                  f"{len(sellable)} public plan{'s' if len(sellable) != 1 else ''} "
                   f"carry a {mode}-mode Stripe price")
 
 

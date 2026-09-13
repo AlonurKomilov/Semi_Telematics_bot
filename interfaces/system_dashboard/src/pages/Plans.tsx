@@ -4,6 +4,7 @@ import { apiJSON, ApiError } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Check, X, HelpCircle } from 'lucide-react';
 import { OfferPlanDialog } from '../components/OfferPlanDialog';
+import { PREF_KEYS, readPref, writePref } from '../lib/prefs';
 
 // ── Plans: what each plan includes, as data ─────────────────────
 //
@@ -294,6 +295,8 @@ function groupRows(catalog: CatalogEntry[]): { title: string; rows: CatalogEntry
   ].filter((g) => g.rows.length > 0);
 }
 
+type Reach = 'public' | 'offers';
+
 export default function PlansPage() {
   const [data, setData] = useState<PlansResponse | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -316,6 +319,13 @@ export default function PlansPage() {
   // plan: saving Free must not throw away half-done work on Pro.
   // the plan whose column opened the offer dialog
   const [offering, setOffering] = useState<Plan | null>(null);
+  // Which reach is open.  The tab IS the plan's `public` flag, not a
+  // second model: Public = on every customer's Billing page; Offers =
+  // hidden, on the page of the accounts named in the column.  Kept
+  // apart so an operator shaping one customer's deal is never one
+  // mis-click from a plan every customer is on.
+  const [tab, setTabState] = useState<Reach>(() => (readPref(PREF_KEYS.plansTab) === 'offers' ? 'offers' : 'public'));
+  const setTab = (t: Reach) => { setTabState(t); writePref(PREF_KEYS.plansTab, t); };
 
   const load = useCallback(async (savedTier?: string) => {
     setLoading(true);
@@ -360,6 +370,9 @@ export default function PlansPage() {
   const groups = useMemo(() => (data ? groupRows(data.catalog) : []), [data]);
   const catalog = data?.catalog ?? [];
   const plans = data?.plans ?? [];
+  const publicPlans = plans.filter((p) => p.public);
+  const offerPlans = plans.filter((p) => !p.public);
+  const shown = tab === 'public' ? publicPlans : offerPlans;
 
   function setDraft(tier: string, patch: (d: Draft) => Draft) {
     setDrafts((ds) => ({ ...ds, [tier]: patch(ds[tier]) }));
@@ -426,6 +439,7 @@ export default function PlansPage() {
       });
       setSaved(p.tier);
       await load(p.tier);
+      if (cat.public !== p.public) setTab(cat.public ? 'public' : 'offers');
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Save failed');
     } finally {
@@ -501,6 +515,7 @@ export default function PlansPage() {
       });
       setNewPlan({ key: '', label: '' });
       await load();
+      setTab('offers');
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Create failed');
     } finally {
@@ -534,6 +549,38 @@ export default function PlansPage() {
       )}
 
       {data && (
+        <div className="mb-3">
+          <div className="flex items-center gap-2" role="tablist" aria-label="Plan reach">
+            {([['public', 'Public', publicPlans.length], ['offers', 'Offers', offerPlans.length]] as const).map(([key, label, n]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={`text-sm px-3 py-1 rounded border transition ${
+                  tab === key ? 'bg-accent/15 text-accent border-accent/40'
+                              : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}
+              >
+                {label} <span className="text-[11px] opacity-80">({n})</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {tab === 'public'
+              ? 'On every customer\'s Billing page. Untick "Shown to all customers" and save to move a plan to Offers.'
+              : 'Hidden from customers, except the accounts named in a column. Every new plan starts here; tick "Shown to all customers" and save to make one public.'}
+          </p>
+        </div>
+      )}
+      {data && shown.length === 0 && (
+        <p className="mb-4 text-sm text-slate-500 border border-slate-800 rounded-lg px-3 py-4">
+          {tab === 'public'
+            ? 'Nothing is shown to customers — every plan is in Offers.'
+            : 'No private plan yet. Create one below; it starts here, hidden, until you offer it to an account or make it public.'}
+        </p>
+      )}
+      {data && shown.length > 0 && (
         // The grid scrolls in its own box (rather than with the page) so
         // the plan heads can stick: 40-odd rows deep, a tick means
         // nothing if the column it belongs to has scrolled away.  The
@@ -549,7 +596,7 @@ export default function PlansPage() {
             <thead className="sticky top-0 z-10 bg-slate-900 text-slate-400">
               <tr>
                 <th className="text-left px-3 py-2 font-medium w-64">Plan</th>
-                {plans.map((p) => (
+                {shown.map((p) => (
                   <th key={p.tier} className="px-3 py-2 font-medium text-center min-w-[9rem] align-top">
                     <input
                       className={`${inputCls} text-center`}
@@ -568,9 +615,9 @@ export default function PlansPage() {
                         stays off that page, so the chip says which. */}
                     {!p.public ? (
                       <>
-                        <div className="mt-1 text-[11px] font-normal rounded bg-slate-500/15 text-slate-400 px-1.5 py-0.5">
-                          hidden from customers
-                        </div>
+                        {(p.offered_to ?? []).length === 0 && (
+                          <div className="mt-1 text-[11px] font-normal text-slate-500">not offered to anyone yet</div>
+                        )}
                         {/* except for these: an offer puts the plan on ONE
                             account's Billing page.  The × withdraws it —
                             a subscription already made is untouched. */}
@@ -601,7 +648,7 @@ export default function PlansPage() {
               </tr>
               <tr className="border-t border-slate-800/70">
                 <th className="text-left px-3 py-2 font-medium text-slate-300">Everything included</th>
-                {plans.map((p) => (
+                {shown.map((p) => (
                   <th key={p.tier} className="px-3 py-2 text-center">
                     <input
                       type="checkbox"
@@ -616,7 +663,7 @@ export default function PlansPage() {
             </thead>
             <tbody>
               {groups.map((g) => (
-                <GroupRows key={g.title} title={g.title} rows={g.rows} plans={plans} drafts={drafts} onToggle={toggle} />
+                <GroupRows key={g.title} title={g.title} rows={g.rows} plans={shown} drafts={drafts} onToggle={toggle} />
               ))}
               <tr className="border-t border-slate-800 bg-slate-900/40">
                 <td className="px-3 py-1.5 text-xs uppercase tracking-wide text-slate-500" colSpan={plans.length + 1}>
@@ -626,7 +673,7 @@ export default function PlansPage() {
               {data.quota_keys.map((k) => (
                 <tr key={k} className="border-t border-slate-800/70">
                   <td className="px-3 py-1.5 text-slate-300">{QUOTA_LABEL[k] ?? k}</td>
-                  {plans.map((p) => (
+                  {shown.map((p) => (
                     <td key={p.tier} className="px-3 py-1.5">
                       <input
                         className={`${inputCls} text-center tabular-nums`}
@@ -649,7 +696,7 @@ export default function PlansPage() {
               </tr>
               <tr className="border-t border-slate-800/70">
                 <td className="px-3 py-1.5 text-slate-300">Shown to all customers</td>
-                {plans.map((p) => (
+                {shown.map((p) => (
                   <td key={p.tier} className="px-3 py-1.5 text-center">
                     <input
                       type="checkbox"
@@ -675,7 +722,7 @@ export default function PlansPage() {
                   </label>
                   <span className="ml-2 text-[11px] text-slate-500">this radio = no trial; else one plan</span>
                 </td>
-                {plans.map((p) => (
+                {shown.map((p) => (
                   <td key={p.tier} className="px-3 py-1.5 text-center">
                     <input
                       type="radio"
@@ -694,7 +741,7 @@ export default function PlansPage() {
                     {row.label}
                     {row.hint && <span className="ml-2 text-[11px] text-slate-500">{row.hint}</span>}
                   </td>
-                  {plans.map((p) => (
+                  {shown.map((p) => (
                     <td key={p.tier} className="px-3 py-1.5">
                       <input
                         className={`${inputCls} text-center tabular-nums`}
@@ -714,7 +761,7 @@ export default function PlansPage() {
                   Stripe price
                   <span className="ml-2 text-[11px] text-slate-500">created on save; existing subscribers move with Roll out</span>
                 </td>
-                {plans.map((p) => (
+                {shown.map((p) => (
                   <td key={p.tier} className="px-3 py-1.5 text-center align-top">
                     <div className="text-[11px] text-slate-500 break-all">{p.stripe_price_id || '—'}</div>
                     {data.billing_provider === 'stripe' && p.stripe_price_id && (
@@ -736,7 +783,7 @@ export default function PlansPage() {
                   rows pass beneath it. */}
               <tr className="sticky bottom-0 z-10 bg-slate-900 border-t border-slate-800">
                 <td className="px-3 py-2 text-xs text-slate-500">Last change</td>
-                {plans.map((p) => {
+                {shown.map((p) => {
                   const d = drafts[p.tier];
                   const dirty = d ? isDirty(p, d, catalog) : false;
                   // A priced plan with no Stripe price yet still has work to
@@ -803,9 +850,9 @@ export default function PlansPage() {
             </Button>
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            A new plan starts with everything included, no price, and hidden from customers — its column will say so.
-            Set its price and tick "Shown to all customers" above when it is ready; Stripe stays the bill.
-            A plan for ONE customer stays hidden and is offered to that account from its column.
+            A new plan starts in Offers: everything included, no price, hidden from customers. Set its price there,
+            then either offer it to one account from its column, or tick "Shown to all customers" and save to move
+            it to Public. Stripe stays the bill.
           </p>
         </div>
       )}

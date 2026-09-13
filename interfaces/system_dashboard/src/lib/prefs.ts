@@ -18,6 +18,8 @@ export const PREF_KEYS = {
   securityHours: 'sec.hours',
   /** Security page: the account filter, '' for every account. */
   securityAccount: 'sec.account',
+  /** Plans page: which reach is open — 'public' or 'offers'. */
+  plansTab: 'plans.tab',
 } as const;
 
 export type PrefKey = (typeof PREF_KEYS)[keyof typeof PREF_KEYS];

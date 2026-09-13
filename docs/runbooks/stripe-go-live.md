@@ -138,15 +138,16 @@ lets that customer ask again later.
 When a Contact-Sales conversation ends in terms nobody else gets — a
 flat monthly figure, their own truck allowance — the plan is an
 ordinary row made in the same editor as every other: **Plans → New
-plan**, set the price, the included trucks, the per-truck extra and the
-features, and **leave it hidden from customers**. Under Stripe, press
+plan** — it lands in the **Offers** tab, hidden — set the price, the
+included trucks, the per-truck extra and the features, and **leave it
+there** (the Public tab is every customer's page). Under Stripe, press
 **Create Stripe price** on it; a private plan needs a Price of its own
 because the webhook reads the tier back from the Price.
 
 Then open it to that one account: from the case on **Plan requests**
 ("Offer a plan…", which also marks the case contacted and emails the
-address on it), or from the plan's column on **Plans** ("Offer to an
-account…"). The plan appears on that account's Billing page as
+address on it), or from the plan's column in **Plans → Offers** ("Offer
+to an account…"). The plan appears on that account's Billing page as
 "Prepared for your account"; every other account still cannot see it or
 buy it by name. Nothing else moves — the customer pays for it there by
 pressing Upgrade, and from then on the subscription row is the truth.
