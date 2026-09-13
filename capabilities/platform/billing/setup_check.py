@@ -211,7 +211,7 @@ def _check_plan_prices(plans: list[dict], mode: str) -> dict:
     if without:
         return _check("plan_prices", label, _PROBLEM,
                       f"No Stripe price yet for {', '.join(sorted(without))} — "
-                      "press Save on each priced plan below to create it.")
+                      "press Create Stripe price on each of them below.")
     return _check("plan_prices", label, _OK,
                   f"{len(sellable)} offered plan{'s' if len(sellable) != 1 else ''} "
                   f"carry a {mode}-mode Stripe price")

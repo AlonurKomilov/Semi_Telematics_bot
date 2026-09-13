@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON, ApiError } from '../api/client';
+import { Button } from '../components/ui/Button';
+import { Check, X, HelpCircle } from 'lucide-react';
 
 // ── Plans: what each plan includes, as data ─────────────────────
 //
@@ -86,8 +88,6 @@ interface Draft {
 const inputCls =
   'bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200 ' +
   'placeholder:text-slate-600 focus:outline-none focus:border-slate-600 w-full';
-const btnCls =
-  'px-2.5 py-1 rounded text-xs font-medium border transition disabled:opacity-50';
 
 // ── Payment wiring ───────────────────────────────────────────────
 //
@@ -98,12 +98,15 @@ const btnCls =
 // exactly when an operator wants to see it green.
 
 // Flat tints, no border: on this page a bordered box is something to
-// press (Save, Roll out, Re-check), and a state that looks pressable
-// invites a click that does nothing.
-const WIRING_TONE: Record<WiringCheck['state'], { chip: string; mark: string }> = {
-  ok:      { chip: 'bg-emerald-500/15 text-emerald-300', mark: '✓' },
-  problem: { chip: 'bg-rose-500/15 text-rose-300',       mark: '✗' },
-  unknown: { chip: 'bg-slate-500/15 text-slate-400',     mark: '?' },
+// press, and a state that looks pressable invites a click that does
+// nothing.  Colour comes from the config's semantic tokens so one
+// change reaches every surface, and the mark from the icon library the
+// console already ships rather than a text glyph that renders in
+// whatever the font decides.
+const WIRING_TONE: Record<WiringCheck['state'], { chip: string; Icon: typeof Check }> = {
+  ok:      { chip: 'bg-ok/15 text-ok',           Icon: Check },
+  problem: { chip: 'bg-danger/15 text-danger',   Icon: X },
+  unknown: { chip: 'bg-slate-500/15 text-slate-400', Icon: HelpCircle },
 };
 
 function PaymentWiring({ provider, reloadKey }: { provider: string; reloadKey: number }) {
@@ -135,8 +138,8 @@ function PaymentWiring({ provider, reloadKey }: { provider: string; reloadKey: n
         <span className="text-xs text-slate-500">provider: <span className="text-slate-300">{provider}</span></span>
         {report && (
           <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-            live ? 'bg-emerald-500/15 text-emerald-300'
-                 : test ? 'bg-amber-500/15 text-amber-300'
+            live ? 'bg-ok/15 text-ok'
+                 : test ? 'bg-warn/15 text-warn'
                         : 'bg-slate-500/15 text-slate-400'}`}>
             {live ? 'LIVE — real charges' : test ? 'TEST MODE — no real money' : 'mode unknown'}
           </span>
@@ -144,48 +147,50 @@ function PaymentWiring({ provider, reloadKey }: { provider: string; reloadKey: n
         {/* Where the operator is in the go-live list, rather than five
             marks to count by eye. */}
         {report && (
-          <span className={`text-xs ${report.ok ? 'text-emerald-300' : 'text-slate-400'}`}>
+          <span className={`text-xs ${report.ok ? 'text-ok' : 'text-slate-400'}`}>
             {ready} of {report.checks.length} ready
           </span>
         )}
-        <button
-          onClick={check}
-          disabled={busy}
-          className={`${btnCls} ml-auto border-slate-700 text-slate-300 hover:bg-slate-800`}
-        >{busy ? 'Checking…' : 'Re-check'}</button>
+        {/* Secondary on purpose: re-reading a checklist is never the
+            thing this page is for. */}
+        <Button onClick={check} disabled={busy} className="ml-auto">
+          {busy ? 'Checking…' : 'Re-check'}
+        </Button>
       </header>
 
       {/* Five rows tall whatever it holds, so the grid below stays put
           while Stripe answers. */}
       <div className="min-h-[8.5rem]">
-        {failed && <p className="px-3 py-2 text-sm text-rose-400">{failed}</p>}
+        {failed && <p className="px-3 py-2 text-sm text-danger">{failed}</p>}
         {!report && !failed && <p className="px-3 py-2 text-sm text-slate-500">Asking Stripe…</p>}
         {report && (
           <dl className="divide-y divide-slate-800/70">
             {report.checks.map((c) => (
               <div key={c.id} className="flex items-start gap-3 px-3 py-1.5">
-                <span className={`shrink-0 w-5 text-center rounded text-[11px] leading-5 ${WIRING_TONE[c.state].chip}`}
-                      aria-label={c.state}>{WIRING_TONE[c.state].mark}</span>
+                <span className={`shrink-0 grid place-items-center size-5 rounded ${WIRING_TONE[c.state].chip}`}
+                      role="img" aria-label={c.state}>
+                  {(() => { const I = WIRING_TONE[c.state].Icon; return <I className="size-3" aria-hidden />; })()}
+                </span>
                 <dt className="shrink-0 w-44 text-sm text-slate-300">{c.label}</dt>
-                <dd className={`text-sm ${c.state === 'problem' ? 'text-rose-300' : 'text-slate-500'}`}>{c.note}</dd>
+                <dd className={`text-sm ${c.state === 'problem' ? 'text-danger' : 'text-slate-500'}`}>{c.note}</dd>
               </div>
             ))}
           </dl>
         )}
       </div>
 
+      {/* Test mode is said once, by the strip the shell puts on every
+          page; repeating it here two hundred pixels lower taught the
+          reader to skip both. This line carries what is specific to the
+          checklist. */}
       {report && (
         <p className={`px-3 py-2 border-t border-slate-800 text-xs ${
-          provider === 'stripe' && test ? 'bg-amber-500/10 text-amber-300'
-            : provider === 'stripe' && !report.ok ? 'text-rose-300'
-              : 'text-slate-500'}`}>
+          provider === 'stripe' && !report.ok ? 'text-danger' : 'text-slate-500'}`}>
           {provider !== 'stripe'
             ? 'Prices below are shown to customers but nothing is charged until BILLING_PROVIDER=stripe.'
-            : test
-              ? 'Every customer pressing Upgrade opens a TEST checkout right now — finish the dry run and swap the keys.'
-              : report.ok
-                ? 'Customers can buy a plan.'
-                : 'Fix the red lines above — a customer meets them at checkout.'}
+            : report.ok
+              ? 'Customers can buy a plan.'
+              : 'Fix the red lines above — a customer meets them at checkout.'}
         </p>
       )}
     </section>
@@ -518,7 +523,13 @@ export default function PlansPage() {
         // the plan heads can stick: 40-odd rows deep, a tick means
         // nothing if the column it belongs to has scrolled away.  The
         // head must be opaque for the same reason — rows pass beneath it.
-        <div className="border border-slate-800 rounded-lg overflow-auto max-h-[70vh]">
+        <div
+          className="border border-slate-800 rounded-lg overflow-auto max-h-[70vh] overscroll-contain
+                     focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
+          tabIndex={0}
+          role="region"
+          aria-label="Plan grid"
+        >
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-900 text-slate-400">
               <tr>
@@ -671,18 +682,23 @@ export default function PlansPage() {
                   <td key={p.tier} className="px-3 py-1.5 text-center align-top">
                     <div className="text-[11px] text-slate-500 break-all">{p.stripe_price_id || '—'}</div>
                     {data.billing_provider === 'stripe' && p.stripe_price_id && (
-                      <button
-                        className={`${btnCls} mt-1 border-amber-500/40 text-amber-300 hover:bg-amber-500/10`}
+                      <Button
+                        variant="warn"
+                        className="mt-1"
                         disabled={busy === `rollout:${p.tier}`}
                         onClick={() => rollout(p)}
                       >
                         {busy === `rollout:${p.tier}` ? 'Rolling out…' : 'Roll out price…'}
-                      </button>
+                      </Button>
                     )}
                   </td>
                 ))}
               </tr>
-              <tr className="border-t border-slate-800">
+              {/* Pinned to the bottom of the box for the same reason the
+                  head is pinned to the top: this row is what the page is
+                  FOR, and it sat under forty feature rows. Opaque, so
+                  rows pass beneath it. */}
+              <tr className="sticky bottom-0 z-10 bg-slate-900 border-t border-slate-800">
                 <td className="px-3 py-2 text-xs text-slate-500">Last change</td>
                 {plans.map((p) => {
                   const d = drafts[p.tier];
@@ -697,8 +713,11 @@ export default function PlansPage() {
                   const armed = dirty || needsPrice;
                   return (
                     <td key={p.tier} className="px-3 py-2 text-center align-top">
-                      <button
-                        className={`${btnCls} ${armed ? 'border-accent text-accent hover:bg-accent/10' : 'border-slate-800 text-slate-500'}`}
+                      {/* Filled when there is something to do: this is the
+                          act that reaches every account on the plan, and it
+                          used to carry the same weight as Re-check. */}
+                      <Button
+                        variant={armed ? 'primary' : 'ghost'}
                         disabled={!armed || busy === p.tier}
                         onClick={() => save(p)}
                       >
@@ -706,7 +725,7 @@ export default function PlansPage() {
                           : dirty ? 'Save'
                           : needsPrice ? 'Create Stripe price'
                           : saved === p.tier ? 'Saved' : 'No changes'}
-                      </button>
+                      </Button>
                       <div className="mt-1 text-[11px] text-slate-500">
                         {p.updated_by || '—'}
                         <br />
@@ -739,13 +758,13 @@ export default function PlansPage() {
               onChange={(e) => setNewPlan({ ...newPlan, label: e.target.value })}
               aria-label="New plan label"
             />
-            <button
-              className={`${btnCls} border-accent text-accent hover:bg-accent/10`}
+            <Button
+              variant="primary"
               disabled={busy === 'new' || !newPlan.key.trim()}
               onClick={create}
             >
               {busy === 'new' ? 'Creating…' : 'Create with everything included'}
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-slate-500 mt-2">
             A new plan starts with everything included, no price, and hidden from customers — its column will say so.

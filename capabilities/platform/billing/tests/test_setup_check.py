@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests._repo import REPO
+
 from capabilities.platform.billing import setup_check
 
 
@@ -181,7 +183,15 @@ def test_a_priced_offered_plan_without_a_stripe_price_is_named(stripe_env):
     check = setup_check._check_plan_prices(rows, "test")
     assert check["state"] == "problem"
     assert "pro" in check["note"] and "starter" not in check["note"]
-    assert "Save" in check["note"], "the note must name the act that fixes it"
+    # The note names the BUTTON the operator will look for, and the two
+    # have to move together: the button was renamed from "Save" to
+    # "Create Stripe price" for a priced plan carrying no price yet, and
+    # for one commit the card still said "press Save".
+    plans_page = (REPO / "interfaces" / "system_dashboard" / "src" / "pages" / "Plans.tsx").read_text()
+    label = "Create Stripe price"
+    assert label in check["note"], "the note must name the act that fixes it"
+    assert f"'{label}'" in plans_page, (
+        f"the note tells the operator to press {label!r} and no button on the Plans page says it")
 
 
 def test_nothing_to_sell_is_itself_the_problem(stripe_env):
