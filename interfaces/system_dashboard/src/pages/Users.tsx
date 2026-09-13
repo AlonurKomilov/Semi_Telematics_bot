@@ -1,7 +1,8 @@
 import { useEffect, useState, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
-import { ACCOUNT_SECURITY, type AccountSecurity, type SystemUser, type UserSession } from '../types';
+import { ACCOUNT_SECURITY, type AccountSecurity, type SystemUser,
+         type UserSecurityResult, type UserSession } from '../types';
 
 // Cross-account user search.  Support tool: "customer X's driver can't
 // log in" → search the name/telegram-id, see which account + role.
@@ -40,6 +41,9 @@ export default function UsersPage() {
   const [rows, setRows] = useState<SystemUser[]>([]);
   const [search, setSearch] = useState('');
   const [securityFilter, setSecurityFilter] = useState<'' | AccountSecurity>('');
+  /** What the last hold actually did. Not an error, so it does not
+   *  belong in `err`; not permanent, so it clears on the next change. */
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   // Which row's sessions panel is open.  Sessions are lazy-loaded on
@@ -133,6 +137,20 @@ export default function UsersPage() {
         </button>
       </div>
 
+      {notice && (
+        // Its own tone, deliberately: this is a consequence, not a
+        // failure, and colouring it like an error would teach the
+        // operator that holding somebody went wrong.
+        <div className="mb-3 bg-accent/10 border border-accent/40 text-accent text-sm rounded px-3 py-2 flex items-start gap-2">
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice('')}
+                  aria-label="Dismiss"
+                  className="text-accent/70 hover:text-accent px-1">
+            ×
+          </button>
+        </div>
+      )}
+
       {err && (
         <div className="mb-3 bg-danger/10 border border-danger/40 text-danger text-sm rounded px-3 py-2">
           {err}
@@ -191,9 +209,29 @@ export default function UsersPage() {
                           const next = e.target.value as AccountSecurity;
                           if (next === (u.security ?? 'normal')) return;
                           try {
-                            await apiJSON(`/system/users/${u.id}/security`, {
-                              method: 'PATCH', body: { security: next },
-                            });
+                            const res = await apiJSON<UserSecurityResult>(
+                              `/system/users/${u.id}/security`,
+                              { method: 'PATCH', body: { security: next } },
+                            );
+                            // Holding somebody does two things beyond
+                            // writing a word, and an operator who is not
+                            // told them cannot know whether either
+                            // happened — nor whether the person they
+                            // just held is still logged in somewhere.
+                            if (next === 'quarantined') {
+                              const who = u.email || u.display_name || `user ${u.id}`;
+                              const parts = [
+                                res.sessions_ended === 1
+                                  ? '1 live session ended'
+                                  : `${res.sessions_ended} live sessions ended`,
+                                res.owner_told
+                                  ? 'the account owner was told and now receives their alerts'
+                                  : 'the owner was NOT told — their alerts may go unread',
+                              ];
+                              setNotice(`${who} is held: ${parts.join('; ')}.`);
+                            } else {
+                              setNotice('');
+                            }
                             load();
                           } catch {
                             // The write did not land — re-read so the

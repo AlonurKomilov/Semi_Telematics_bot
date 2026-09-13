@@ -326,3 +326,43 @@ async def test_the_watching_tile_counts_people_separately_from_accounts(api):
     await db.update_user(owner.id, is_active=0)
     body = (await _get(app, "/api/system/security/summary?hours=24")).json()
     assert body["monitored_users"] == 0
+
+
+async def test_holding_someone_answers_with_what_it_actually_did(api):
+    """Writing the standing is not the whole of a hold: their live
+    sessions end and the owner is told. An operator who is not told
+    those happened cannot know whether the person they just held is
+    still signed in somewhere."""
+    app, db, acct = api
+    person = (await db.list_account_users(acct.id))[0]
+
+    r = await _patch(app, f"/api/system/users/{person.id}/security",
+                     {"security": "quarantined"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["security"] == "quarantined"
+    assert "sessions_ended" in body and isinstance(body["sessions_ended"], int)
+    assert "owner_told" in body and isinstance(body["owner_told"], bool)
+
+
+async def test_the_audit_row_says_how_many_sessions_a_hold_ended(api):
+    """Six months from now the question will be "what did we actually
+    do to this person" — and the answer has to be in the trail."""
+    app, db, acct = api
+    person = (await db.list_account_users(acct.id))[0]
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    await db.create_user_session(
+        user_id=person.id, jti="held-session", device_label="d",
+        user_agent="u", ip="1.2.3.4", created_at=now.isoformat(),
+        last_seen=now.isoformat(),
+        expires_at=(now + timedelta(hours=8)).isoformat())
+
+    r = await _patch(app, f"/api/system/users/{person.id}/security",
+                     {"security": "quarantined"})
+    assert r.json()["sessions_ended"] == 1
+
+    cur = await db._db.execute(
+        "SELECT details FROM platform_audit_log WHERE event = 'user_security'")
+    rows = await cur.fetchall()
+    assert rows and "1 live session ended" in rows[-1]["details"]

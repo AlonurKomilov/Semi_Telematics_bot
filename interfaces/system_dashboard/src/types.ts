@@ -613,6 +613,23 @@ export interface SecurityCandidatePerson {
   security: AccountSecurity;
 }
 
+/** What PATCH /system/users/{id}/security answers.
+ *
+ *  Holding somebody does two things beyond writing the standing, and an
+ *  operator who is not told them cannot know whether either happened:
+ *  their live sessions end, and the account owner is told so the held
+ *  person's alerts do not simply go unread. */
+export interface UserSecurityResult {
+  id: number;
+  security: AccountSecurity;
+  /** Live sessions ended by this change. 0 is a real answer — they had
+   *  none open — not a failure. */
+  sessions_ended: number;
+  /** Whether the owner was told. False when the held person IS the
+   *  owner (nobody above them), or when the notice could not be sent. */
+  owner_told: boolean;
+}
+
 /** What the rules still say about an account already being watched. */
 export interface SecurityWatching {
   account_id: number;
