@@ -175,8 +175,14 @@ async def post_init(app: Application):
         # bot's other cards, so it can be tested — it has branches now,
         # and a boot message is exactly the thing that rots quietly
         # because nobody re-reads what they have learned to skim.
-        from capabilities.formatting.system_card import format_system_card
-        sys_msg = format_system_card(await db.account_census())
+        from capabilities.formatting.system_card import (
+            format_system_card, read_last_census, store_census,
+        )
+        census = await db.account_census()
+        # Read BEFORE storing, or every card would compare itself with
+        # itself and no delta would ever appear.
+        sys_msg = format_system_card(census, await read_last_census(db))
+        await store_census(db, census)
         sent = await system_bot.send_to_owners(
             SYSTEM_OWNER_IDS,
             sys_msg,
