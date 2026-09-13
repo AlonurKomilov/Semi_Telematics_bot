@@ -171,16 +171,40 @@ def _bbox_to_str(s: float, w: float, n: float, e: float) -> str:
 
 
 async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
-    """Fetch nodes/ways from Overpass API inside bbox and return GeoJSON features.
+    """Fetch nodes/ways from Overpass inside bbox and return GeoJSON features.
 
-    Each filter is restricted to the US administrative boundary (ISO3166-1=US)
-    AND the caller's bbox. Without the area filter Overpass returns features
-    from Canada/Mexico/Caribbean whenever the bbox spans the border.
+    THE BBOX IS THE ONLY GEOGRAPHIC BOUND, and that is deliberate.
+
+    These filters used to carry ``(area.us)`` as well — an Overpass AREA
+    lookup for the US boundary — so that a bbox spanning the northern
+    border would not return Canadian results.  That filter silently
+    emptied every POI layer in the product.
+
+    Areas are not part of an Overpass database; they are built by a
+    separate periodic job, and public mirrors often do not run it.  Ours
+    fell onto a mirror that does not: ``overpass-api.de`` stopped
+    accepting connections from this host entirely (every address, v4 and
+    v6, refused on 443 — the same week OpenStreetMap blocked our tile
+    access), leaving only ``overpass.kumi.systems``, where the area
+    resolves to nothing.  Measured over one Chicago-metro bbox:
+
+        node["amenity"="fuel"](bbox)            ->  29-34 results
+        node["amenity"="fuel"](area.us)(bbox)   ->  0, or a 504
+
+    Zero, at HTTP 200.  Indistinguishable from "there are no fuel
+    stations in Chicago", which is what the panel dutifully reported.
+
+    The bound it was providing is already there: ``_clip_bbox_to_usa``
+    intersects the request with US bounding boxes BEFORE we get here, so
+    the query never reaches beyond them.  What is lost is the last
+    sliver — those regions are rectangles, so a Detroit-sized box still
+    includes some of Ontario, and a few Canadian stations may appear
+    near a border.  A handful of foreign POIs is a far smaller wrong
+    than every layer being empty everywhere.
     """
-    parts_str = "\n  ".join(f"{p}(area.us)({bbox});" for p in query_parts)
+    parts_str = "\n  ".join(f"{p}({bbox});" for p in query_parts)
     overpass_query = (
         f"[out:json][timeout:25][maxsize:4000000];\n"
-        f'area["ISO3166-1"="US"][admin_level=2]->.us;\n'
         f"(\n  {parts_str}\n);\n"
         f"out center;"
     )
@@ -375,8 +399,23 @@ async def map_pois(
     query_parts = POI_OVERPASS_QUERIES[poi_type]
     try:
         features = await _fetch_overpass(query_parts, bbox)
-    except Exception:
-        features = []
+    except Exception as exc:
+        # A source that did not answer is NOT an area with nothing in
+        # it.  This used to be `features = []`, cached for five minutes
+        # and served as HTTP 200 — so every client showed "none here"
+        # for a failure, and kept showing it after the failure passed.
+        # That is the same shape as the OpenStreetMap tile block, which
+        # went unnoticed for a day because it too arrived as a
+        # successful-looking answer.
+        #
+        # 502: the refusal is upstream's, and a caller that sees its own
+        # server blamed goes looking in the wrong place.  Nothing is
+        # cached — the next request gets a fresh attempt rather than
+        # five more minutes of a wrong answer.
+        raise HTTPException(
+            status_code=502,
+            detail="The map-data source is not answering — try again shortly.",
+        ) from exc
 
     _poi_cache[cache_key] = features
     return {"type": "FeatureCollection", "features": features}
