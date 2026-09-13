@@ -15,6 +15,7 @@
  * rather than being handed eleven props it mostly ignores.
  */
 import { useOffered } from '../store/useOffered';
+import { CORNERS } from '../store/items/corners';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
@@ -137,11 +138,15 @@ const ICON_OPTIONS: { value: ModIcons; key: string; label: string }[] =
   }));
 
 
-const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] = [
-  { value: 'sharp',   key: 'mods.corners_sharp',   label: 'Sharp' },
-  { value: 'rounded', key: 'mods.corners_rounded', label: 'Rounded' },
-  { value: 'pill',    key: 'mods.corners_pill',    label: 'Pill' },
-];
+/** From the shelf, never spelled here — a corner is an item now, and a
+ *  hand-written list beside it is the second catalogue this file has
+ *  already learned not to keep (see the icon packs above). */
+const RADIUS_OPTIONS: { value: RadiusVariant; key: string; label: string }[] =
+  CORNERS.map((c) => ({
+    value: c.id as RadiusVariant,
+    key: `mods.corners_${c.id}`,
+    label: c.label,
+  }));
 
 // ── The groups ───────────────────────────────────────────────────────
 
@@ -437,6 +442,7 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
 }
 
 export function CornersGroup({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   return (
@@ -445,7 +451,7 @@ export function CornersGroup({ label }: { label: LabelClass }) {
         {t('mods.group_corners', 'Corners')}
       </p>
       <div className="flex gap-1">
-        {RADIUS_OPTIONS.map((o) => (
+        {offered('corners', RADIUS_OPTIONS, (o) => o.value).map((o) => (
           <Chip key={o.value} value={o.value} current={theme.radius} label={t(o.key, o.label)}
             onClick={(v) => setTheme({ radius: v })} />
         ))}

@@ -1,0 +1,3 @@
+/* Pill — the whole ramp up, so controls read as capsules from across a
+   room. Wall wears it for that reason. */
+  [data-radius="pill"] { --radius: 1rem; }

@@ -32,6 +32,7 @@ import { SHADER_PACKS } from './shader';
 import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
 import { MATERIAL_PACKS } from './material';
+import { CORNERS } from './corners';
 import { ICON_PACK_IDS } from './icons';
 import { MODS as MOD_PACKS } from './mods';
 import { ITEM_AXES } from './index';
@@ -156,6 +157,10 @@ const CSS_AXES = [
   ['accent', THEME_PACKS, 'blue', 'theme'],
   ['font', FONT_PACKS, 'geist'],
   ['material', MATERIAL_PACKS, 'solid'],
+  // Corners PRINT — paper keeps the shape of a card — so they are not
+  // in the screen-only list below. The attribute is `data-radius`, the
+  // folder is `corners`.
+  ['radius', CORNERS, 'rounded', 'corners'],
 ] as const;
 
 describe('a CSS item is a file, and the index is exactly the files', () => {

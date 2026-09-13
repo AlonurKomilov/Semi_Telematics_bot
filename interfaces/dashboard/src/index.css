@@ -21,6 +21,8 @@
 @import './mods/store/items/font/mono.css';
 @import './mods/store/items/font/rounded.css';
 @import './mods/store/items/material/glass.css';
+@import './mods/store/items/corners/sharp.css';
+@import './mods/store/items/corners/pill.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -725,9 +727,8 @@
     --size-panel: 1;
   }
 
-  /* ── Border radius presets ──────────────────────────────── */
-  [data-radius="sharp"] { --radius: 0px; }   /* 0px, never bare `0` — see design.md §6 */
-  [data-radius="pill"]  { --radius: 1rem; }
+  /* Corners are ITEMS now — `mods/store/items/corners/*.css` holds one
+     file per corner. Rounded has none: it is the `:root` ramp above. */
 }
 
 /* ── AI response rendered HTML ────────────────────────────── */

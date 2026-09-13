@@ -42,6 +42,7 @@ import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
 import { MATERIAL_IDS } from '../mods/store/items/material';
 import { MODS } from '../mods/store/items/mods';
 import { packById, removable } from '../mods/store/packs';
+import { CORNER_IDS } from '../mods/store/items/corners';
 import { THEME_PACKS } from '../mods/store/items/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
@@ -172,7 +173,10 @@ export type ThemeAccent = (typeof THEME_PACKS)[number]['id'];
  * lose information here.
  */
 export type ThemeColor = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
-export type ModRadius = 'sharp' | 'rounded' | 'pill';
+/** A corners item id. A string, like every other item id: the list
+ *  is `CORNER_IDS`, and widening it was the price of corners becoming
+ *  something a pack can ship. */
+export type ModRadius = string;
 /**
  * Declared ONCE, in the catalogue that owns the arrays they come from.
  *
@@ -413,7 +417,8 @@ const LEGACY_COLOR: Record<ThemeColor, { mode: ThemeMode; accent: ThemeAccent }>
   'dark-green':  { mode: 'dark',  accent: 'green' },
   'light':       { mode: 'light', accent: 'blue' },
 };
-export const MOD_RADII: ModRadius[] = ['sharp', 'rounded', 'pill'];
+/** Derived, never listed: a corner that ships is valid the same day. */
+export const MOD_RADII: ModRadius[] = [...CORNER_IDS];
 export const MOD_MATERIAL_LIST: ModMaterial[] = [...MATERIAL_IDS];
 export const MOD_MOTION_LIST: ModMotion[] = [...MOD_MOTIONS];
 export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];

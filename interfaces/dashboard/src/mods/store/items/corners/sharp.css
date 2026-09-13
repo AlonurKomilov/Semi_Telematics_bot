@@ -1,0 +1,4 @@
+/* Sharp — square edges. The ramp's three subtracting steps all floor at
+   0px, so nothing goes negative; the three that add still add, which is
+   what keeps a dialog distinguishable from a chip. */
+  [data-radius="sharp"] { --radius: 0px; }   /* 0px, never bare `0` — see design.md §6 */

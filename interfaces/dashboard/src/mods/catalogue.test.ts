@@ -37,7 +37,8 @@ import { MODS, modById } from './store/items/mods';
  *  the question is asked here, where both halves are in hand. */
 const activeModId = (a: ModAxes): string => MODS.find((m) => modMatchesAxes(m, a))?.id ?? '';
 import { THEME_PACKS, packById } from './store/items/theme';
-import { SIZE_MAX, MOD_RADII } from '../preferences/registry';
+import { SIZE_MAX } from '../preferences/registry';
+import { CORNERS } from './store/items/corners';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
 
@@ -193,6 +194,17 @@ describe('mods are combinations, not new colours', () => {
         .toBeDefined();
   });
 
+  it('wears a corner that exists', () => {
+    // The same failure as the accent above, one axis over: a mod naming
+    // a corner with no file stamps the attribute, nothing matches, and
+    // the app keeps the ramp it had.
+    for (const m of MODS) {
+      if (m.radius === undefined) continue;
+      expect(CORNERS.map((c) => c.id), `mod "${m.id}" wears corner "${m.radius}"`)
+        .toContain(m.radius);
+    }
+  });
+
   it('declares at least one axis a colour chip does not', () => {
     // Otherwise it is a second way to press the same button, in a section
     // that promises something more.
@@ -222,7 +234,6 @@ describe('mods are combinations, not new colours', () => {
    * `size` is a RANGE, not a set, and is checked on its own below.
    */
   const DOMAIN: Record<ValueField, readonly unknown[] | 'range'> = {
-    radius: MOD_RADII,
     size: 'range',
     motion: MOD_MOTIONS,
     icons: MOD_ICONS,
@@ -231,6 +242,10 @@ describe('mods are combinations, not new colours', () => {
   };
 
   it('picks only values the system offers', () => {
+    // `radius` used to be here. It became an item — a corner is a thing
+    // a pack ships now, checked like any other id — and the type made
+    // its entry a compile error rather than leaving a stale line that
+    // still passed.
     // A mod naming a value with no rule behind it does not fail loudly:
     // the attribute is stamped, nothing matches, and the app paints the
     // default. That is the same silent failure the accent check above

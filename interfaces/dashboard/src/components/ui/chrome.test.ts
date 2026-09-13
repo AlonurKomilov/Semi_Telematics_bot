@@ -887,21 +887,34 @@ describe('UI chrome', () => {
     // offer it, the attribute would land on <html>, and no rule would
     // answer. The same hole lets an existing preset be neutered by
     // deleting one line.
-    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    // Corners are ITEMS now: the rules live one file per corner under
+    // `mods/store/items/corners/`, and `MOD_RADII` is derived from that
+    // folder rather than listed. So this reads the stylesheet the way
+    // the browser assembles it — the engine sheet plus the item files —
+    // and the chain it protects is unchanged: nothing the picker can
+    // offer may be a stamp no rule answers.
+    // Read, not imported: this file is a source scanner, and a module
+    // import here would be the first deep reach into the service from
+    // outside it.
+    const CORNER_DIR = join(SRC, 'mods/store/items/corners');
+    const shelf = readFileSync(join(CORNER_DIR, 'index.ts'), 'utf8');
+    const declared = [...shelf.matchAll(/\{\s*id:\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+    expect(declared.length, 'the Corners shelf is empty').toBeGreaterThan(2);
     const registry = readFileSync(join(SRC, 'preferences/registry.ts'), 'utf8');
+    expect(/MOD_RADII[^=]*=\s*\[\s*\.\.\.CORNER_IDS\s*\]/.test(registry),
+      'MOD_RADII stopped tracking the Corners shelf — it lists ids again').toBe(true);
 
-    const declared = (/MOD_RADII[^=]*=\s*\[([^\]]*)\]/.exec(registry)?.[1] ?? '')
-      .split(',').map((x) => x.trim().replace(/['"`]/g, '')).filter(Boolean);
-    expect(declared, 'MOD_RADII should list the presets the picker offers')
-      .toEqual(['sharp', 'rounded', 'pill']);
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8')
+      + readdirSync(CORNER_DIR).filter((f) => f.endsWith('.css'))
+        .map((f) => readFileSync(join(CORNER_DIR, f), 'utf8')).join('\n');
 
     // ':root' carries the middle preset — "rounded" IS the absence of an
-    // override, which is why it has no block of its own.
+    // override, which is why it has no file of its own.
     expect(/:root[^}]*--radius:\s*[\d.]+rem/.test(css), ':root must define --radius').toBe(true);
     const missing = declared
       .filter((r) => r !== 'rounded')
       .filter((r) => !new RegExp(`\\[data-radius="${r}"\\][^}]*--radius:`).test(css));
-    expect(missing, 'a preset with no --radius override does nothing at all').toEqual([]);
+    expect(missing, 'a corner with no --radius override does nothing at all').toEqual([]);
 
     // EVERY value carries a unit, and that is not pedantry. `0` and `0px`
     // are different here: the scale is `calc(var(--radius) + 4px)`, and

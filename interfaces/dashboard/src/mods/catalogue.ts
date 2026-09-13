@@ -332,7 +332,8 @@ export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
   shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
   sound: 'item',
-  radius: 'value', size: 'value', motion: 'value', icons: 'value',
+  radius: 'item',
+  size: 'value', motion: 'value', icons: 'value',
   entrance: 'value', wallpaperLive: 'value',
 } as const satisfies Record<keyof Omit<Mod, keyof ItemMeta>, 'item' | 'value'>;
 

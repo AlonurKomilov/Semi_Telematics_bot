@@ -13,7 +13,7 @@
  * with it, in the same commit, on purpose.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(__dirname, '..', '..', '..');
@@ -31,11 +31,22 @@ const STEPS = (() => {
     .map((m) => [m[1], m[2]]));
 })();
 
-/** Every radius the app ships: the base, and each override. */
+/**
+ * Every radius the app ships: the base in `index.css`, and one per
+ * corner item. Read from the FOLDER, so a corner that ships without a
+ * line in the table below fails here rather than going unmeasured.
+ */
+const CORNER_DIR = join(ROOT, 'src', 'mods', 'store', 'items', 'corners');
 const SHIPPED: Record<string, string> = {
   rounded: tokenOf('radius') ?? '',
-  ...Object.fromEntries([...css.matchAll(/\[data-radius="(\w+)"\]\s*\{\s*--radius:\s*([^;]+);/g)]
-    .map((m) => [m[1], m[2].trim()])),
+  ...Object.fromEntries(readdirSync(CORNER_DIR)
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => {
+      const body = readFileSync(join(CORNER_DIR, f), 'utf8');
+      const m = /\[data-radius="(\w+)"\]\s*\{\s*--radius:\s*([^;]+);/.exec(body);
+      if (!m) throw new Error(`${f} sets no --radius`);
+      return [m[1], m[2].trim()];
+    })),
 };
 
 const toPx = (v: string) => v.replace(/([\d.]+)rem/g, (_, n) => `${Number(n) * 16}px`);
