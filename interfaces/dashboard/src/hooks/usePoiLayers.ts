@@ -363,6 +363,34 @@ function lsFindCovering(layerId: string, s: number, w: number, n: number, e: num
  *  prefixed with `custom_` so it dispatches to the per-tenant /pois branch
  *  on the backend and lives alongside built-ins in the localStorage cache.
  */
+/**
+ * The best list already held for this view — and NOTHING ELSE.
+ *
+ * The superset branches used to file their answer back into the cache:
+ * the visible slice, under the key of the box it was trimmed FROM.
+ * That key names a grid-expanded box up to 3x2 degrees; the slice held
+ * one screen.  So the cache went on claiming it had the whole box, and
+ * the next pan inside the same grid cell hit it exactly and drew a list
+ * cut to a view the map had already left — markers that were on screen
+ * simply missing, and at a far enough zoom, all of them.  It was
+ * reported from the browser panel, which carries a port of this file.
+ *
+ * A cache entry may only ever be what was FETCHED for its key.
+ * Filtering is for drawing, and drawing does not get to write.
+ */
+function heldFor(
+  held: Record<string, PoiFeature[]> | undefined,
+  s: number, w: number, n: number, e: number,
+): PoiFeature[] | null {
+  if (!held) return null;
+  for (const [ckey, features] of Object.entries(held)) {
+    // An exact key covers its own view too, so one test serves both the
+    // exact hit and the zoomed-in one.
+    if (bboxCovers(ckey, s, w, n, e)) return filterToView(features, s, w, n, e);
+  }
+  return null;
+}
+
 function customDtoToDef(dto: CustomLayerDto): PoiLayerDef {
   return {
     id: `custom_${dto.id}`,
@@ -658,55 +686,43 @@ export function usePoiLayers(
     const b     = map.getBounds();
     const s = b.getSouth(), w = b.getWest(), n = b.getNorth(), e = b.getEast();
 
-    // 1. Exact in-memory hit
-    if (cache.current[id]?.[key]) {
-      if (enabledRef.current[id]) renderLayer(id, cache.current[id][key]);
+    // 1-2. In memory, exact or wider (a zoom-in is always free: the
+    // current view sits inside a box we already fetched).  Nothing is
+    // written back — see `heldFor`.
+    const held = heldFor(cache.current[id], s, w, n, e);
+    if (held) {
+      if (enabledRef.current[id]) renderLayer(id, held);
       lastBbox.current[id] = key;
       return;
     }
 
-    // 2. In-memory superset hit (zoom-in: current view ⊆ a previously-fetched area)
-    if (cache.current[id]) {
-      for (const [ckey, features] of Object.entries(cache.current[id])) {
-        if (bboxCovers(ckey, s, w, n, e)) {
-          const visible = filterToView(features, s, w, n, e);
-          // Store the filtered slice so subsequent exact hits are O(1)
-          cache.current[id][key] = visible;
-          if (enabledRef.current[id]) renderLayer(id, visible);
-          lastBbox.current[id] = key;
-          return;
-        }
-      }
-    }
-
-    // 3. localStorage exact hit
-    let lsEntry = lsRead(id, key);
-    let lsWasSuperset = false;
-
-    // 4. localStorage superset hit (zoom-in from a previously-persisted wide fetch)
-    if (!lsEntry) {
-      const superEntry = lsFindCovering(id, s, w, n, e);
-      if (superEntry) {
-        // Filter to current view before using
-        lsEntry = { ts: superEntry.ts, features: filterToView(superEntry.features, s, w, n, e) };
-        lsWasSuperset = true;
-      }
-    }
-
     let showSpinner = true;
 
+    // 3. localStorage EXACT hit.  These features were fetched for this
+    // key, so they are the whole box and may be cached under it.
+    const lsEntry = lsRead(id, key);
     if (lsEntry) {
       if (!cache.current[id]) cache.current[id] = {};
       cache.current[id][key] = lsEntry.features;
       lastBbox.current[id] = key;
-      if (enabledRef.current[id]) renderLayer(id, lsEntry.features);
+      if (enabledRef.current[id]) renderLayer(id, filterToView(lsEntry.features, s, w, n, e));
 
       const age = Date.now() - lsEntry.ts;
       if (age < LS_FRESH_MS) return;  // Fresh — done
       showSpinner = false;            // Stale — revalidate silently (no spinner)
-      // Superset was stale — don't re-fetch for the zoomed-in slice;
-      // the superset entry will be revalidated at its own zoom level.
-      if (lsWasSuperset) return;
+    } else {
+      // 4. localStorage WIDER hit (zoom-in after a reload).  Drawn, and
+      // deliberately NOT cached under this key: a list trimmed to one
+      // screen, filed under a box up to nine times its size, is the
+      // falsehood `heldFor` exists to stop.
+      const wider = lsFindCovering(id, s, w, n, e);
+      if (wider) {
+        lastBbox.current[id] = key;
+        if (enabledRef.current[id]) renderLayer(id, filterToView(wider.features, s, w, n, e));
+        // It revalidates at its own zoom level; re-asking for this
+        // slice would fetch the same square twice.
+        return;
+      }
     }
 
     // 5. Network fetch — deduplicated to prevent concurrent calls for the same layer+bbox
@@ -748,8 +764,11 @@ export function usePoiLayers(
       lastBbox.current[id] = key;
 
       lsWrite(id, key, features);
+      // Cached WHOLE, drawn to the VIEW: the panel beside this one says
+      // "in this view" next to the number, and the fetched box is up to
+      // nine times the screen.
       // Guard: layer may have been disabled while the request was in flight
-      if (enabledRef.current[id]) renderLayer(id, features);
+      if (enabledRef.current[id]) renderLayer(id, filterToView(features, s, w, n, e));
     } catch (err) {
       // Distinguish three abort/error cases:
       //   1. Caller-aborted (user toggled the layer off / unmounted) — our
@@ -820,8 +839,13 @@ export function usePoiLayers(
       if (!enabledRef.current[l.id]) return;
       const map = leafletMap.current;
       if (!map) return;
-      const key = bboxKey(map);
-      const features = cache.current[l.id]?.[key];
+      // Through `heldFor`, like every other reader: an exact key is no
+      // longer guaranteed to exist, because a zoomed-in view is served
+      // from the wider box it sits inside rather than filed under a key
+      // of its own.
+      const b = map.getBounds();
+      const features = heldFor(cache.current[l.id],
+                               b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
       if (features) renderLayer(l.id, features);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -888,11 +912,11 @@ export function usePoiLayers(
 
     // Re-render on zoom to update icon sizes (no network request — uses cached features)
     const onZoomEnd = () => {
+      const b = map.getBounds();
       layersRef.current.forEach((l) => {
         if (!enabledRef.current[l.id]) return;
-        const lastKey = lastBbox.current[l.id];
-        if (!lastKey) return;
-        const cached = cache.current[l.id]?.[lastKey];
+        const cached = heldFor(cache.current[l.id],
+                               b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
         if (cached) renderLayer(l.id, cached);
       });
     };

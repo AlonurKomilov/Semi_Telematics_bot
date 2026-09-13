@@ -144,6 +144,32 @@ export function usePoiLayers(
 
   // ── draw ───────────────────────────────────────────────────────────────
 
+  /**
+   * The best list we already hold for this view — and NOTHING ELSE.
+   *
+   * It used to file its answer back into the cache: the visible slice,
+   * under the key of the box it was trimmed FROM.  That key names a
+   * grid-expanded box up to 3x2 degrees; the slice held one screen.
+   * So the cache went on claiming it had the whole box, and the next
+   * pan inside the same cell hit it exactly and drew a list that had
+   * been cut to a view the map had already left — markers that were on
+   * screen simply missing, and at a far enough zoom, all of them.
+   * That is the "None in this view" the owner saw after zooming.
+   *
+   * A cache entry may only ever be what was FETCHED for its key.  The
+   * filtering is for drawing, and drawing does not get to write.
+   */
+  const heldFor = useCallback((id: string, view: ViewBox): PoiFeature[] | null => {
+    const held = mem.current[id];
+    if (!held) return null;
+    for (const [ckey, features] of Object.entries(held)) {
+      // An exact key covers its own view too, so one test serves both
+      // the exact hit and the zoomed-in one.
+      if (bboxCovers(ckey, view)) return filterToView(features, view);
+    }
+    return null;
+  }, []);
+
   const render = useCallback((id: string, features: PoiFeature[]) => {
     const map = mapRef.current;
     if (!map) return;
@@ -216,40 +242,40 @@ export function usePoiLayers(
     const view = viewOf(map);
     const key  = bboxKey(view);
 
-    if (mem.current[id]?.[key]) {
-      if (enabledRef.current[id]) render(id, mem.current[id][key]);
+    const held = heldFor(id, view);
+    if (held) {
+      if (enabledRef.current[id]) render(id, held);
       lastKey.current[id] = key;
       return;
-    }
-    for (const [ckey, features] of Object.entries(mem.current[id] ?? {})) {
-      if (!bboxCovers(ckey, view)) continue;
-      const visible = filterToView(features, view);
-      mem.current[id] = { ...mem.current[id], [key]: visible };
-      if (enabledRef.current[id]) render(id, visible);
-      lastKey.current[id] = key;
-      return;
-    }
-
-    let stored = lsRead(id, key);
-    let fromWider = false;
-    if (!stored) {
-      const wider = lsFindCovering(id, view);
-      if (wider) { stored = { ts: wider.ts, features: filterToView(wider.features, view) }; fromWider = true; }
     }
 
     // A stored answer is DRAWN first and only then questioned: the
     // person gets their layer immediately, and a silent revalidation
     // replaces it if it was old.
     let spinner = true;
+
+    // EXACT: these features were fetched FOR this key, so they are the
+    // whole box and may be cached under it.
+    const stored = lsRead(id, key);
     if (stored) {
       mem.current[id] = { ...mem.current[id], [key]: stored.features };
       lastKey.current[id] = key;
-      if (enabledRef.current[id]) render(id, stored.features);
+      if (enabledRef.current[id]) render(id, filterToView(stored.features, view));
       if (Date.now() - stored.ts < LS_FRESH_MS) return;
       spinner = false;
-      // The wider box will be revalidated at its own zoom; re-asking for
-      // this slice would fetch the same square twice.
-      if (fromWider) return;
+    } else {
+      // WIDER: a box from an earlier, further-out session.  It is drawn
+      // and NOT cached under this key — a list trimmed to one screen
+      // filed under a 3x2-degree box is the falsehood that made a pan
+      // inside the same grid cell report "None in this view".
+      const wider = lsFindCovering(id, view);
+      if (wider) {
+        lastKey.current[id] = key;
+        if (enabledRef.current[id]) render(id, filterToView(wider.features, view));
+        // It revalidates at its own zoom; re-asking for this slice
+        // would fetch the same square twice.
+        return;
+      }
     }
 
     const fetchKey = `${id}::${key}`;
@@ -283,8 +309,12 @@ export function usePoiLayers(
       mem.current[id] = { ...mem.current[id], [key]: features };
       lastKey.current[id] = key;
       lsWrite(id, key, features);
+      // Cached WHOLE, drawn to the VIEW.  The row says "in this view",
+      // so the number beside it has to mean that — the fetched box is
+      // up to nine times the screen, and a count taken from it would
+      // promise markers that are not there.
       // The layer may have been switched off while this was in the air.
-      if (enabledRef.current[id]) render(id, features);
+      if (enabledRef.current[id]) render(id, filterToView(features, view));
     } catch (err) {
       // Three aborts that look alike and mean different things: the
       // person switched the layer off (say nothing), the request ran out
@@ -299,7 +329,7 @@ export function usePoiLayers(
       inFlight.current.delete(fetchKey);
       if (spinner) setLoading((prev) => ({ ...prev, [id]: false }));
     }
-  }, [mapRef, render]);
+  }, [mapRef, render, heldFor]);
 
   // ── switches ───────────────────────────────────────────────────────────
 
@@ -338,16 +368,20 @@ export function usePoiLayers(
   }, []);
 
   // A chip press redraws from what is already in hand — no request.
+  // Through `heldFor`, like every other reader: an exact key is no
+  // longer guaranteed to exist, because a zoomed-in view is served
+  // from the wider box it sits inside rather than being filed under a
+  // key of its own.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const key = bboxKey(viewOf(map));
+    const view = viewOf(map);
     for (const l of layersRef.current) {
       if (!enabledRef.current[l.id]) continue;
-      const features = mem.current[l.id]?.[key];
+      const features = heldFor(l.id, view);
       if (features) render(l.id, features);
     }
-  }, [brands, render, mapRef]);
+  }, [brands, render, mapRef, heldFor]);
 
   // ── what the account has added ─────────────────────────────────────────
 
@@ -407,10 +441,10 @@ export function usePoiLayers(
     // Zoom redraws without asking: the discs change size, and which 250
     // are nearest the centre changes with the centre.
     const onZoom = () => {
-      const key = bboxKey(viewOf(map));
+      const view = viewOf(map);
       for (const l of layersRef.current) {
         if (!enabledRef.current[l.id]) continue;
-        const features = mem.current[l.id]?.[key] ?? mem.current[l.id]?.[lastKey.current[l.id]];
+        const features = heldFor(l.id, view);
         if (features) render(l.id, features);
       }
     };
@@ -421,7 +455,7 @@ export function usePoiLayers(
       map.off('moveend', onMove);
       map.off('zoomend', onZoom);
     };
-  }, [ready, mapRef, fetchAndRender, render]);
+  }, [ready, mapRef, fetchAndRender, render, heldFor]);
 
   // ── going away ─────────────────────────────────────────────────────────
 

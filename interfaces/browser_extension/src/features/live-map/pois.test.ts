@@ -9,6 +9,8 @@
  */
 import { describe, expect, it, beforeEach } from 'vitest';
 
+import hookSrc from './usePoiLayers.ts?raw';
+
 import {
   MARKER_BUDGET, bboxCovers, bboxKey, bboxParam, brandMatch, expandedBbox,
   filterToView, lsFindCovering, lsRead, lsWrite, nearestFirst, parseBboxKey,
@@ -73,6 +75,57 @@ describe('zooming in costs nothing', () => {
     const kept = filterToView([at(41.5, -88), at(48, -88), at(41.5, -70)], view(41, -89, 42, -87));
     expect(kept).toHaveLength(1);
     expect(kept[0].geometry.coordinates).toEqual([-88, 41.5]);
+  });
+});
+
+describe('a cache entry is what was FETCHED for its key, never a slice of it', () => {
+  /**
+   * The bug this pins, in one sentence: a list trimmed to what was on
+   * SCREEN was filed under the key of the grid-expanded BOX it was
+   * trimmed from, so the cache went on claiming it held the whole box.
+   *
+   * The owner met it as "None in this view" after zooming: pan inside
+   * the same grid cell, hit that key exactly, and draw a list cut to a
+   * view the map had already left.
+   */
+  it('a wider box still covers a view after the view moves inside it', () => {
+    const wide = bboxKey(view(41.0, -88.0, 42.0, -87.0));   // the fetched box
+    const first = view(41.40, -87.60, 41.50, -87.50);       // what was on screen
+    const later = view(41.70, -87.90, 41.80, -87.80);       // after a pan
+
+    // Both views sit inside the fetched box — that is the whole point
+    // of expanding the grid by a cell.
+    expect(bboxCovers(wide, first)).toBe(true);
+    expect(bboxCovers(wide, later)).toBe(true);
+
+    // And they share a key, so an entry written under it during the
+    // FIRST view is what the SECOND view reads.
+    expect(bboxKey(first)).toBe(bboxKey(later));
+  });
+
+  it('a slice of a box does not cover the box', () => {
+    // The falsehood the old code wrote down.  A list filtered to
+    // `first` cannot answer for everything `wide` promises.
+    const first = view(41.40, -87.60, 41.50, -87.50);
+    const later = view(41.70, -87.90, 41.80, -87.80);
+    const near = [at(41.45, -87.55)];      // inside `first`
+    const far = [at(41.75, -87.85)];       // inside `later`, not `first`
+
+    expect(filterToView([...near, ...far], first)).toHaveLength(1);
+    // …so a cache holding only that one, labelled with the wide key,
+    // answers the later view with nothing.
+    expect(filterToView(filterToView([...near, ...far], first), later)).toHaveLength(0);
+    // Whereas the untrimmed list answers it correctly.
+    expect(filterToView([...near, ...far], later)).toHaveLength(1);
+  });
+
+  it('the hook never writes a filtered list back into the cache', () => {
+    // The rule, held at the source: filtering is for DRAWING.
+    const src = hookSrc as unknown as string;
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+    expect(code).not.toMatch(/\[key\]:\s*visible/);
+    expect(code).toContain('heldFor');
   });
 });
 
