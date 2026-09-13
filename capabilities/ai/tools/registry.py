@@ -546,9 +546,20 @@ async def execute_tool(tool_name: str, tool_args: dict,
         _schema = get_tool_schema(tool_name)
         if _schema and _schema.get("company_scoped"):
             tool_args = {**tool_args, "_scope_companies": [str(c).upper() for c in company_codes]}
-    if "_scope_identities" in tool_args:
+    if "_scope_identities" in tool_args or "_scope_vehicles" in tool_args:
+        # Server-injected channels — a model-supplied value is never
+        # honored, whether or not this caller and tool get an injection
+        # below.  `_scope_vehicles` used to be scrubbed only as a side
+        # effect of being overwritten, so it survived for an
+        # UNRESTRICTED caller (nothing to overwrite it with) and for any
+        # tool outside SCOPE_AWARE ∪ VEHICLE_SPECIFIC. It cannot widen
+        # anyone — the real scope always wins where one exists — but a
+        # model that echoed the key back, or was told to by text in an
+        # attachment, could narrow an owner to nothing: an empty list
+        # reads as "there are none", so "which trucks have been sitting"
+        # answers zero for an account full of parked trucks.
         tool_args = {k: v for k, v in tool_args.items()
-                     if k != "_scope_identities"}
+                     if k not in ("_scope_identities", "_scope_vehicles")}
     if scope_vehicles is not None:
         from capabilities.permissions.roles import SCOPE_AWARE_TOOLS, VEHICLE_SPECIFIC_TOOLS
         # VEHICLE_SPECIFIC tools get the rungs too.  The gate admits them

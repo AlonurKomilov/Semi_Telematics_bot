@@ -310,3 +310,43 @@ class TestUndrivenVehicles:
 
         res = await get_undriven_vehicles({"min_days": 1}, None, account_id=1, db=_NoMethodDB())
         assert "error" in res
+
+
+@pytest.mark.asyncio
+class TestServerChannelsAreNeverModelSupplied:
+    """`_scope_vehicles` is injected by the dispatcher, never by the model.
+
+    It used to be scrubbed only as a side effect of being overwritten, so
+    it survived in the two cases where no injection happens: an
+    UNRESTRICTED caller (nothing to overwrite it with) and any tool
+    outside SCOPE_AWARE ∪ VEHICLE_SPECIFIC. It cannot widen anyone, but a
+    model echoing the key back — or told to by text inside an attachment
+    — could narrow an owner to nothing, and an empty list reads as
+    "there are none".
+    """
+
+    async def test_a_model_supplied_scope_cannot_narrow_an_unrestricted_caller(self):
+        from capabilities.ai.tools.registry import execute_tool
+
+        db = _FakeParkingDB(_events())
+        res = await execute_tool(
+            "get_parked_vehicles",
+            {"min_days": 1, "_scope_vehicles": []},   # the model's own key
+            None, account_id=1, db=db,
+            scope_vehicles=None,                      # an owner: no restriction
+        )
+        assert res["count"] == 2, (
+            "an owner was narrowed to nothing by a key the model supplied"
+        )
+
+    async def test_the_real_scope_still_reaches_a_restricted_caller(self):
+        from capabilities.ai.tools.registry import execute_tool
+
+        db = _FakeParkingDB(_events())
+        res = await execute_tool(
+            "get_parked_vehicles",
+            {"min_days": 1, "_scope_vehicles": ["A-3"]},   # model says A-3
+            None, account_id=1, db=db,
+            scope_vehicles=["B-1"],                        # server says B-1
+        )
+        assert [v["vehicle"] for v in res["vehicles"]] == ["B-1"]
