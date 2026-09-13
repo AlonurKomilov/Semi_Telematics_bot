@@ -25,6 +25,7 @@ URL structure (mounted under /map):
 
 from __future__ import annotations
 
+import asyncio
 import csv as _csv
 import io
 import logging
@@ -117,6 +118,26 @@ _OVERPASS_ENDPOINTS = [
     "https://overpass.kumi.systems/api/interpreter",
 ]
 
+#: How long ONE attempt at ONE endpoint may take, and how many passes
+#: we make over the endpoint list.
+#:
+#: Measured against the panel's own bbox (a 3x2 degree box over Chicago,
+#: which is what the 1-degree grid expands a city view into): the
+#: heaviest layer's query — four clauses, one of them a brand regex —
+#: runs in 7.8s, 11.9s and 16.8s on three consecutive tries, returning
+#: 83-85 features.  The query is not slow.  What is slow, sometimes, is
+#: the shared mirror: a fourth try never returned inside ninety seconds
+#: at all, and a fifth answered in twelve.
+#:
+#: So the answer is not a cheaper query, it is a second try.  35s is
+#: over twice the worst honest run, and two passes leave the whole
+#: thing under the 90s the browser will wait — a server that keeps
+#: trying after its caller has left is burning a mirror nobody is
+#: listening to.
+_OVERPASS_ATTEMPT_S = 35
+_OVERPASS_ATTEMPTS = 2
+_OVERPASS_RETRY_PAUSE_S = 1.5
+
 _MAX_POI_RESULTS = 6000  # Caps response at ~5200 fuel stops / ~4300 weigh stations CONUS-wide.
 _MAX_BBOX_AREA = 5000.0  # roughly North America (CONUS is ~2450 sq deg).
 
@@ -170,6 +191,19 @@ def _bbox_to_str(s: float, w: float, n: float, e: float) -> str:
     return f"{s},{w},{n},{e}"
 
 
+#: Words Overpass puts in `remark` when it abandoned a query it had
+#: already answered 200 to.  Matched loosely on purpose: the exact
+#: wording is not a contract, and a remark we do not recognise is
+#: better retried than believed.
+_OVERPASS_GAVE_UP = ("error", "timed out", "timeout", "out of memory")
+
+
+def _overpass_gave_up(data: dict) -> bool:
+    """Whether a 200 response is actually a refusal."""
+    remark = str((data or {}).get("remark") or "").lower()
+    return bool(remark) and any(w in remark for w in _OVERPASS_GAVE_UP)
+
+
 async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
     """Fetch nodes/ways from Overpass inside bbox and return GeoJSON features.
 
@@ -213,22 +247,52 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
     last_exc: Exception = RuntimeError("No Overpass endpoint reachable")
 
     data: dict = {}
-    for endpoint in _OVERPASS_ENDPOINTS:
-        try:
-            async with session.post(
-                endpoint,
-                data=overpass_query,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=aiohttp.ClientTimeout(total=90),
-            ) as resp:
-                if resp.status != 200:
-                    last_exc = RuntimeError(f"Overpass returned HTTP {resp.status}")
+    for attempt in range(_OVERPASS_ATTEMPTS):
+        if attempt:
+            # A moment, not a backoff curve: what this is waiting out is
+            # a queue on a shared mirror, and the queue is either moving
+            # or it is not.
+            await asyncio.sleep(_OVERPASS_RETRY_PAUSE_S)
+        for endpoint in _OVERPASS_ENDPOINTS:
+            try:
+                async with session.post(
+                    endpoint,
+                    data=overpass_query,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=aiohttp.ClientTimeout(total=_OVERPASS_ATTEMPT_S),
+                ) as resp:
+                    if resp.status != 200:
+                        last_exc = RuntimeError(f"Overpass returned HTTP {resp.status}")
+                        continue
+                    data = await resp.json(content_type=None)
+                # Overpass can give up INSIDE a 200: exceed the
+                # `[timeout:25]` the query carries, or its memory, and
+                # the documented answer is a successful HTTP response
+                # with no elements and a `remark` saying why.  Read as a
+                # feature list, that is "there is nothing here" — the
+                # same disguise as the tile block (a PNG that said 403)
+                # and the missing area index (an empty list).
+                #
+                # HONESTLY LABELLED: this branch is defensive.  A
+                # 0-feature 200 was observed once here (31.3s, no
+                # exception, where a retry then returned 85), but six
+                # deliberate attempts to catch the remark itself all
+                # came back with 85 features and no remark.  The
+                # mechanism is Overpass's documented one; that this
+                # particular zero came from it is inference, not
+                # measurement.  It costs one string check either way.
+                if _overpass_gave_up(data):
+                    last_exc = RuntimeError(
+                        f"Overpass: {str(data.get('remark'))[:160]}")
+                    data = {}
                     continue
-                data = await resp.json(content_type=None)
-            break
-        except Exception as exc:
-            last_exc = exc
-            continue
+                break
+            except Exception as exc:
+                last_exc = exc
+                continue
+        else:
+            continue          # this pass found nothing; try the list again
+        break                 # an endpoint answered
     else:
         raise last_exc
 

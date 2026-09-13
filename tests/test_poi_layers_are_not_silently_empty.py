@@ -69,6 +69,50 @@ def test_a_source_that_did_not_answer_is_not_an_empty_area():
     assert "502" in src, "a fetch failure must reach the caller as a status"
 
 
+def test_a_200_that_admits_defeat_is_not_an_answer():
+    """Overpass gives up INSIDE a 200.
+
+    Exceed the `[timeout:25]` the query carries, or its memory, and the
+    reply is a successful HTTP response with no elements and a `remark`
+    saying why.  Read as a feature list — which is all the old code read
+    — that is "there is nothing here".
+
+    This guard is DEFENSIVE, and says so.  A 0-feature 200 was seen
+    once (31.3s, no exception, a retry then returning 85), but six
+    deliberate attempts to capture the remark itself all came back with
+    85 features and no remark.  The mechanism is Overpass's documented
+    one; that this particular zero came from it is inference.  The
+    check costs one string comparison, so it is worth having either
+    way — but nobody should read it as a measurement.
+    """
+    assert pois._overpass_gave_up(
+        {"remark": 'runtime error: Query timed out in "query" at line 3 after 25 seconds.'})
+    assert pois._overpass_gave_up(
+        {"remark": 'runtime error: Query run out of memory in "recurse" at line 2.'})
+    # A plain empty answer is still a legitimate empty answer.
+    assert not pois._overpass_gave_up({"elements": []})
+    assert not pois._overpass_gave_up({})
+    assert not pois._overpass_gave_up({"remark": None})
+
+
+def test_a_refusal_is_retried_before_it_is_believed():
+    """The mirror is queue-bound, not slow: three consecutive runs of
+    the heaviest query took 7.8s, 11.9s and 16.8s, and a fourth never
+    returned inside ninety seconds.  A second pass converts most of
+    those into the answer that was there all along."""
+    assert pois._OVERPASS_ATTEMPTS >= 2, "one try is not a policy for a flaky mirror"
+    src = inspect.getsource(pois._fetch_overpass)
+    assert "_overpass_gave_up" in src, "a soft refusal must be caught where the reply is read"
+    assert "continue" in src, "a refusal must fall through to the next attempt"
+
+
+def test_the_server_gives_up_before_the_browser_does():
+    """A server still trying after its caller has left is burning a
+    shared mirror for nobody.  Both clients wait 90 seconds."""
+    worst = pois._OVERPASS_ATTEMPT_S * pois._OVERPASS_ATTEMPTS + pois._OVERPASS_RETRY_PAUSE_S
+    assert worst < 90, f"worst-case {worst}s outlasts the 90s the browser waits"
+
+
 def test_a_failure_is_never_cached():
     """Five minutes of a wrong answer outlives most of the outages that
     cause it.
