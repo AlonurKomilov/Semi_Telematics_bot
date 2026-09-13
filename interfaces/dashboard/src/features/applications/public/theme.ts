@@ -87,11 +87,11 @@ export function applyPublicFormTheme(root: HTMLElement = document.documentElemen
 // colour guards run. One implementation, so a value proved legible by
 // the guard is legible here too.
 
-/** The better of near-black and white on this ground, by measurement. */
-export function readableTextOn(hex: string): string {
-  const rgb = parseHex(hex);
-  return rgb ? toHex(readableOn(rgb)) : '#ffffff';
-}
+/** The better of near-black and white on this ground, by measurement.
+ *  Re-exported rather than defined: it moved to `mods/theme/contrast`
+ *  when the map's POI panel needed the same answer, and two copies of
+ *  a legibility rule is how one of them drifts. */
+export { readableTextOn } from '../../../mods';
 
 /** What CSS `color-mix(in oklab, a pct%, b)` computes — in JS, because a
  *  value the browser computes is a value we cannot measure. Every wash

@@ -199,7 +199,10 @@ function LayerRow({ def, poi }: { def: PoiLayerDef; poi: PoiLayersState }) {
         <span className={on ? 'layer-name on' : 'layer-name'} title={def.label}>{def.label}</span>
         {busy && <span className="spinner" aria-label="Loading" />}
         {!busy && on && count && count.total > 0 && (
-          <span className="layer-count">{count.total > 999 ? '999+' : count.total}</span>
+          <span className="layer-count"
+                style={{ background: def.color, color: readableOn(def.color) }}>
+            {count.total > 999 ? '999+' : count.total}
+          </span>
         )}
       </button>
       {err && (
@@ -232,7 +235,10 @@ function LayerRow({ def, poi }: { def: PoiLayerDef; poi: PoiLayersState }) {
                 point of it: a filter you cannot see is a filter you
                 blame the data for. */}
             {!!picked?.size && (
-              <span className="layer-count">{picked.size} on</span>
+              <span className="layer-count"
+                    style={{ background: def.color, color: readableOn(def.color) }}>
+                {picked.size} on
+              </span>
             )}
           </button>
           {chipsOpen && (

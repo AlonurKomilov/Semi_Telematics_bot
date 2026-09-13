@@ -16,6 +16,7 @@ import type { PoiLayerDef } from '@/config/poiLayers';
 import type { UsePoiLayersResult, PoiFeature } from '@/hooks/usePoiLayers';
 import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { apiFetch } from '@/api/client';
+import { readableTextOn } from '@/mods';
 import { Tip } from '@/components/tooltip';
 import CustomLayerEditor from './CustomLayerEditor';
 import PoiIcon from './PoiIcon';
@@ -254,7 +255,12 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                         ${isOn ? 'border-transparent' : 'border-border bg-muted group-hover:border-ring'}`}
                       style={isOn ? { background: def.color } : {}}
                     >
-                      {isOn && <Check className="size-3 text-white" />}
+                      {/* Not `text-white`.  The box is filled with the
+                          LAYER's colour, and white on the amber fuel
+                          colour is 2.15:1 against the 3:1 a mark that
+                          identifies a control needs.  Measured per
+                          colour, both ways, and the better one wins. */}
+                      {isOn && <Check className="size-3" style={{ color: readableTextOn(def.color) }} />}
                     </span>
                   </span>
 
@@ -275,10 +281,19 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                   </span>
 
                   {/* Count badge */}
+                  {/* The pill keeps the layer's colour and takes the ink
+                      that can be READ on it.  It was `text-white` on
+                      every layer, which measures 2.15:1 on amber fuel
+                      and 2.43:1 on cyan rest areas against 4.5:1 for
+                      text — seven of the eight failed, and the eighth
+                      is blue, which is why it shipped.  Chosen per
+                      colour by comparing both extremes, every layer now
+                      clears 4.5:1 (the tightest is the violet weigh
+                      station at 4.68). */}
                   {isOn && !isBusy && count > 0 && (
                     <span
-                      className="text-2xs font-bold px-1.5 py-0.5 rounded-full text-white leading-none"
-                      style={{ background: def.color }}
+                      className="text-2xs font-bold px-1.5 py-0.5 rounded-full leading-none tabular-nums"
+                      style={{ background: def.color, color: readableTextOn(def.color) }}
                     >
                       {count > 999 ? '999+' : count}
                     </span>
@@ -340,8 +355,8 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       {/* Active-filter count badge (visible even when chips are collapsed) */}
                       {activeBrands.size > 0 && (
                         <span
-                          className="px-1.5 py-0.5 rounded-full text-white text-2xs font-bold leading-none"
-                          style={{ background: def.color }}
+                          className="px-1.5 py-0.5 rounded-full text-2xs font-bold leading-none"
+                          style={{ background: def.color, color: readableTextOn(def.color) }}
                         >
                           {activeBrands.size} active
                         </span>
@@ -359,10 +374,21 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                               onClick={() => toggleBrand(def.id, bf.value)}
                               className={`text-2xs px-1.5 py-0.5 rounded-full border transition leading-none
                                 ${active
-                                  ? 'text-white border-transparent'
+                                  ? 'border-transparent'
                                   : 'text-muted-foreground border-border hover:border-ring hover:text-foreground'
                                 } min-h-tap`}
-                              style={active ? { background: def.color, borderColor: def.color } : {}}
+                              // The chip KEEPS the layer's colour — it is
+                              // the one place the colour still carries
+                              // meaning, tying the chip to its layer — and
+                              // takes the ink that can be read on it.  Only
+                              // fuel (#f59e0b) and DEF (#0d9488) have brand
+                              // chips, and both clear 4.5:1 this way (8.8
+                              // and 5.05); the violet that cannot is a
+                              // layer with no chips at all.
+                              style={active
+                                ? { background: def.color, borderColor: def.color,
+                                    color: readableTextOn(def.color) }
+                                : {}}
                             >
                               {bf.label}
                             </button>

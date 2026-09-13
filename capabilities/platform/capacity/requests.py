@@ -76,14 +76,43 @@ def feature_for_path(path: str) -> str:
     return seg if _FEATURE_RE.match(seg) else "other"
 
 
+#: A proxied map tile is a request this server handled, but it is not an
+#: API CALL and must not be counted as one.
+#:
+#: The browser panel cannot fetch Google's tiles directly — the platform
+#: key is HTTP-referrer restricted and an extension page sends no
+#: referer — so they come through ``/map/tile``.  One map view is about
+#: nine of them and a drag is hundreds.  Folded into the ordinary
+#: counters, a single dispatcher panning for a minute reads on the
+#: Capacity page as an account hammering the API, and the per-feature
+#: ranking becomes "map" and nothing else.
+#:
+#: They are still LOAD, so they still count toward the per-minute total
+#: and the per-surface split.  What changes is that they get their own
+#: feature row instead of drowning the map's real endpoints, and they
+#: stay out of the per-account API-call number.
+TILE_FEATURE = "map-tiles"
+_TILE_PATH_RE = re.compile(r"^/api(?:/v\d+)?/map/tile(?:-copyright)?/?$")
+
+
+def is_tile_path(path: str) -> bool:
+    """Whether this path is a proxied third-party tile fetch."""
+    return bool(_TILE_PATH_RE.match(path or ""))
+
+
 async def count_request(host: str, account_id: int | None, path: str = "") -> None:
     """Meter one completed request.  Best-effort, never raises."""
     now = datetime.now(timezone.utc)
     day = now.strftime("%Y-%m-%d")
+    tile = is_tile_path(path)
     await cache.incr(f"sysreq:min:{minute_key(now)}", _MINUTE_TTL)
     await cache.hincrby(f"sysreq:surf:{day}", surface_for_host(host), _DAY_TTL)
-    await cache.hincrby(f"sysreq:feat:{day}", feature_for_path(path), _DAY_TTL)
-    if account_id is not None:
+    await cache.hincrby(
+        f"sysreq:feat:{day}", TILE_FEATURE if tile else feature_for_path(path), _DAY_TTL)
+    # Per-account is the API-CALL number.  A tile is a picture we
+    # forwarded, priced by Google per request rather than by our database
+    # — a different resource, and averaging the two hides both.
+    if account_id is not None and not tile:
         await cache.hincrby(f"sysreq:acct:{day}", str(int(account_id)), _DAY_TTL)
 
 

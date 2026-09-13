@@ -255,6 +255,23 @@ export function readableOn(bg: RGB): RGB {
 }
 
 /**
+ * The same answer for a hex ground, as a hex.
+ *
+ * Lives here rather than beside one caller because it has two now: the
+ * public application's brand theming, and the map's POI panel, whose
+ * chips and ticks sit on a LAYER's colour.  That second caller is why
+ * it moved — the panel was painting white on every layer colour, which
+ * is 2.15:1 on the amber fuel layer and 2.43:1 on the cyan rest areas.
+ *
+ * An unparseable ground answers white: the caller is mid-render and a
+ * missing colour must not throw.
+ */
+export function readableTextOn(hex: string): string {
+  const rgb = parseHex(hex);
+  return rgb ? toHex(readableOn(rgb)) : '#ffffff';
+}
+
+/**
  * Move `fg` along lightness — hue and chroma held — until it clears
  * `floor` against `bg`.
  *

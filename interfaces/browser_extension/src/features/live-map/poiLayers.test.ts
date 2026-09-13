@@ -26,16 +26,22 @@ function ratio(a: string, b: string): number {
 }
 
 describe('every layer’s ink can be read on its own colour', () => {
-  it('clears 3:1 for the mark and the tick, which are what sits on the fill', () => {
-    // 1.4.11, not 1.4.3: what sits on a layer's colour is the marker's
-    // glyph and the switch's tick — graphics that identify a control,
-    // not text.  The COUNT deliberately does not sit there at all,
-    // because the violet weigh-station colour cannot reach 4.5:1
-    // against any ink (its best is 4.46:1) — see index.css.
+  it('clears 4.5:1 on every layer — the count pill carries TEXT', () => {
+    // The tightest is the violet weigh station at 4.68:1, and it passes
+    // only because the dark ink is #0a0a0a.  Against the panel's own
+    // ground (#0f1115) the same colour measures 4.46 and fails — which
+    // is where this landed first, and why the ink is the dashboard's
+    // shared constant rather than the one that looked like it belonged.
     for (const def of POI_LAYERS) {
       const r = ratio(readableOn(def.color), def.color);
-      expect(r, `${def.label} (${def.color})`).toBeGreaterThanOrEqual(3);
+      expect(r, `${def.label} (${def.color})`).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it('uses the same dark ink the dashboard measured against', () => {
+    // A different near-black is a different verdict; see above.
+    const inks = new Set(POI_LAYERS.map((d) => readableOn(d.color)));
+    for (const ink of inks) expect(['#0a0a0a', '#ffffff']).toContain(ink);
   });
 
   it('picks the better of the two inks rather than guessing a threshold', () => {

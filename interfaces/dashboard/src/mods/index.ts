@@ -64,7 +64,7 @@ export {
 // ── theme: the colour half ──────────────────────────────────────────
 export { derivePalette, DERIVED_TOKENS, type ThemeSeed } from './theme/palette';
 export {
-  contrastRatio, readableOn, clampLightness, clampSurface,
+  contrastRatio, readableOn, readableTextOn, clampLightness, clampSurface,
   parseHex, toHex, oklchToSrgb, srgbToOklch, srgbInGamut, maxChroma,
   relLum, over, AA_TEXT, AA_LARGE, AAA_TEXT, type RGB,
   srgbToLab, deltaE2000, distance,

@@ -8,12 +8,17 @@
  * on the dashboard; it has to mean truck parking here, or the two
  * screens describe the same road in two languages.
  *
- * What is NOT here: the brand list is trimmed to the chains a driver
- * actually asks for by name.  The dashboard shows seventeen fuel
- * brands in a panel that can afford them; this column is 320px, and a
- * chip row that wraps to five lines hides the layer list underneath it.
- * Every layer still returns every brand — the chips narrow, they never
- * decide what was fetched.
+ * The brand list is the dashboard's, ALL of it.  It was trimmed by four
+ * — Ambest, Bosselman, Maverick, Speedway — on the theory that sixteen
+ * chips would wrap across five lines of a 320px column and bury the
+ * layer list.  That was reasoning about the wrong number: chips are
+ * drawn only for brands PRESENT IN THE CURRENT VIEW, so the count on
+ * screen is three to five, not sixteen, and the four that were dropped
+ * cost a driver a chain they use rather than costing the panel a line.
+ * Every layer still returns every brand either way — the chips narrow
+ * what is drawn, they never decide what was fetched.
+ *
+ * tests/test_poi_layers_agree.py holds the two registries together now.
  */
 
 /** Lucide paths, inlined: the panel bundles no icon library, and a
@@ -66,10 +71,15 @@ const GLYPH: Record<string, string> = {
  * layers failed 4.5:1 for text — and 3:1 for a mark that identifies a
  * control.  Only the blue one passed, which is why nobody saw it.
  *
- * The dark ink is the panel's own ground rather than pure black, so a
- * pill still reads as part of this interface.
+ * The dark ink is #0a0a0a — the SAME constant the dashboard's
+ * `mods/theme/contrast` uses, and not the panel's own ground (#0f1115),
+ * which is where this landed first.  The difference is not cosmetic:
+ * on the violet weigh-station colour the panel's ground measures
+ * 4.46:1 and #0a0a0a measures 4.68:1, so one of them fails AA text and
+ * the other passes.  Choosing an ink by what looks like it belongs is
+ * how a legibility rule gets decided by taste.
  */
-const INK_DARK = '#0f1115', INK_LIGHT = '#ffffff';
+const INK_DARK = '#0a0a0a', INK_LIGHT = '#ffffff';
 
 function luminance(hex: string): number | null {
   const h = hex.replace('#', '');
@@ -250,6 +260,8 @@ export const POI_LAYERS: PoiLayerDef[] = [
     glyph: 'fuel', group: 'fuel_plaza',
     brands: [
       ...TRUCK_STOP_BRANDS,
+      { value: 'Bosselman', label: 'Bosselman' },
+      { value: 'Ambest', label: 'Ambest' },
       { value: 'kwik_trip', label: 'Kwik Trip', matchTerms: ['Kwik Trip', 'Kwik Star'] },
       { value: 'Shell', label: 'Shell' },
       { value: 'BP', label: 'BP' },
@@ -257,6 +269,8 @@ export const POI_LAYERS: PoiLayerDef[] = [
       { value: 'Mobil', label: 'Mobil' },
       { value: 'Chevron', label: 'Chevron' },
       { value: 'Valero', label: 'Valero' },
+      { value: 'Speedway', label: 'Speedway' },
+      { value: 'Maverick', label: 'Maverick' },
     ],
   },
   {

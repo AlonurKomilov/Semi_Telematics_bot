@@ -231,18 +231,17 @@ button.link { background:none; border:0; margin:0; padding:2px 0;
 .layer-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;
               white-space:nowrap; color: var(--muted); line-height:1.3; }
 .layer-name.on { color: var(--fg); }
-/* The count does NOT sit on the layer's colour, and this is the one
-   place the panel departs from the dashboard's grammar on purpose.
-   There the number is white on `def.color`; measured, that is 2.15:1
-   on the amber fuel layer and 2.43:1 on the cyan rest areas, against
-   4.5:1 for text — seven of the eight failed, and the violet weigh
-   station cannot reach 4.5 against ANY ink (its best is 4.46:1 on the
-   panel's own dark).  A colour that cannot carry text is not made to
-   carry text: the layer's colour is already said twice in the row, by
-   the filled switch and by the mark, so the number is simply read.
-   `poiLayers.test.ts` holds the ink rule that stayed. */
-.layer-count { flex:none; color: var(--muted);
-               font-size:11px; font-variant-numeric:tabular-nums; line-height:1.4; }
+/* The count sits on the layer's colour, exactly as the dashboard's
+   does — and takes an ink CHOSEN for that colour rather than a fixed
+   white.  White measures 2.15:1 on the amber fuel layer and 2.43:1 on
+   the cyan rest areas, against 4.5:1 for text; seven of the eight
+   layers failed that way, and the eighth is blue, which is why it
+   shipped.  Both the ground and the ink are set at the call site,
+   because only the call site knows which layer it is drawing.
+   `poiLayers.test.ts` holds every layer to the floor. */
+.layer-count { flex:none; padding:1px 6px; border-radius:999px;
+               font-size:10px; font-weight:700; line-height:1.4;
+               font-variant-numeric:tabular-nums; }
 /* A message belonging to the row above it, indented past the switch so
    it reads as that row's and not as a new one. */
 .rowmsg { margin:0 0 2px 22px; font-size:11px; line-height:1.35; }
