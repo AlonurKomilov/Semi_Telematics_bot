@@ -187,6 +187,17 @@ class User:
     # capabilities/permissions/roles.MANAGER_GRANTS).  Only meaningful for
     # roles with a manager tier; a no-op otherwise.
     is_manager: bool = False
+    # How this PERSON stands with security — the same vocabulary the
+    # account uses (ACCOUNT_SECURITY), because it is the same question
+    # asked of a smaller subject.
+    #
+    # An account is often fine while one person inside it is not: a
+    # dispatcher probing admin endpoints, stolen credentials in use from
+    # somewhere new, an ex-employee nobody deactivated. Watching the
+    # account to watch them records everyone — 23 people at the largest
+    # customer, to observe one — which is both noise and a way of
+    # treating 22 innocents as suspects.
+    security: str = "normal"
     # Primary (main) owner of the account — the un-demotable owner who alone
     # can create/remove co-owners and do destructive account actions.
     # Co-owners have role=owner but is_primary_owner=False.

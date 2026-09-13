@@ -58,33 +58,43 @@ async def test_an_unknown_kind_is_refused(seeded_db):
 
 
 @pytest.mark.asyncio
-async def test_a_legacy_is_test_write_cannot_demote_a_monitored_account(seeded_db):
-    """The old writer knows two states.  It may move test <-> real; it
-    must not silently turn a watched account into a customer."""
+async def test_a_legacy_is_test_write_cannot_clear_a_watched_account(seeded_db):
+    """The old writer knows two states — test and not-test.  It may move
+    ``kind`` between them; the account's SECURITY standing lives in a
+    different column it has never heard of, and must survive both
+    writes untouched."""
     db = seeded_db["db"]
     account = seeded_db["account"]
-    await db.update_account(account.id, kind="monitored")
+    await db.update_account(account.id, kind="test", security="monitored")
 
     await db.update_account(account.id, is_test=0)      # legacy "not test"
-    assert (await db.get_account(account.id)).kind == "monitored"
+    fresh = await db.get_account(account.id)
+    assert fresh.kind == "real", "the legacy writer owns the kind"
+    assert fresh.security == "monitored", "...and nothing beyond it"
 
     await db.update_account(account.id, is_test=1)      # legacy "test"
-    assert (await db.get_account(account.id)).kind == "test"
-
-    await db.update_account(account.id, is_test=0)      # legacy back
-    assert (await db.get_account(account.id)).kind == "real"
+    fresh = await db.get_account(account.id)
+    assert fresh.kind == "test"
+    assert fresh.security == "monitored"
 
 
 @pytest.mark.asyncio
 async def test_user_counts_can_be_narrowed_to_customers(seeded_db):
-    """The bot's health card: a probe's throwaway signups are not customers."""
+    """The bot's health card: a probe's throwaway signups are not
+    customers — and a customer we happen to be WATCHING still is one.
+    That second half is the reason kind and security are two columns."""
     db = seeded_db["db"]
     account = seeded_db["account"]
     everyone = await db.count_all_users()
     assert everyone >= 1
 
-    await db.update_account(account.id, kind="monitored")
+    await db.update_account(account.id, kind="test")
     assert await db.count_all_users(kinds=("real",)) == everyone - (
-        await db.count_all_users(kinds=("monitored",)))
-    assert await db.count_all_users(kinds=("monitored",)) >= 1
+        await db.count_all_users(kinds=("test",)))
+    assert await db.count_all_users(kinds=("test",)) >= 1
     assert await db.count_all_users() == everyone      # default unchanged
+
+    await db.update_account(account.id, kind="real", security="monitored")
+    assert await db.count_all_users(kinds=("real",)) == everyone, (
+        "watching an account must not move its people out of the count"
+    )

@@ -153,9 +153,6 @@ class AccountsMixin:
                 updates["kind"] = "test"
             else:
                 # A legacy "not test" write may only demote test -> real.
-                # It must never touch monitored/quarantined, which the
-                # legacy writer does not know exist.
-                # A legacy "not test" write may only demote test -> real.
                 # It knows nothing of `security`, so it must never reach
                 # that column — which is now structurally true, since the
                 # two live apart.

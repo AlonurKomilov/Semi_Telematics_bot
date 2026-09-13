@@ -32,12 +32,18 @@ def test_every_refusal_is_kept_whoever_sent_it(status, security):
 
 
 @pytest.mark.parametrize("status", [200, 201, 204, 400, 404, 422, 500, 502])
-def test_a_monitored_account_is_kept_whatever_the_status(status):
-    assert recorder.should_record(status, "monitored") is True
+@pytest.mark.parametrize("security", ["monitored", "quarantined"])
+def test_a_watched_subject_is_kept_whatever_the_status(status, security):
+    """Both watched standings record everything.  `quarantined` used to
+    sit with the unwatched below — which would have meant a subject we
+    decided to HOLD going quieter in the ledger than one we were merely
+    observing.  It is the stronger standing; it records at least as
+    much."""
+    assert recorder.should_record(status, security) is True
 
 
 @pytest.mark.parametrize("status", [200, 201, 204, 400, 404, 422, 500])
-@pytest.mark.parametrize("security", [None, "normal", "quarantined"])
+@pytest.mark.parametrize("security", [None, "normal"])
 def test_nothing_else_is_kept(status, security):
     """A customer's 200 is their business; a scanner's 404 is noise."""
     assert recorder.should_record(status, security) is False

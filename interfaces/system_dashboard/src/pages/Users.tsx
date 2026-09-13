@@ -1,7 +1,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
-import type { SystemUser, UserSession } from '../types';
+import { ACCOUNT_SECURITY, type AccountSecurity, type SystemUser, type UserSession } from '../types';
 
 // Cross-account user search.  Support tool: "customer X's driver can't
 // log in" → search the name/telegram-id, see which account + role.
@@ -137,15 +137,16 @@ export default function UsersPage() {
               <th className="text-left px-3 py-2">Account</th>
               <th className="text-left px-3 py-2">Role</th>
               <th className="text-left px-3 py-2">Email</th>
+              <th className="text-left px-3 py-2">Security</th>
               <th className="text-left px-3 py-2">Active</th>
               <th className="text-left px-3 py-2">Last seen</th>
               <th className="text-left px-3 py-2">Joined</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={9} className="text-center text-slate-500 py-8">Loading…</td></tr>}
+            {loading && <tr><td colSpan={10} className="text-center text-slate-500 py-8">Loading…</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={9} className="text-center text-slate-500 py-8">No users match.</td></tr>
+              <tr><td colSpan={10} className="text-center text-slate-500 py-8">No users match.</td></tr>
             )}
             {rows.map((u) => {
               const ls = formatLastSeen(u.last_seen);
@@ -168,6 +169,41 @@ export default function UsersPage() {
                     <td className={`px-3 py-2 capitalize ${roleColor(u.role)}`}>{u.role}</td>
                     <td className="px-3 py-2 text-slate-400 text-xs">{u.email || '—'}</td>
                     <td className="px-3 py-2">
+                      {/* Watching a PERSON, not their employer. Marking the
+                          account instead records every request from everyone
+                          in it — twenty-three people at the largest customer,
+                          to observe one. */}
+                      <select
+                        value={u.security ?? 'normal'}
+                        onChange={async (e) => {
+                          const next = e.target.value as AccountSecurity;
+                          if (next === (u.security ?? 'normal')) return;
+                          try {
+                            await apiJSON(`/system/users/${u.id}/security`, {
+                              method: 'PATCH', body: { security: next },
+                            });
+                            load();
+                          } catch {
+                            // The write did not land — re-read so the
+                            // control shows the server's standing, not
+                            // a change that failed.
+                            load();
+                          }
+                        }}
+                        className={`bg-slate-950 border rounded px-1.5 py-0.5 text-xs ${
+                          (u.security ?? 'normal') === 'normal'
+                            ? 'border-slate-700 text-slate-500'
+                            : 'border-accent/40 text-accent'}`}
+                      >
+                        {ACCOUNT_SECURITY.map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      {u.account_security && u.account_security !== 'normal' && (
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          account: {u.account_security}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
                       {u.is_active
                         ? <span className="text-ok text-xs">yes</span>
                         : <span className="text-slate-600 text-xs">no</span>}
@@ -177,7 +213,7 @@ export default function UsersPage() {
                   </tr>
                   {isOpen && (
                     <tr className="border-b border-slate-800/50 bg-slate-950">
-                      <td colSpan={9} className="px-4 py-3">
+                      <td colSpan={10} className="px-4 py-3">
                         <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
                           Active sessions
                         </div>

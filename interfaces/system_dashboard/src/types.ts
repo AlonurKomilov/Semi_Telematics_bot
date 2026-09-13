@@ -233,6 +233,13 @@ export interface SystemUser {
   is_active: number;  // SQLite bool 0/1
   created_at: string;
   last_seen: string | null;  // ISO timestamp; stamped (throttled) on each authed API hit
+  /** How the PERSON stands with security — independent of the account's.
+   *  An account is often fine while one person inside it is not, and
+   *  marking the account to watch them records everyone in it. */
+  security?: AccountSecurity;
+  /** Their account's standing, for contrast. The pair is what the
+   *  operator reads: a watched person inside a clean account. */
+  account_security?: AccountSecurity;
 }
 
 // One row of the per-user sessions expander on the /users page.

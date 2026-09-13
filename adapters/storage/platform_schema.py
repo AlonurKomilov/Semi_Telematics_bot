@@ -79,6 +79,7 @@ async def create_tables(conn) -> None:
             google_sub      TEXT,
             google_email    TEXT,
             google_linked_at TEXT,
+            security        TEXT    NOT NULL DEFAULT 'normal',
             UNIQUE(account_id, email)
         );
 
@@ -961,7 +962,6 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_error_log_source
             ON error_log(source, created_at DESC);
 
-        -- security_requests: the request ledger the security console reads.
         -- plan_requests: a customer asking for a plan that is not sold
         -- self-serve.  A plan offered at no price is a "talk to us"
         -- plan — Enterprise is the case this exists for — and pressing
@@ -991,6 +991,7 @@ async def create_tables(conn) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_requests_open
             ON plan_requests(account_id, tier) WHERE status = 'open';
 
+        -- security_requests: the request ledger the security console reads.
         -- Two populations land here: every 401/403/429 from ANY account
         -- (the denial signal the detector was missing — the 2026-09-08
         -- probe's 17 /system/* refusals and 25 admin sweeps lived only in

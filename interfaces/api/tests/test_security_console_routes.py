@@ -237,3 +237,55 @@ async def test_a_security_change_is_written_to_the_audit_trail(api):
     rows = await cur.fetchall()
     assert rows, "no audit row for a security change"
     assert "normal -> monitored" in rows[-1]["details"]
+
+
+async def test_a_person_can_be_watched_without_marking_their_employer(api):
+    """The whole point of the per-user standing: an account is often fine
+    while one person inside it is not, and watching the account records
+    every request from everyone in it."""
+    app, db, acct = api
+    owner = (await db.list_account_users(acct.id))[0]
+
+    r = await _patch(app, f"/api/system/users/{owner.id}/security",
+                     {"security": "monitored"})
+    assert r.status_code == 200, r.text
+
+    assert (await db.get_user_by_id(owner.id)).security == "monitored"
+    fresh = await db.get_account(acct.id)
+    assert fresh.security == "normal", "their employer must be untouched"
+    assert fresh.kind == "real"
+
+
+async def test_the_user_endpoint_refuses_the_other_vocabulary(api):
+    app, db, acct = api
+    owner = (await db.list_account_users(acct.id))[0]
+    assert (await _patch(app, f"/api/system/users/{owner.id}/security",
+                         {"security": "real"})).status_code == 422
+    assert (await _patch(app, "/api/system/users/999999/security",
+                         {"security": "monitored"})).status_code == 404
+
+
+async def test_the_user_list_filters_on_the_persons_standing(api):
+    app, db, acct = api
+    owner = (await db.list_account_users(acct.id))[0]
+    await db.update_user(owner.id, security="monitored")
+
+    watched = (await _get(app, "/api/system/users?security=monitored")).json()
+    assert owner.id in {u["id"] for u in watched["items"]}
+    # ...and the row shows BOTH standings, which is the pair the operator reads
+    row = next(u for u in watched["items"] if u["id"] == owner.id)
+    assert row["security"] == "monitored"
+    assert row["account_security"] == "normal"
+
+    quiet = (await _get(app, "/api/system/users?security=normal")).json()
+    assert owner.id not in {u["id"] for u in quiet["items"]}
+
+
+async def test_a_user_security_change_is_written_to_the_audit_trail(api):
+    app, db, acct = api
+    owner = (await db.list_account_users(acct.id))[0]
+    await _patch(app, f"/api/system/users/{owner.id}/security", {"security": "monitored"})
+    cur = await db._db.execute(
+        "SELECT details FROM platform_audit_log WHERE event = 'user_security'")
+    rows = await cur.fetchall()
+    assert rows and f"user {owner.id}: normal -> monitored" in rows[-1]["details"]

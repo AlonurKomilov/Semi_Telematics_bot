@@ -40,7 +40,11 @@ DENIAL_STATUSES: frozenset[int] = frozenset({401, 403, 429})
 # The security axis, not the kind axis: `kind` says whether an
 # account is a customer, which has nothing to do with whether we
 # are recording it. A watched CUSTOMER is real + monitored.
-RECORD_ALL_SECURITY = "monitored"
+#
+# `quarantined` is the stronger standing, so it records at least as
+# much: a subject we have decided to hold cannot be watched LESS
+# closely than one we are merely observing.
+RECORD_ALL_SECURITY: tuple[str, ...] = ("monitored", "quarantined")
 
 # Paths whose query string is never stored.
 NO_QUERY_PREFIXES: tuple[str, ...] = ("/api/auth/", "/api/v1/auth/")
@@ -49,20 +53,21 @@ QUERY_MAX = 300
 UA_MAX = 200
 IP_MAX = 64
 
-# account_id -> (kind, expires_at).  The metering middleware runs on every
-# request; a DB read per request to learn the kind would be a tax on
-# customers to watch a handful of accounts.  Sixty seconds is short
-# enough that flipping an account to monitored takes effect within the
-# minute, and long enough to cost nothing.
+# (kind, subject_id) -> (standing, expires_at), where kind is "account"
+# or "user".  The metering middleware runs on every request; a DB read
+# per request to learn a standing would be a tax on customers to watch
+# a handful of subjects.  Sixty seconds is short enough that flipping
+# someone to monitored takes effect within the minute, and long enough
+# to cost nothing.
 _SECURITY_TTL_S = 60.0
-_security_cache: dict[int, tuple[str | None, float]] = {}
+_security_cache: dict[tuple[str, int], tuple[str | None, float]] = {}
 
 
 def should_record(status: int, security: str | None) -> bool:
     """The whole policy, in one line each."""
     if status in DENIAL_STATUSES:
         return True
-    return security == RECORD_ALL_SECURITY
+    return security in RECORD_ALL_SECURITY
 
 
 def safe_query(path: str, query: str | None) -> str | None:
@@ -80,36 +85,79 @@ def _clip(value: str | None, n: int) -> str | None:
     return value[:n]
 
 
-async def security_for_account(account_id: int | None) -> str | None:
-    """The account's trust class, cached for a minute; None when unknown.
+async def _standing(kind: str, subject_id: int | None) -> str | None:
+    """One subject's security standing, cached for a minute.
 
     Fail-quiet: a DB hiccup here must not turn into an exception on the
     request path, and "unknown" already means "not monitored".
     """
-    if account_id is None:
+    if subject_id is None:
         return None
     now = time.monotonic()
-    hit = _security_cache.get(account_id)
+    key = (kind, subject_id)
+    hit = _security_cache.get(key)
     if hit and hit[1] > now:
         return hit[0]
-    security: str | None = None
+    standing: str | None = None
     try:
         from infra.platform import get_platform_db
-        acct = await get_platform_db().get_account(account_id)
-        security = getattr(acct, "security", None) if acct else None
+        db = get_platform_db()
+        row = (await db.get_account(subject_id) if kind == "account"
+               else await db.get_user_by_id(subject_id))
+        standing = getattr(row, "security", None) if row else None
     except Exception as e:  # noqa: BLE001 — observation must never raise
-        logger.debug("security lookup skipped for account %s: %s", account_id, e)
-    _security_cache[account_id] = (security, now + _SECURITY_TTL_S)
-    return security
+        logger.debug("security lookup skipped for %s %s: %s", kind, subject_id, e)
+    _security_cache[key] = (standing, now + _SECURITY_TTL_S)
+    return standing
 
 
-def forget_security(account_id: int | None = None) -> None:
-    """Drop the cache (one account, or all) — for tests, and for the
-    moment an operator changes an account's security standing."""
-    if account_id is None:
+async def security_for_account(account_id: int | None) -> str | None:
+    """The ACCOUNT's standing."""
+    return await _standing("account", account_id)
+
+
+async def security_for_user(user_id: int | None) -> str | None:
+    """The PERSON's standing.
+
+    Separate from the account's because an account is often fine while
+    one person inside it is not, and marking the account to watch them
+    records everyone in it — twenty-three people at the largest customer
+    to observe one.
+    """
+    return await _standing("user", user_id)
+
+
+def strongest(*standings: str | None) -> str | None:
+    """The most serious of several standings.
+
+    A request is kept if EITHER the account or the person is watched,
+    and the ledger records which reason applied — so the row says why it
+    was kept, not merely that something was.
+    """
+    order = {"quarantined": 3, "monitored": 2, "normal": 1}
+    best, rank = None, 0
+    for s in standings:
+        r = order.get(s or "", 0)
+        if r > rank:
+            best, rank = s, r
+    return best
+
+
+def forget_security(subject_id: int | None = None, kind: str | None = None) -> None:
+    """Drop the cache — for tests, and for the moment an operator changes
+    a standing.
+
+    With no arguments it clears everything, which is what a test wants.
+    With ``subject_id`` it clears that id under every kind unless ``kind``
+    narrows it: an operator changing an account and a user that happen to
+    share an id is not worth a bug.
+    """
+    if subject_id is None:
         _security_cache.clear()
-    else:
-        _security_cache.pop(account_id, None)
+        return
+    kinds = (kind,) if kind else ("account", "user")
+    for k in kinds:
+        _security_cache.pop((k, subject_id), None)
 
 
 async def record_request(
@@ -128,7 +176,14 @@ async def record_request(
 ) -> bool:
     """Decide, then write.  Returns whether a row was kept.  Never raises."""
     try:
-        security = await security_for_account(account_id)
+        # BOTH subjects: the account, and the person acting inside it.
+        # Either being watched keeps the row, which is the whole point of
+        # a per-user standing — otherwise watching one dispatcher still
+        # means marking their employer.
+        security = strongest(
+            await security_for_account(account_id),
+            await security_for_user(user_id),
+        )
         if not should_record(int(status), security):
             return False
         from infra.platform import get_platform_db

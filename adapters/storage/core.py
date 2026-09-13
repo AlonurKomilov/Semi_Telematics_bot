@@ -398,6 +398,11 @@ class _DatabaseCore:
             google_sub=row["google_sub"] if "google_sub" in row.keys() else None,
             google_email=row["google_email"] if "google_email" in row.keys() else None,
             google_linked_at=row["google_linked_at"] if "google_linked_at" in row.keys() else None,
+            # A row read before the column existed, or from a SELECT
+            # that did not ask for it, means "nothing has been said" —
+            # which is exactly what `normal` is, never a clearance.
+            security=(row["security"] if "security" in row.keys() and row["security"]
+                      else "normal"),
         )
 
     def _row_to_invite(self, row) -> Invite:

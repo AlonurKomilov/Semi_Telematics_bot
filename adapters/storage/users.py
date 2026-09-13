@@ -407,7 +407,11 @@ class UsersMixin:
             f"""
             SELECT u.id, u.telegram_id, u.account_id, a.name AS account_name,
                    u.role, u.display_name, u.email, u.is_active,
-                   u.created_at, u.last_seen
+                   u.created_at, u.last_seen,
+                   -- Both standings: the operator needs to see that a
+                   -- person is watched INSIDE an otherwise clean account,
+                   -- which is the case the per-user column exists for.
+                   u.security, a.security AS account_security
             FROM users u, accounts a
             WHERE {" AND ".join(where)}
             ORDER BY u.created_at DESC, u.id DESC
@@ -670,7 +674,7 @@ class UsersMixin:
         return [self._row_to_user(r) for r in rows]
 
     async def update_user(self, user_id: int, **kwargs) -> bool:
-        """Update user fields. Allowed: role, truck_num, alerts_on, is_active, alert_*."""
+        """Update user fields. Allowed: role, truck_num, alerts_on, is_active, security, alert_*."""
         allowed = {"role", "truck_num", "alerts_on", "is_active",
                    "alert_faults", "alert_health", "alert_fuel", "alert_geofence",
                    "alert_events", "alert_parking",
@@ -694,7 +698,12 @@ class UsersMixin:
                    # base role.  Coerced to int below for SQLite.
                    "is_manager",
                    # Primary-owner flag (migration 137).  Coerced to int below.
-                   "is_primary_owner"}
+                   "is_primary_owner",
+                   # How this PERSON stands with security — same vocabulary
+                   # as accounts.security, validated below. An account is
+                   # often fine while one person in it is not, and marking
+                   # the account to watch them records everyone.
+                   "security"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:
@@ -705,6 +714,10 @@ class UsersMixin:
             # Coerce here so callers can pass real bools.
             if k in ("dnd_enabled", "is_manager", "is_primary_owner") and isinstance(v, bool):
                 v = 1 if v else 0
+            if k == "security":
+                from adapters.storage.models import ACCOUNT_SECURITY
+                if v not in ACCOUNT_SECURITY:
+                    raise ValueError(f"unknown user security: {v!r}")
             updates[k] = v
         if not updates:
             return False

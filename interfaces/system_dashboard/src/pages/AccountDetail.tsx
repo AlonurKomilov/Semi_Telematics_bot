@@ -132,7 +132,12 @@ export default function AccountDetailPage() {
                     method: 'PATCH', body: { security: next },
                   });
                   load();
-                } catch { /* transient — row keeps its current standing */ }
+                } catch {
+                  // The write did not land. Re-read, so the control
+                  // snaps back to the standing the server actually
+                  // holds instead of displaying a change that failed.
+                  load();
+                }
               }}
               className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs"
             >
