@@ -275,11 +275,27 @@ async def get_vehicle_odometer(tool_args: dict, samsara_client,
     vehicle = (tool_args.get("vehicle_name") or "").strip()
 
     if vehicle:
+        # Resolve first. This was the only vehicle-keyed tool in the file
+        # that neither went through the twin-safe resolver nor filtered
+        # through the ladder: it picked the first row whose NAME matched,
+        # so a scoped caller asking about their own unit number could be
+        # answered with the other company's twin's mileage, and an
+        # unscoped owner got a silent coin toss between the two.
+        resolved, err = await resolve_for_tool(db or tenant, account_id, tool_args)
+        if err:
+            return err          # "say which company", or the scope refusal
         rows = await tenant.get_vehicle_state(account_id, vehicle_nums=[vehicle])
-        match = next(
-            (r for r in rows if (r.get("vehicle_name") or "").lower() == vehicle.lower()),
-            None,
-        )
+        rows = filter_to_scope(rows, tool_args, key="vehicle_name")
+        rid = getattr(resolved, "id", None)
+        match = None
+        if rid is not None:
+            match = next((r for r in rows if r.get("registry_id") == rid), None)
+        if match is None:
+            match = next(
+                (r for r in rows
+                 if (r.get("vehicle_name") or "").lower() == vehicle.lower()),
+                None,
+            )
         if not match or match.get("odometer_mi") is None:
             return {
                 "error": (

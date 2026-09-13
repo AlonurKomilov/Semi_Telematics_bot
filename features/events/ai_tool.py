@@ -51,11 +51,33 @@ async def get_vehicle_events(tool_args: dict, samsara_client,
         return err
     co = company_for(resolved, tool_args)
     events = await _svc_events(account_id, days=days)
-    vehicle_events = [
-        e for e in events
-        if e.get("vehicle_name", "").lower() == vehicle.lower()
-        and (not co or row_company(e) == co)
-    ]
+    if resolved is not None:
+        # Identity, not label. The registry keeps a truck's unit number
+        # across a provider rename (the upsert matches on the telematics
+        # ref), so "229" must still claim the rows the provider now
+        # calls "229 Idris Ahmed" — and exact name equality reported
+        # zero safety events for a truck that had them, which reads as
+        # a clean week. Rung 2 decides: these rows carry vehicle_id.
+        from capabilities.permissions.vehicle_scope import (
+            VehicleIdentity, VehicleScope,
+        )
+        target = VehicleScope.of(VehicleIdentity.make(
+            registry_id=getattr(resolved, "id", None),
+            external_id=(getattr(resolved, "telematics_ref", "") or None),
+            name=getattr(resolved, "unit_number", None),
+        ))
+        vehicle_events = [
+            e for e in events if target.allows_row(e, name_key="vehicle_name")
+        ]
+    else:
+        # The registry could not say — a retired, unregistered or
+        # mistyped truck. Keep the name-and-company path, which is what
+        # the archived-vehicle contract depends on.
+        vehicle_events = [
+            e for e in events
+            if e.get("vehicle_name", "").lower() == vehicle.lower()
+            and (not co or row_company(e) == co)
+        ]
     return {
         "vehicle": vehicle,
         "period_days": days,
