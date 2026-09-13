@@ -290,3 +290,70 @@ async def test_a_pinned_assignment_admits_one_twin_only(pg_db):
     mixed = await build_vehicle_scope(pg_db, acct, [("103", a_id), "229"])
     assert mixed.registry_ids == frozenset({a_id})
     assert mixed.allows(name="229")
+
+
+class TestTheLadderReadsWhatRowsActuallyCarry:
+    """Rung 1 has to fire, and rung 2 must not fire on a foreign key.
+
+    Both defects denied or widened silently, and both were invisible to
+    the suite because every fixture here used the tidy spelling and gave
+    every row a provider id.
+    """
+
+    def test_rung_one_fires_for_the_overview_spelling(self):
+        """The vehicle overview builds rows with `_registry_id` — an
+        internal marker — while this read looked only for the bare name.
+        Rung 1 is the only rung that can split same-numbered twins, so
+        losing it dropped those tools to name equality."""
+        s = _scope(ids=[60])
+        assert s.allows_row({"_registry_id": 60, "name": "103"})
+        assert not s.allows_row({"_registry_id": 99, "name": "103"}), (
+            "the twin carries the same unit number; only the registry id "
+            "tells them apart"
+        )
+
+    def test_a_row_that_declares_an_empty_provider_id_falls_through_to_the_name(self):
+        """A dashboard-created maintenance task stores vehicle_id = ''.
+
+        Reading the row's own primary key there compared a TASK id
+        against a provider VEHICLE id — and `allows` treats a rung both
+        sides carry as decisive, including when the answer is no. So the
+        driver assigned to that truck was denied their own task and the
+        tool reported nothing due.
+        """
+        from capabilities.permissions.vehicle_scope import (
+            VehicleIdentity, VehicleScope,
+        )
+        scope = VehicleScope.of(
+            VehicleIdentity.make(registry_id=60, external_id="sam_60", name="230")
+        )
+        task = {"id": 4821, "vehicle_id": "", "vehicle_name": "230"}
+        assert scope.allows_row(task, name_key="vehicle_name"), (
+            "the task's own primary key is not a provider vehicle id"
+        )
+
+    def test_a_row_with_no_provider_id_key_still_uses_its_id(self):
+        """Live-position rows carry no `vehicle_id`; there, `id` IS the
+        provider vehicle. That path has to keep working."""
+        from capabilities.permissions.vehicle_scope import (
+            VehicleIdentity, VehicleScope,
+        )
+        scope = VehicleScope.of(
+            VehicleIdentity.make(registry_id=None, external_id="sam_60", name="230")
+        )
+        assert scope.allows_row({"id": "sam_60", "name": "230"})
+        assert not scope.allows_row({"id": "sam_99", "name": "230"}), (
+            "a different provider id is a different truck, whatever it is called"
+        )
+
+    def test_a_real_provider_id_still_decides_over_the_name(self):
+        from capabilities.permissions.vehicle_scope import (
+            VehicleIdentity, VehicleScope,
+        )
+        scope = VehicleScope.of(
+            VehicleIdentity.make(registry_id=None, external_id="sam_60", name="230")
+        )
+        assert not scope.allows_row(
+            {"id": 4821, "vehicle_id": "sam_99", "vehicle_name": "230"},
+            name_key="vehicle_name",
+        )

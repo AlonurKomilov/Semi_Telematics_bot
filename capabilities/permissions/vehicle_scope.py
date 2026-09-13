@@ -184,9 +184,33 @@ class VehicleScope:
         name_key: str = "name",
         external_key: str = "vehicle_id",
     ) -> bool:
+        """Decide one row by the strongest rung it and the scope share.
+
+        Two key details, both of which have already cost real answers:
+
+        ``registry_id`` is read under both spellings. The vehicle
+        overview builds its rows with ``_registry_id`` (an internal
+        marker, underscore and all) while this read looked only for the
+        bare name — so rung 1, the strongest one and the only one that
+        can split same-numbered twins, never fired for the tools built
+        on those rows.
+
+        ``id`` is the provider vehicle id ONLY on rows that carry no
+        dedicated one. A row that DECLARES ``external_key`` and leaves
+        it empty is saying it has no provider id; reading its own
+        primary key there compares a task, alert or item id against a
+        vehicle id, and ``allows`` treats a rung both sides carry as
+        decisive — including when the answer is no. So a dashboard-
+        created maintenance task, which stores ``vehicle_id = ''``, was
+        DENIED to the very driver assigned to its truck, and the tool
+        reported nothing due.
+        """
+        external_id = row.get(external_key)
+        if not external_id and external_key not in row:
+            external_id = row.get("id")
         return self.allows(
-            registry_id=row.get("registry_id"),
-            external_id=row.get(external_key) or row.get("id"),
+            registry_id=row.get("registry_id") or row.get("_registry_id"),
+            external_id=external_id,
             name=row.get(name_key) or row.get("vehicle_name"),
         )
 

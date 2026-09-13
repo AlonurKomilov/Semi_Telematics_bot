@@ -68,7 +68,12 @@ def _scope_of(tool_args: dict, allowed: set[str]):
 
 def row_in_scope(row: dict, tool_args: dict, key: str = "vehicle_name") -> bool:
     """Whether one row belongs to the caller's scope, by the strongest
-    rung both sides share.  Unrestricted callers admit everything."""
+    rung both sides share.  Unrestricted callers admit everything.
+
+    Builds the scope per call, so it is the right choice for a single
+    row inside a loop that has other conditions anyway.  Filtering a
+    whole list goes through :func:`filter_to_scope`, which builds once.
+    """
     allowed = scope_vehicle_set(tool_args)
     if allowed is None:
         return True
@@ -81,7 +86,16 @@ def filter_to_scope(rows: list[dict], tool_args: dict,
 
     Unrestricted callers get ``rows`` unchanged; a scoped caller gets only
     their allowed vehicles (``[]`` scope → empty list, fail-closed).
+
+    The scope is built ONCE for the whole list.  This used to call
+    ``row_in_scope`` per row, which re-read ``_scope_identities``,
+    re-parsed every entry and rebuilt the frozen VehicleScope for each
+    row — quadratic in (rows x scope size), and enough blocking CPU on a
+    few hundred vehicles to hold the event loop through a chat turn,
+    which slows every other request on that worker.
     """
-    if scope_vehicle_set(tool_args) is None:
+    allowed = scope_vehicle_set(tool_args)
+    if allowed is None:
         return rows
-    return [r for r in rows if row_in_scope(r, tool_args, key=key)]
+    scope = _scope_of(tool_args, allowed)
+    return [r for r in rows if scope.allows_row(r, name_key=key)]
