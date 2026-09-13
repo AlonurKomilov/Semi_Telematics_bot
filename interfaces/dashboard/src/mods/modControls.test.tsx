@@ -119,11 +119,14 @@ describe('the panel is a compact view of the page, not a copy of it', () => {
     for (const s of PAGE_ONLY) {
       expect(screen.queryByText(s), `${s} does not fit a w-56 popover`).toBeNull();
     }
-    // The literal, NOT an import of MODS_HREF: a guard that reads its
+    // The literal, NOT an import of the constant: a guard that reads its
     // subject from the source it guards passes on any value that source
     // happens to hold. Changing the address should be a deliberate act
-    // that turns this red.
-    const door = document.querySelector('a[href="/profile#modifications"]');
+    // that turns this red — and it did, the day the door moved from the
+    // profile card to the page. The panel is the compact view; "all of
+    // it" is the MAP, not the flat list, which is a third shape of the
+    // same controls and reads as a detour from here.
+    const door = document.querySelector('a[href="/mods"]');
     expect(door, 'the popover has no way to reach the rest').not.toBeNull();
   });
 

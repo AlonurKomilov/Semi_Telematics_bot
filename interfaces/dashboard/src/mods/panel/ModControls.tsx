@@ -23,7 +23,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, SlidersHorizontal } from '../../lib/icons';
-import { MODS_HREF } from '../href';
+import { MODS_PAGE_HREF } from '../href';
 import type { ModSection } from '../taxonomy';
 import { ModsRow, useHasMods } from './ModsRow';
 import {
@@ -93,8 +93,12 @@ export function ModControls({ compact = false, onNavigate, section }: {
               without spending any of the popover's vertical budget.
               The trailing chevron is what makes it read as a ROUTE
               rather than a caption under the controls. */}
+          {/* To the PAGE, not the profile card. The panel is the compact
+              view; "all of it" means the map — hub, category, item — not
+              the flat list, which is a third shape of the same controls
+              and reads as a detour from here. */}
           <Link
-            to={MODS_HREF}
+            to={MODS_PAGE_HREF}
             onClick={onNavigate}
             className="flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground min-h-tap py-1 -my-1"
           >
