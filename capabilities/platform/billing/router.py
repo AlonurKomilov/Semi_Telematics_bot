@@ -42,6 +42,18 @@ def _dashboard_url() -> str:
 _billing_admin = require_permission("can_manage_billing")
 
 
+async def _count_companies(account_id: int, platform_db) -> int:
+    """How many companies the account holds — the plan cards compare it
+    against each plan's quota so a customer meets a limit BEFORE paying,
+    not after. A count we cannot read warns about nothing, which is the
+    safe way to be wrong."""
+    try:
+        return await platform_db.count_account_companies(account_id)
+    except Exception:
+        logger.warning("billing summary: company count unavailable for %s", account_id)
+        return 0
+
+
 async def _count_users(account_id: int, platform_db) -> int:
     try:
         return await platform_db.count_account_users(account_id)
@@ -90,6 +102,7 @@ async def billing_summary(
     summary["ai_usage"] = ai_stats
     summary["account_name"] = account.name if account else ""
     summary["user_count"] = await _count_users(account_id, platform_db)
+    summary["company_count"] = await _count_companies(account_id, platform_db)
     return summary
 
 

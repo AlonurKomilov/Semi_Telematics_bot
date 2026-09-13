@@ -41,3 +41,28 @@ export function featureLines(
   lines.push(c === 0 ? words.unlimitedCompanies : words.companies(c));
   return lines;
 }
+
+/** What an account already has that a plan would not hold.
+ *
+ *  A quota is enforced when something is CREATED, so moving to a
+ *  smaller plan does not delete anything — it freezes what is over the
+ *  line. That is a fair rule, and an unfair surprise if the customer
+ *  only meets it after paying. So the card says it before the button.
+ *
+ *  Zero means unlimited, and the current plan is never warned about:
+ *  whatever it holds today, it holds.
+ */
+export function overQuotaLines(
+  plan: CustomerPlan,
+  have: { users: number; companies: number },
+  words: { users: (allowed: number, have: number) => string;
+           companies: (allowed: number, have: number) => string },
+): string[] {
+  if (plan.current) return [];
+  const out: string[] = [];
+  const u = plan.quotas.max_users ?? 0;
+  if (u > 0 && have.users > u) out.push(words.users(u, have.users));
+  const c = plan.quotas.max_companies ?? 0;
+  if (c > 0 && have.companies > c) out.push(words.companies(c, have.companies));
+  return out;
+}

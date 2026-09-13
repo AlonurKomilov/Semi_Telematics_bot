@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { FEATURE_CATALOG } from '../../config/featureCatalog';
-import { featureLines, money, plansIncluding, type CustomerPlan } from './planCards';
+import { featureLines, money, overQuotaLines, plansIncluding, type CustomerPlan } from './planCards';
 import { cardVariants } from '@/components/ui/card';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -82,6 +82,7 @@ interface BillingSummary {
   provider: string;
   account_name: string;
   user_count: number;
+  company_count: number;
   ai_usage: AiUsage | null;
 }
 
@@ -396,10 +397,12 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
 interface PlanCardProps {
   name: string; price: string;
   features: string[]; current: boolean; highlighted: boolean; buyable: boolean;
+  /** What this plan would not hold, from what the account has today. */
+  warnings?: string[];
   onUpgrade: () => void; loading: boolean;
 }
 
-function PlanCard({ name, price, features, current, highlighted, buyable, onUpgrade, loading }: PlanCardProps) {
+function PlanCard({ name, price, features, current, highlighted, buyable, warnings = [], onUpgrade, loading }: PlanCardProps) {
   return (
     <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', (current || highlighted) && 'border-primary ring-1 ring-primary/30')}>
       {current && (
@@ -423,6 +426,20 @@ function PlanCard({ name, price, features, current, highlighted, buyable, onUpgr
           </li>
         ))}
       </ul>
+      {warnings.length > 0 && (
+        /* Above the button, because it is what the button is about: a
+           quota bites when something is CREATED, so a smaller plan
+           freezes what is already over the line rather than deleting
+           it — fair, and an unfair surprise if it arrives after the
+           payment. */
+        <ul className="text-xs text-warn/90 space-y-1 mb-3">
+          {warnings.map((w) => (
+            <li key={w} className="flex items-start gap-1.5">
+              <AlertTriangle className="size-3.5 mt-0.5 shrink-0" aria-hidden /> {w}
+            </li>
+          ))}
+        </ul>
+      )}
       <button
         onClick={onUpgrade}
         disabled={current || loading || !buyable}
@@ -430,7 +447,7 @@ function PlanCard({ name, price, features, current, highlighted, buyable, onUpgr
           current || !buyable ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-primary-foreground'
         }`}
       >
-        {loading ? 'Redirecting…' : current ? 'Current Plan' : !buyable ? 'Contact us' : 'Upgrade'}
+        {loading ? 'Opening Stripe…' : current ? 'Current Plan' : !buyable ? 'Contact us' : 'Upgrade'}
       </button>
     </div>
   );
@@ -643,21 +660,49 @@ export default function Billing() {
     trucks: (n: number) => `${n} trucks included`, extra: (p: string) => `${p}/month per extra active truck`,
   };
 
+  // Said in what the customer HAS, not in what the plan allows: "up to 3
+  // companies" is a fact about the plan; "you have 5" is the reason it
+  // matters to them.
+  const quotaWarnings = {
+    users: (allowed: number, have: number) =>
+      `You have ${have} team members; this plan allows ${allowed}. No one is removed — you cannot add more until you are under ${allowed}.`,
+    companies: (allowed: number, have: number) =>
+      `You have ${have} companies; this plan allows ${allowed}. None is deleted — you cannot add more until you are under ${allowed}.`,
+  };
+
   const handleCheckout = async (tier: string) => {
     setCheckoutLoading(tier);
     setError(null);
+    // Opened NOW, inside the click, because a browser only allows a new
+    // tab while it can still see the gesture that asked for one — open
+    // it after the round trip and it is a popup, and blocked. The tab
+    // waits on about:blank until the session URL arrives.
+    const tab = window.open('', '_blank', 'noopener');
     try {
       const res = await apiJSON<{ url?: string }>(
         '/billing/checkout',
         { method: 'POST', body: { tier } },
       );
       if (res.url) {
-        window.location.href = res.url;
+        if (tab) {
+          tab.location.href = res.url;
+          tab.focus();
+          // The billing page stays where it was, so the customer comes
+          // back to their own account rather than to whatever Stripe
+          // decided to return them to.
+          setCheckoutLoading(null);
+        } else {
+          // Popups blocked — going there in place still beats a dead
+          // button.
+          window.location.href = res.url;
+        }
       } else {
+        tab?.close();
         load();
         setCheckoutLoading(null);
       }
     } catch (e: unknown) {
+      tab?.close();
       setError(e instanceof Error ? e.message : 'Checkout failed');
       setCheckoutLoading(null);
     }
@@ -766,6 +811,11 @@ export default function Billing() {
               onUpgrade={() => handleCheckout(p.tier)}
               loading={checkoutLoading === p.tier}
               buyable={p.public && p.price_monthly_cents > 0}
+              warnings={overQuotaLines(
+                p,
+                { users: summary?.user_count ?? 0, companies: summary?.company_count ?? 0 },
+                quotaWarnings,
+              )}
             />
           ))}
         </div>
