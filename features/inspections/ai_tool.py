@@ -6,12 +6,18 @@ enforced by the gate (a scoped caller must name an allowed vehicle).
 
 from __future__ import annotations
 
+import logging
+
 from capabilities.ai.tools.registry import register_tool
+from features.vehicles.resolve import company_of, resolve_for_tool
 
 
 from features.inspections.templates import (
     VALID_INSPECTION_STATUSES, VALID_REVIEW_STATUSES,
 )
+
+
+logger = logging.getLogger("bot.ai.tools")
 
 
 @register_tool({
@@ -103,10 +109,49 @@ async def get_recent_inspections(tool_args: dict, samsara_client,
             "filter on status='submitted' instead."
         )
 
+    # Which "103"? Unit numbers are reused across companies, and this
+    # tool asked the store for every inspection whose vehicle_name
+    # matched — so a caller was shown BOTH companies' trucks' pre-trips
+    # interleaved, with no company marker anywhere in the payload, and
+    # the defect counts it narrated were a merge of two trucks.
+    #
+    # The resolver answers the two questions the tool could not: it
+    # asks WHICH company when the number is ambiguous, and it refuses a
+    # truck outside the caller's vehicle access.
+    resolved = None
+    if vehicle:
+        resolved, err = await resolve_for_tool(db, account_id, tool_args)
+        if err:
+            return err
+
+    # Split the twins in the QUERY, through the company wall the adapter
+    # already exposes and the dashboard route already uses.
+    #
+    # Not filter_to_scope: driver_inspections rows carry no provider
+    # vehicle id, so the ladder could only reach its name rung here —
+    # which is the comparison that merged the twins in the first place.
+    # The wall goes into the SQL rather than a post-filter so the page
+    # and total_matching stay honest, and an empty list already means
+    # deny-all there.
+    only_user_ids = None
+    co = company_of(resolved)
+    if co:
+        try:
+            from infra.platform import get_platform_db
+            by_user = await get_platform_db().get_all_user_company_codes(account_id)
+            only_user_ids = [
+                uid for uid, codes in (by_user or {}).items()
+                if any((c or "").upper() == co for c in (codes or []))
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("inspections: company wall unavailable: %s", e)
+            only_user_ids = None
+
     page = await db.list_inspections_for_account(
         account_id,
         status=status, review_status=review,
         vehicle_name=vehicle, with_defects=with_defects, days=days,
+        only_user_ids=only_user_ids,
         page=1, page_size=30,
     )
     items = page.get("items", []) if isinstance(page, dict) else []
@@ -119,6 +164,9 @@ async def get_recent_inspections(tool_args: dict, samsara_client,
             "vehicle_name": vehicle, "status": status,
             "review_status": review, "with_defects": with_defects,
             "days": days,
+            # Say WHICH truck was answered about — the payload carried no
+            # company marker, so a merged answer looked like one truck's.
+            "company": co or "",
         },
         "inspections": [
             {

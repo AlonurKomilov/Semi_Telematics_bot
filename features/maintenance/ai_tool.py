@@ -18,6 +18,7 @@ from capabilities.ai.tools.registry import (
     register_tool, register_action_executor, tool_propose, tool_error,
 )
 from capabilities.ai.tools.scope import filter_to_scope
+from features.vehicles.resolve import resolve_for_tool
 
 # Stored statuses that mean "closed" — excluded from every open-task bucket.
 _CLOSED = ("completed", "cancelled")
@@ -127,7 +128,32 @@ async def get_vehicle_maintenance(tool_args: dict, samsara_client,
     vehicle = tool_args.get("vehicle_name", "")
     if not db or account_id is None:
         return {"error": "Maintenance data not available in this context"}
+    # Which "103"? The store was asked for every task whose vehicle_name
+    # matched, so two same-numbered trucks in different companies were
+    # merged into one answer — the other company's services, due dates
+    # and odometer readings narrated as this truck's, and the overdue
+    # count a sum of two trucks.
+    resolved, err = await resolve_for_tool(db, account_id, tool_args)
+    if err:
+        return err
     tasks = await db.get_maintenance_tasks(account_id, vehicle_name=vehicle)
+    # The task rows carry vehicle_id (the provider id) and company_code,
+    # so once the registry has named the truck we can keep only its own
+    # tasks. A task created on the dashboard has an empty vehicle_id, so
+    # fall back to the company rather than dropping it.
+    if resolved is not None:
+        ref = (getattr(resolved, "telematics_ref", "") or "").strip()
+        co = (getattr(resolved, "company_code", "") or "").strip().upper()
+        if ref or co:
+            tasks = [
+                t for t in tasks
+                if (ref and str(t.get("vehicle_id") or "").strip() == ref)
+                or (not str(t.get("vehicle_id") or "").strip()
+                    and (not co
+                         or (t.get("company_code") or "").strip().upper() == co))
+            ]
+    # The caller's own trucks, by the strongest rung the rows carry.
+    tasks = filter_to_scope(tasks, tool_args, key="vehicle_name")
     # Merge LIVE odometer / engine-hours before classifying — the stored
     # readings can be stranded stale (alerted_at filter), and judging
     # against them made the AI answer "0 overdue" while the dashboard

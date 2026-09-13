@@ -34,6 +34,16 @@ class _FakeDB:
             raise RuntimeError("warehouse unavailable")  # exercised: merge degrades
         return list(self._state_rows)
 
+    async def list_vehicles(self, account_id, **kwargs):
+        """The registry, which get_vehicle_maintenance now consults.
+
+        Empty on purpose: these tests are about URGENCY, and an empty
+        registry is the "the registry cannot say" path, which keeps the
+        name query the twin split is layered on top of. The twin
+        behaviour has its own file (test_ai_maintenance_twins.py).
+        """
+        return []
+
 
 def _tasks():
     return [
