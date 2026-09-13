@@ -46,6 +46,24 @@ export function newState(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * Every name the server has minted the live-map scope under.
+ *
+ * THE ORDER OF A RENAME IS DECIDED HERE, so this list has to grow
+ * BEFORE the server changes, never after.  The server already reads an
+ * old token correctly — it maps a token's scope names through
+ * `LEGACY_TO_CANONICAL` on the way in — but nothing was doing the
+ * mirror of that here.  An extension already installed checks the name
+ * it shipped knowing; the day the server mints the new one, that
+ * install stops accepting tokens and nobody can connect a panel, with
+ * a store review standing between the fix and the people who need it.
+ *
+ * So: accept both, ship, install, and only then rename the server.
+ * The old name leaves this list when no token carrying it can still be
+ * alive — eight hours after the flip, plus the refresh window.
+ */
+const LIVE_MAP_SCOPE = ['can_view_live_map', 'can_view_location'] as const;
+
 /** The token must be the scoped kind — a full dashboard token pushed at
  *  the extension is refused, whoever sent it. */
 export function isExtensionToken(token: unknown): token is string {
@@ -53,7 +71,8 @@ export function isExtensionToken(token: unknown): token is string {
   try {
     const [, payload] = token.split('.');
     const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-    return json.aud === 'extension' && Array.isArray(json.scope) && json.scope.includes('can_view_location');
+    if (json.aud !== 'extension' || !Array.isArray(json.scope)) return false;
+    return LIVE_MAP_SCOPE.some((name) => json.scope.includes(name));
   } catch {
     return false;
   }

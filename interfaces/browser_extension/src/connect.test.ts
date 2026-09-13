@@ -8,6 +8,10 @@ function jwt(payload: Record<string, unknown>): string {
 // Every name the server has used for the live-map scope, so the vector
 // is the real token under the verb migration and before it alike.
 const EXT = jwt({ aud: 'extension', scope: ['can_view_location', 'can_location_map', 'can_location_vehicle'], sub: '1' });
+// …and the name the server is about to mint.  This install has to
+// accept it BEFORE the server changes, or the flip locks every panel
+// out of connecting with a store review standing in the way.
+const EXT_NEW = jwt({ aud: 'extension', scope: ['can_view_live_map'], sub: '1' });
 const FULL = jwt({ sub: '1', role: 'owner' });
 const pending: PendingConnect = { state: 'a'.repeat(64), expires: 2_000 };
 
@@ -32,6 +36,22 @@ describe('who may hand the panel a token', () => {
     expect(isExtensionToken(FULL)).toBe(false);
     expect(isExtensionToken('not-a-jwt')).toBe(false);
     expect(isExtensionToken(undefined)).toBe(false);
+  });
+
+  it('accepts the name the server is about to mint, before it mints it', () => {
+    // This install must say yes to `can_view_live_map` BEFORE the
+    // server starts issuing it.  The server already reads an old
+    // token — it maps scope names through LEGACY_TO_CANONICAL — but
+    // nothing was doing the mirror here, so the flip would have locked
+    // every installed panel out of connecting, with a store review
+    // between the fix and the people who needed it.
+    expect(isExtensionToken(EXT_NEW)).toBe(true);
+  });
+
+  it('a token with neither name is still refused', () => {
+    // Widening the list must not widen it to anything.
+    const other = jwt({ aud: 'extension', scope: ['can_view_inventory'], sub: '1' });
+    expect(isExtensionToken(other)).toBe(false);
   });
   it('all three together, in order, and the reason names the first failure', () => {
     const good = { type: '4truck:connect', state: pending.state, token: EXT };
