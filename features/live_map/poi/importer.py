@@ -209,15 +209,33 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     return {"layer": layer, "points": total, "ok": ok, "note": note}
 
 
+def _query_cost(layer: str) -> tuple[int, str]:
+    """A rough price for one layer's query, cheapest first.
+
+    Clause count, plus one again for every clause carrying a regex —
+    those are what a mirror's cost estimator balks at.  The name breaks
+    ties so the order is the same every run.
+
+    IT DECIDES WHICH LAYERS GET TRIED AT ALL.  The registry happens to
+    list the two most expensive first, so a struggling mirror refused
+    fuel_station, refused def_station, and the breaker stopped the run
+    before rest_area — two clauses, no regex — was ever asked.  That is
+    the same starvation the region budget fixed one level down, and it
+    cost an entire afternoon's run on 2026-09-13.
+    """
+    clauses = POI_OVERPASS_QUERIES[layer]
+    return len(clauses) + sum(1 for c in clauses if "~" in c), layer
+
+
 async def import_all(db, stamp: str | None = None) -> list[dict]:
-    """Every built-in layer, one after another with a pause between.
+    """Every built-in layer, cheapest query first, with a pause between.
 
     Sequential on purpose: the mirrors are volunteer-run and a weekly
     job has no reason to arrive as six simultaneous region scans.
     """
     out: list[dict] = []
     dead = 0
-    layers = list(POI_OVERPASS_QUERIES)
+    layers = sorted(POI_OVERPASS_QUERIES, key=_query_cost)
     for i, layer in enumerate(layers):
         if i:
             await asyncio.sleep(_BETWEEN_LAYERS_S)

@@ -161,7 +161,7 @@ async def test_a_dead_source_stops_the_run_instead_of_grinding_through_it(store)
     # Every layer is accounted for — the ones not attempted say so
     # rather than going missing from the report.
     from features.live_map.poi.layers import POI_OVERPASS_QUERIES
-    assert [r["layer"] for r in results] == list(POI_OVERPASS_QUERIES)
+    assert sorted(r["layer"] for r in results) == sorted(POI_OVERPASS_QUERIES)
     assert all(r["ok"] is False for r in results)
     assert any("not attempted" in r["note"] for r in results), results
 
@@ -184,7 +184,7 @@ async def test_a_source_that_comes_back_is_not_cut_off(store):
     """The breaker counts CONSECUTIVE dead layers, so one awkward layer
     between two good ones must not end the run."""
     from features.live_map.poi.layers import POI_OVERPASS_QUERIES
-    dead_layer = list(POI_OVERPASS_QUERIES)[1]
+    dead_layer = sorted(POI_OVERPASS_QUERIES, key=importer._query_cost)[1]
 
     async def _one_bad_layer(query, **_kw):
         # Keyed on the layer's own clause rather than a call count: with
@@ -291,3 +291,34 @@ async def test_one_expensive_region_does_not_starve_the_cheap_ones(store):
     for region in viewport._USA_REGIONS[1:]:
         want = viewport._bbox_to_str(*region)
         assert want in reached, f"{want} never asked — CONUS ate the clock"
+
+
+async def test_the_cheapest_queries_are_tried_first(store):
+    """Which layers get tried AT ALL, when a mirror is refusing.
+
+    The breaker stops after two dead layers, so the order decides what
+    is reached.  The registry lists the two most expensive first —
+    fuel_station and def_station, four clauses each with brand regexes —
+    so on 2026-09-13 a struggling mirror refused both and the run ended
+    before rest_area, two clauses and no regex, was ever asked.
+    """
+    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+
+    order: list[str] = []
+
+    async def _note_the_layer(query, **_kw):
+        for layer, clauses in POI_OVERPASS_QUERIES.items():
+            if all(c in query for c in clauses):
+                if layer not in order:
+                    order.append(layer)
+                break
+        raise RuntimeError("Overpass 504")
+
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=_note_the_layer)):
+        await importer.import_all(store, stamp="2026-09-13T16:00:00Z")
+
+    # Only the two the breaker allows — and they are the two CHEAPEST.
+    assert order == ["rest_area", "shower"], order
+    cheapest = sorted(POI_OVERPASS_QUERIES, key=importer._query_cost)[:2]
+    assert order == cheapest
