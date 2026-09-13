@@ -109,7 +109,12 @@ async def _serve_custom_layer(
                 ) from exc
 
     _poi_cache[cache_key] = features
-    return {"type": "FeatureCollection", "features": features}
+    out = {"type": "FeatureCollection", "features": features}
+    if src == "overpass":
+        # A CSV layer is the account's own file and has nothing to do
+        # with OSM's extract date — saying one would be a wrong answer.
+        out["source_as_of"] = overpass.source_as_of()
+    return out
 
 
 # ── DTOs ──────────────────────────────────────────────────────────────────────

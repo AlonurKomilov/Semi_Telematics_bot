@@ -186,7 +186,11 @@ async def map_pois(
         ) from exc
 
     _poi_cache[cache_key] = features
-    return {"type": "FeatureCollection", "features": features}
+    # OSM-sourced, so it carries OSM's date.  The vendor-directory and
+    # my-vendors branches above deliberately do not: those come from our
+    # own database and a date from the wrong source is worse than none.
+    return {"type": "FeatureCollection", "features": features,
+            "source_as_of": overpass.source_as_of()}
 
 
 # ── Custom-layer routes ───────────────────────────────────────────────────────

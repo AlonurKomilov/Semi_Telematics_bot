@@ -217,6 +217,12 @@ button.link { background:none; border:0; margin:0; padding:2px 0;
              letter-spacing:.06em; color: var(--muted); }
 .grouphead > i { flex:1 1 auto; border-top:1px solid var(--border); }
 
+/* Where the layers come from, and how old it is.  Reads as a caption
+   under the list rather than a row in it — it is not something to
+   toggle. */
+.layer-source { border-top:1px solid var(--border); padding-top:6px;
+                font-size:10px; color: var(--muted); }
+
 /* A layer row: switch, mark, name, count.  The whole row is the target,
    which is the only way to clear 24px in a list this dense. */
 .layer-row { display:flex; align-items:center; gap:7px; width:100%; min-height:26px;

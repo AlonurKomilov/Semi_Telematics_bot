@@ -19,6 +19,7 @@ import { MAP_TYPES, MAP_TYPE_LABEL, type MapType } from './tiles';
 import type { MapEngine } from './engine';
 import { POI_GROUPS, glyphSvg, readableOn, type PoiLayerDef } from './poi/layers';
 import type { PoiLayersState } from './poi/usePoiLayers';
+import { ageMs, formatAge } from './freshness';
 
 /** A picture OF the tiles rather than a colour from the palette — which
  *  is why these are literals.  The dashboard's `MAP_TYPE_PREVIEW`, kept
@@ -162,6 +163,15 @@ function LayersCard({ poi }: { poi: PoiLayersState }) {
               </div>
             );
           })}
+          {/* How old the map furniture is.  The public OSM mirrors run
+              months behind, so a truck stop that opened this summer is
+              not in them — and a panel that says nothing lets the reader
+              conclude the panel is wrong instead. */}
+          {poi.sourceAsOf && (
+            <div className="layer-source">
+              OpenStreetMap · {formatAge(ageMs(poi.sourceAsOf, Date.now()))} old
+            </div>
+          )}
         </div>
       )}
     </div>

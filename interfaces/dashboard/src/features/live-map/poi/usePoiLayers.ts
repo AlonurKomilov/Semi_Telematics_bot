@@ -35,6 +35,11 @@ export type { PoiFeature };
 interface PoisResponse {
   type: 'FeatureCollection';
   features: PoiFeature[];
+  /** When the OpenStreetMap extract behind this layer was last updated.
+   *  ABSENT on layers that do not come from OSM (the repair-shop
+   *  directory, an account's own CSV) — a date from the wrong source
+   *  would be worse than none. */
+  source_as_of?: string | null;
 }
 
 /** Server-side custom POI layer DTO (from GET /map/custom-layers). */
@@ -68,6 +73,9 @@ export interface UsePoiLayersResult {
   effectiveLayers: PoiLayerDef[];
   /** Re-fetch the custom layer list from the server (call after create/edit/delete). */
   refreshCustomLayers: () => Promise<void>;
+  /** When the OpenStreetMap extract behind the layers was last updated,
+   *  as the last mirror to answer reported it.  Null until one has. */
+  sourceAsOf: string | null;
 }
 
 // ── localStorage persistence ──────────────────────────────────────────────────
@@ -443,6 +451,12 @@ export function usePoiLayers(
   const [counts, setCounts] = useState<Record<string, number>>(
     () => Object.fromEntries(POI_LAYERS.map((l) => [l.id, 0])),
   );
+  // How old the OSM data behind the layers is.  The public mirrors run
+  // months behind — measured 2026-09-13, the two this server can reach
+  // were stamped 2026-06-01 and 2026-07-28 — so a truck stop that opened
+  // in July is simply not in them.  With no date on screen that reads as
+  // the product being wrong rather than the free source being old.
+  const [sourceAsOf, setSourceAsOf] = useState<string | null>(null);
   const [brandFilters, setBrandFilters] = useState<Record<string, Set<string>>>(
     () => Object.fromEntries(POI_LAYERS.map((l) => [l.id, new Set<string>()])),
   );
@@ -758,6 +772,10 @@ export function usePoiLayers(
       setErrors((prev) => ({ ...prev, [id]: undefined }));
       const data: PoisResponse = await res.json();
       const features = data.features || [];
+      // Only ever SET it: an absent field means "this layer is not OSM",
+      // not "the OSM data has no date", so it must not clear what an OSM
+      // layer already reported.
+      if (data.source_as_of) setSourceAsOf(data.source_as_of);
 
       if (!cache.current[id]) cache.current[id] = {};
       cache.current[id][key] = features;
@@ -951,6 +969,6 @@ export function usePoiLayers(
   return {
     enabled, toggle, loading, errors, counts,
     brandFilters, toggleBrand, presentBrands, allFeatures,
-    effectiveLayers, refreshCustomLayers,
+    effectiveLayers, refreshCustomLayers, sourceAsOf,
   };
 }

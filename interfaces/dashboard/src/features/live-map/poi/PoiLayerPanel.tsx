@@ -17,7 +17,7 @@ import type { UsePoiLayersResult, PoiFeature } from './usePoiLayers';
 import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { apiFetch } from '@/api/client';
 import { readableTextOn } from '@/mods';
-import { Tip } from '@/components/tooltip';
+import { Freshness, Tip } from '@/components/tooltip';
 import CustomLayerEditor from './CustomLayerEditor';
 import PoiIcon from './PoiIcon';
 
@@ -77,7 +77,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
   const {
     enabled, toggle, loading, errors, counts,
     brandFilters, toggleBrand, presentBrands, allFeatures,
-    effectiveLayers, refreshCustomLayers,
+    effectiveLayers, refreshCustomLayers, sourceAsOf,
   } = poiHook;
   const { has } = useViewPermissions();
   const canManage = has('can_manage_poi_layers');
@@ -193,6 +193,18 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Where the map furniture comes from, and how old it is.  The
+          public mirrors run months behind; a missing truck stop is the
+          source being old, not the map being wrong, and only a date on
+          screen can tell the reader which. */}
+      {!collapsed && sourceAsOf && (
+        <div className="border-t border-border px-3 py-1.5">
+          <Freshness ts={sourceAsOf}>
+            <span className="text-2xs text-muted-foreground">OpenStreetMap data</span>
+          </Freshness>
         </div>
       )}
 

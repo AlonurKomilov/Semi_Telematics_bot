@@ -78,6 +78,10 @@ export interface PoiLayersState {
   toggleBrand: (layerId: string, value: string) => void;
   /** How many layers are on — the collapsed control's whole summary. */
   activeCount: number;
+  /** When the OpenStreetMap extract behind the layers was last updated,
+   *  as the last mirror to answer reported it.  Null until one has, and
+   *  absent from replies that do not come from OSM. */
+  sourceAsOf: string | null;
 }
 
 function viewOf(map: L.Map): ViewBox {
@@ -124,6 +128,11 @@ export function usePoiLayers(
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [errors,  setErrors]  = useState<Record<string, string | undefined>>({});
+  // The public mirrors run months behind — measured 2026-09-13, the two
+  // the server can reach were stamped 2026-06-01 and 2026-07-28.  A truck
+  // stop that opened in July is simply not in them, and with no date on
+  // the panel that reads as the panel being wrong.
+  const [sourceAsOf, setSourceAsOf] = useState<string | null>(null);
   const [counts,  setCounts]  = useState<Record<string, LayerCount>>({});
   const [notes,   setNotes]   = useState<Record<string, string | undefined>>({});
   const [present, setPresent] = useState<Record<string, Set<string>>>({});
@@ -302,8 +311,14 @@ export function usePoiLayers(
         else setErrors((prev) => ({ ...prev, [id]: detail }));
         return;
       }
-      const data = await res.json() as { features?: PoiFeature[] };
+      const data = await res.json() as {
+        features?: PoiFeature[]; source_as_of?: string | null;
+      };
       const features = data.features ?? [];
+      // Only ever SET it: the field is absent on layers that are not OSM
+      // (the repair-shop directory, an account's CSV), and absent must
+      // not erase what an OSM layer already reported.
+      if (data.source_as_of) setSourceAsOf(data.source_as_of);
       setErrors((prev) => ({ ...prev, [id]: undefined }));
       setNotes((prev) => ({ ...prev, [id]: undefined }));
       mem.current[id] = { ...mem.current[id], [key]: features };
@@ -472,7 +487,7 @@ export function usePoiLayers(
 
   return {
     layers, enabled, loading, errors, notes, counts, present, brands,
-    toggle, toggleBrand,
+    toggle, toggleBrand, sourceAsOf,
     activeCount: Object.values(enabled).filter(Boolean).length,
   };
 }

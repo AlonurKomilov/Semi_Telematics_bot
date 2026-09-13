@@ -504,6 +504,40 @@ class TestCustomLayerSourceFailure:
     blank for five minutes after it ended.
     """
 
+    async def test_a_csv_layer_does_not_borrow_openstreetmaps_date(self, app_ctx):
+        """The panels show "OpenStreetMap · N old" from `source_as_of`.
+
+        A CSV layer is the account's own file and has nothing to do with
+        OSM's extract date; the repair-shop directory is our database.
+        Stamping OSM's date on either would be a wrong fact rendered
+        confidently — omitted is the honest answer, which is the rule the
+        rest of this codebase already follows for counts.
+        """
+        async with _client(app_ctx["app"]) as c:
+            r = await c.post(
+                "/api/map/custom-layers",
+                headers=_h(app_ctx["owner_a_token"]),
+                json={
+                    "label": "Yards", "color": "#10b981", "icon": "🅿️",
+                    "source_type": "csv", "default_on": False,
+                },
+            )
+            lid = r.json()["id"]
+            await c.post(
+                f"/api/map/custom-layers/{lid}/csv",
+                headers=_h(app_ctx["owner_a_token"]),
+                json={"csv": "name,lat,lng\nYard 1,41.5,-93.6\n"},
+            )
+            got = await c.get(
+                f"/api/map/pois?type=custom_{lid}&bbox=41.0,-94.0,42.0,-93.0",
+                headers=_h(app_ctx["owner_a_token"]),
+            )
+            assert got.status_code == 200, got.text
+            body = got.json()
+            assert len(body["features"]) == 1, body
+            assert "source_as_of" not in body, (
+                "a CSV layer is being stamped with OpenStreetMap's extract date")
+
     async def test_a_layer_whose_source_refused_is_a_502_and_is_not_cached(self, app_ctx):
         async with _client(app_ctx["app"]) as c:
             r = await c.post(

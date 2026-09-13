@@ -101,6 +101,34 @@ def _overpass_gave_up(data: dict) -> bool:
     return bool(remark) and any(w in remark for w in _OVERPASS_GAVE_UP)
 
 
+#: How old the OpenStreetMap extract behind every layer is, as the last
+#: mirror to answer reported it.  A property of the MIRROR rather than of
+#: one query, which is why it lives here instead of being threaded back
+#: through three call sites as a second return value.
+#:
+#: It is worth carrying because the mirrors are far behind.  Measured
+#: 2026-09-13, the two this host can reach were stamped 2026-06-01 and
+#: 2026-07-28 — a truck stop that opened in July is simply not in the
+#: data, and with no date on screen that reads as the product being
+#: wrong rather than the free source being old.
+_source_as_of: str | None = None
+
+
+def source_as_of() -> str | None:
+    """When the OSM extract behind the layers was last updated, or None
+    if no mirror has answered this worker yet.  OMITTED, never guessed:
+    a wrong date here would be worse than no date."""
+    return _source_as_of
+
+
+def _remember_source_age(data: dict) -> None:
+    """Every Overpass reply carries its extract's date in `osm3s`."""
+    global _source_as_of
+    ts = ((data or {}).get("osm3s") or {}).get("timestamp_osm_base")
+    if isinstance(ts, str) and ts:
+        _source_as_of = ts
+
+
 async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
     """Fetch nodes/ways from Overpass inside bbox and return GeoJSON features.
 
@@ -193,6 +221,7 @@ async def _fetch_overpass(query_parts: list[str], bbox: str) -> list[dict]:
                         f"Overpass: {str(data.get('remark'))[:160]}")
                     data = {}
                     continue
+                _remember_source_age(data)
                 break
             except Exception as exc:
                 last_exc = exc
@@ -316,6 +345,7 @@ async def _overpass_post(query: str, timeout: int = 30) -> dict:
             if _overpass_gave_up(data):
                 last_exc = RuntimeError(f"Overpass: {str(data.get('remark'))[:160]}")
                 continue
+            _remember_source_age(data)
             return data
         except Exception as exc:
             last_exc = exc
