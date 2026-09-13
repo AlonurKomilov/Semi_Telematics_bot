@@ -175,6 +175,46 @@ const PUBLIC_AUTH_ROUTES: Record<string, React.ComponentType> = {
   '/complete-setup': CompleteSetup,
 };
 
+/** What a held person sees instead of the app.
+ *
+ *  It states the fact, says what is NOT affected, and gives them the two
+ *  things they can still do — ask, or leave. It accuses them of nothing:
+ *  a review is opened on a suspicion, and most suspicions do not survive
+ *  being looked at. "Blocked for suspicious activity" would be us
+ *  stating a finding we do not have, to a person who may well be a
+ *  customer's best dispatcher.
+ */
+function AccessUnderReview() {
+  const { logout } = useAuth();
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-background px-4 py-8">
+      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6">
+        <h1 className="text-lg font-semibold text-foreground">
+          Your access is under review
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Your sign-in worked — access to the platform is paused while this
+          is looked at.
+        </p>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Your company&rsquo;s account is unaffected, and your colleagues are
+          working normally.
+        </p>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Contact your account owner or support to have it reviewed.
+        </p>
+        <button
+          type="button"
+          onClick={() => { void logout(); }}
+          className="mt-5 w-full rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -227,6 +267,15 @@ export default function App() {
       </div>
     );
   }
+  // A person whose access is under review signs in — that is deliberate,
+  // it is the only way to TELL them — and gets no further. Every API
+  // call behind this point would 403, so entering the shell would mean a
+  // working-looking app where nothing loads, which reads as "this
+  // product is broken" rather than "your access is paused".
+  if (user?.security === 'quarantined') {
+    return <AccessUnderReview />;
+  }
+
   if (user && isOnApex()) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">

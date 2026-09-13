@@ -288,6 +288,69 @@ _ENFORCEMENT_BYPASS_SUFFIXES = (
 )
 
 
+class QuarantineMiddleware(BaseHTTPMiddleware):
+    """Return HTTP 403 when the JWT-bearer is a PERSON under quarantine.
+
+    Mirrors BillingEnforcementMiddleware deliberately: same env-flag
+    shape so it lands dark, same header-then-cookie token order so the
+    set of requests it blocks is exactly the set a route would consider
+    authenticated, same fall-through on decode failure (the route's own
+    dependency will 401 it).
+
+    It keys on ``user_id``, not ``account_id``.  Holding an account
+    refuses everyone inside it, and the whole reason the security axis
+    was extended to people is that an account is usually fine while one
+    person in it is not.  Account-level holding is a separate step with
+    its own decisions; nothing here assumes it away.
+
+    Lives OUTSIDE the billing check in the stack (added after it, so it
+    runs before it): a held person should be told they are held, not
+    that their employer owes money.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        from capabilities.security import quarantine
+        if not quarantine.enabled():
+            return await call_next(request)
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        if quarantine.is_open_path(path):
+            return await call_next(request)
+        from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt
+        from jose import JWTError
+        token = ""
+        auth_h = request.headers.get("authorization", "")
+        if auth_h.startswith("Bearer "):
+            token = auth_h[7:]
+        if not token:
+            token = request.cookies.get(AUTH_COOKIE_NAME, "")
+        if not token:
+            return await call_next(request)
+        try:
+            payload = decode_jwt(token)
+        except JWTError:
+            return await call_next(request)
+        # ``uid``, not ``user_id``: the claim is named for the wire, and
+        # reading the Python parameter name instead let every held
+        # person straight through — silently, because a missing claim is
+        # indistinguishable from a legacy token.
+        user_id = payload.get("uid")
+        if not user_id:
+            # A token minted before the uid claim, or one of the legacy
+            # SSO-only paths.  There is no person to hold.
+            return await call_next(request)
+        if not await quarantine.is_held(int(user_id)):
+            return await call_next(request)
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": quarantine.MESSAGE,
+                "error_code": quarantine.ERROR_CODE,
+            },
+        )
+
+
 class BillingEnforcementMiddleware(BaseHTTPMiddleware):
     """Return HTTP 402 when the JWT-bearer's account is past-due past grace.
 
@@ -527,6 +590,10 @@ def create_api() -> FastAPI:
     # the grace window.  Gated by BILLING_ENFORCEMENT_ENABLED so this
     # can land dark until the dashboard's past-due banner is shipped.
     app.add_middleware(BillingEnforcementMiddleware)
+    # After billing in the add order, which means BEFORE it at request
+    # time: a person under review should be told that, not told their
+    # company owes money.
+    app.add_middleware(QuarantineMiddleware)
 
     # Compress JSON responses ≥500 B with gzip — typical fleet payloads
     # (vehicles, events, scorecards) shrink ~70 %. Below 500 B the gzip

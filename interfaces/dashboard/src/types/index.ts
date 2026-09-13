@@ -101,6 +101,12 @@ export interface User {
    *  (KB articles, work orders, PTI media).  Survives Telegram
    *  re-linking; ``telegram_id`` doesn't. */
   id?: number;
+  /** How this person stands with security: 'normal' | 'monitored' |
+   *  'quarantined'. Read live from /user/me on every boot, never from a
+   *  token claim — a token lives eight hours (thirty days with "remember
+   *  me") and a standing can change in a minute, so a claim would go
+   *  stale into a lie. Only 'quarantined' changes what the app does. */
+  security?: string;
   /** ``null`` for users who registered via email and haven't linked
    *  their Telegram account yet.  Anything that needs a guaranteed
    *  identifier should use ``id`` instead. */

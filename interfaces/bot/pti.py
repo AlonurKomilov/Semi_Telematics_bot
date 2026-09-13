@@ -119,6 +119,24 @@ async def cmd_pti(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # already covers this; silent return keeps the bot tidy.
         return
 
+    # This command resolves the user itself instead of going through
+    # ``_require_registered``, so it does not inherit that decorator's
+    # quarantine check and needs its own.  Offering a held driver a
+    # deep-link into the Mini App would hand them a button whose every
+    # call the middleware then refuses — a working-looking door onto a
+    # wall, which reads as a broken product rather than a paused
+    # account.
+    try:
+        from capabilities.security import quarantine
+        if quarantine.enabled() and await quarantine.is_held(user.id):
+            await update.effective_chat.send_message(
+                "⛔ " + quarantine.MESSAGE)
+            return
+    except Exception:
+        # Fail open, like every other reader of this standing.
+        logger.warning("pti: quarantine check failed for user %s",
+                       getattr(user, "id", None), exc_info=True)
+
     if user.role == Role.DRIVER:
         text = (
             "📋 <b>Pre-Trip Inspection</b>\n\n"

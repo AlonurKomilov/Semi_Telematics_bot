@@ -1,5 +1,7 @@
 """Authentication helpers and decorators."""
 
+import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -10,6 +12,8 @@ from interfaces.bot.config import SUPPORT_CONTACT
 from interfaces.bot.state import get_platform_db, get_tenant_db
 from interfaces.bot.helpers import _show
 from interfaces.bot.keyboards import unregistered_kb, back_kb
+
+logger = logging.getLogger(__name__)
 from capabilities.formatting import (
     format_welcome_unregistered,
     format_unregistered_member,
@@ -122,6 +126,25 @@ def _require_registered(func):
             chat_id = update.effective_chat.id
             if not await get_platform_db().is_chat_authorized(chat_id, account_id=user.account_id):
                 return  # silently ignore — chat not authorized for this account
+
+        # A person under review is held here too. The bot is its own
+        # door — it never passes through the API's middleware — so a
+        # hold that only covered HTTP would leave every dashboard action
+        # reachable by typing it to the bot instead.
+        try:
+            from capabilities.security import quarantine
+            if quarantine.enabled() and await quarantine.is_held(user.id):
+                msg = "⛔ " + quarantine.MESSAGE
+                if SUPPORT_CONTACT:
+                    msg += f"\nContact support: {SUPPORT_CONTACT}"
+                await _show(update, context, [msg])
+                return
+        except Exception:
+            # A standing we cannot read is not a hold we may invent —
+            # the same fail-open the HTTP path takes, for the same
+            # reason: a database hiccup must not lock out every user.
+            logger.warning("bot: quarantine check failed for user %s",
+                           getattr(user, "id", None), exc_info=True)
 
         # Check account still active
         account = await get_platform_db().get_account(user.account_id)

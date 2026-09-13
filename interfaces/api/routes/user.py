@@ -125,6 +125,13 @@ async def user_me(
         # ``telegram_id`` for "is this row mine?" comparisons.
         "id": db_user.id,
         "telegram_id": db_user.telegram_id,
+        # How this person stands with security. Read LIVE, never from a
+        # token claim: a token lives eight hours (thirty days with
+        # "remember me") and a standing can change in a minute, so a
+        # claim would go stale into a lie. This route stays reachable
+        # while a person is held precisely so the banner explaining the
+        # hold has something to read.
+        "security": getattr(db_user, "security", "normal") or "normal",
         # Sign in with Google: linked or not, and to which address.  The
         # profile draws its Google card from these the way it draws the
         # Telegram card from telegram_id.

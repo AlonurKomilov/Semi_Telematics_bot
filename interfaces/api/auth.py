@@ -490,6 +490,14 @@ async def mint_session_token(
                     },
                 )
 
+    # A person under quarantine still gets a token: they must be able to
+    # reach the page that tells them they are held, and a subject who
+    # cannot sign in cannot be observed either.  The standing is NOT
+    # stamped into the token — a token lives eight hours, thirty days
+    # with "remember me", and a standing can change in a minute, so a
+    # claim would go stale into a lie.  The dashboard reads it live from
+    # /user/me, which the hold leaves open for exactly this reason.
+
     jti = secrets.token_urlsafe(16)
     token = create_jwt(
         telegram_id, account_id, role,

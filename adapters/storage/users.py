@@ -929,6 +929,29 @@ class UsersMixin:
         rows = await cur.fetchall()
         return [self._row_to_user(r) for r in rows]
 
+    async def get_primary_owner(self, account_id: int):
+        """The account's PRIMARY owner, or None.
+
+        Co-owners share the role, so ``role = 'owner'`` returns several
+        people and no single answer.  ``is_primary_owner`` is the one
+        protected seat — the person a decision about the account has to
+        reach.  Falls back to the oldest owner when the flag is missing
+        (accounts that predate the co-owner split and were never
+        backfilled), because "nobody to tell" is the worst answer.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM users WHERE account_id = ? AND is_active = 1 "
+            "AND is_primary_owner = 1 ORDER BY id LIMIT 1",
+            (account_id,))
+        row = await cur.fetchone()
+        if row is None:
+            cur = await self._db.execute(
+                "SELECT * FROM users WHERE account_id = ? AND is_active = 1 "
+                "AND role = 'owner' ORDER BY id LIMIT 1",
+                (account_id,))
+            row = await cur.fetchone()
+        return self._row_to_user(row) if row else None
+
     async def count_users_with_security(self, security: str) -> int:
         """How many ACTIVE people hold one security standing.
 

@@ -159,6 +159,10 @@ async def dispatch(
             db, subs, audience, recipient_filter,
             requires_permission=(cat.requires_permission if cat else None),
             service_gate=not bool(cat and cat.mandatory))
+        # Held people come out, and the owner goes in for them: a hold
+        # that silenced someone without covering their work would push
+        # the cost onto a customer we have accused of nothing.
+        subs = await _reroute_quarantined(db, account_id, subs, key)
 
         for s in subs:
             cadence = s.get("cadence") or IMMEDIATE
@@ -268,6 +272,113 @@ async def _holders_of(db, tiers: dict, permission: str) -> set[int]:
 
 
 SERVICE_FLAG = "can_view_notifications"
+
+
+async def _reroute_quarantined(db, account_id: int, subs: list[dict],
+                               channel_key: str) -> list[dict]:
+    """Take a held person out of the fan-out and put the owner in.
+
+    A person under quarantine is not only refused at the door — they are
+    also a RECIPIENT, and a hold that covered only their requests would
+    leave the platform mailing them safety alerts, a daily digest and
+    their scheduled reports every morning while we believe they are a
+    problem.  That is not a hold, it is a redirect.
+
+    But silence has its own cost, and it lands on the customer rather
+    than on us: the held person may be the dispatcher whose job is to
+    read those alerts, and a hard-braking event nobody sees is a real
+    consequence for a company that has been accused of nothing.  So the
+    owner receives what the held person would have.  They were told once,
+    by name, at the moment of the hold — repeating the reason on every
+    alert would turn an explanation into noise.
+
+    The owner is added only when they are not already a recipient, and
+    only when they have this channel connected.  An opt-out is a decision
+    they made, and quietly overriding it to deliver somebody else's
+    alerts would be a second thing done behind somebody's back.
+
+    Fail-open, like every predicate in this module: a standing we cannot
+    read keeps the recipient.
+    """
+    from capabilities.security import quarantine
+    if not quarantine.enabled():
+        return subs
+
+    kept: list[dict] = []
+    dropped: list[int] = []
+    for s in subs:
+        rid = str(s.get("recipient_id", ""))
+        if s.get("recipient_type") != "user" or not rid.lstrip("-").isdigit():
+            kept.append(s)
+            continue
+        uid = int(rid)
+        try:
+            if await quarantine.is_held(uid):
+                dropped.append(uid)
+                continue
+        except Exception:
+            logger.warning("dispatch: quarantine check failed for user %s "
+                           "— keeping the recipient", uid, exc_info=True)
+        kept.append(s)
+
+    if not dropped:
+        return subs
+
+    try:
+        owner = await db.get_primary_owner(account_id)
+    except Exception:
+        logger.error("dispatch: owner lookup failed for account %s — %s "
+                     "held recipient(s) dropped with no cover",
+                     account_id, len(dropped), exc_info=True)
+        return kept
+    if owner is None:
+        logger.warning("dispatch: account %s has no primary owner — %s held "
+                       "recipient(s) dropped with no cover",
+                       account_id, len(dropped))
+        return kept
+
+    owner_id = int(owner.id)
+    if owner_id in dropped:
+        # The owner IS one of the held people — the sole-owner case.
+        # Substituting them here would hand their own alerts straight
+        # back to them and the hold would be a no-op on this axis, which
+        # is the one thing this function exists to prevent. There is
+        # nobody above them to cover the work; say so and stop.
+        logger.info(
+            "dispatch: the owner of account %s is held — %s held "
+            "recipient(s) on %s are not covered",
+            account_id, len(dropped), channel_key)
+        return kept
+    if any(str(s.get("recipient_id")) == str(owner_id)
+           and s.get("recipient_type") == "user" for s in kept):
+        return kept                     # they already receive this
+
+    try:
+        conn = await db.get_notification_channel(
+            account_id, "user", owner_id, channel_key)
+    except Exception:
+        logger.warning("dispatch: owner channel lookup failed (%s) for "
+                       "account %s", channel_key, account_id, exc_info=True)
+        return kept
+    from capabilities.notifications.channels import get_channel
+    intrinsic = getattr(get_channel(channel_key), "intrinsic", False)
+    if not intrinsic:
+        if not conn or not conn.get("verified") or not conn.get("enabled_master"):
+            logger.info(
+                "dispatch: %s held recipient(s) on %s for account %s are not "
+                "covered — the owner has no verified %s connection",
+                len(dropped), channel_key, account_id, channel_key)
+            return kept
+
+    kept.append({
+        "recipient_type": "user",
+        "recipient_id": owner_id,
+        "address": (conn or {}).get("address", ""),
+        "cadence": IMMEDIATE,
+    })
+    logger.info("dispatch: %s held recipient(s) on %s rerouted to owner %s "
+                "(account %s)", len(dropped), channel_key, owner_id, account_id)
+    return kept
 
 
 async def _filter_recipients(db, subs, audience, recipient_filter,
