@@ -90,6 +90,23 @@ async def _get_http_session() -> aiohttp.ClientSession:
     return _http_session
 
 
+async def close_http_session() -> None:
+    """Let go of the shared session.
+
+    The API never calls this — the session lives as long as the worker,
+    which is the point of sharing it.  A SCRIPT is different: it finishes,
+    and aiohttp prints two ERROR lines on the way out about a session and
+    a connector nobody closed.  The owner saw them at the end of the first
+    real import, under a line that said the import had worked, and the
+    only honest reading of an ERROR there is that something went wrong.
+    Nothing had.
+    """
+    global _http_session
+    if _http_session is not None and not _http_session.closed:
+        await _http_session.close()
+    _http_session = None
+
+
 #: The OSM tags a POI carries onto the map — what a popup shows and what
 #: a brand chip matches on.  MODULE level because two callers read an
 #: element now: the request path below, and the import job that fills our

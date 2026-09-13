@@ -51,6 +51,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 from features.live_map.poi.importer import import_all, import_layer  # noqa: E402
+from features.live_map.poi.overpass import close_http_session  # noqa: E402
 from features.live_map.poi.layers import POI_OVERPASS_QUERIES  # noqa: E402
 from infra.platform import get_platform_db  # noqa: E402
 from infra.startup import initialize as init_services  # noqa: E402
@@ -107,6 +108,10 @@ async def main_async(args: argparse.Namespace) -> int:
         for r in await import_all(db):
             print(f"  {r['layer']}: {r['points']} points, ok={r['ok']}"
                   f"{'  — ' + r['note'] if r['note'] else ''}")
+    # aiohttp shouts two ERROR lines about an unclosed session when a
+    # script exits holding one, and an ERROR under a line reporting
+    # success reads as a failure nobody can find.
+    await close_http_session()
     return await show_status(db)
 
 
