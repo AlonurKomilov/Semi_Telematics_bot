@@ -1,0 +1,3 @@
+/* Calm — every duration 1.6x. Not "slow": the same movements, given
+   room, which is what makes a long shift easier to sit through. */
+  :root[data-motion="calm"] { --motion-scale: 1.6; }

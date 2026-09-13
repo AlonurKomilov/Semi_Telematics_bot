@@ -12,16 +12,19 @@ import { useTranslation } from 'react-i18next';
 import { Switch } from '../../components/ui/switch';
 import { usePreference } from '../../preferences';
 import { useMods, type Motion } from '../context';
-import { MOD_MOTIONS, motionPercent } from '../catalogue';
+import { motionPercent } from '../catalogue';
+import { MOTION_PACKS } from '../store/items/motion';
 import { Chip } from './Chip';
 import { SHADER_PACKS, shaderPackById } from '../store/items/shader';
 import type { LabelClass } from './Interface';
 
+/** From the shelf: a speed is an item now, so the labels come with it
+ *  instead of being title-cased here. */
 const MOTION_OPTIONS: { value: Motion; key: string; label: string }[] =
-  MOD_MOTIONS.map((m) => ({
-    value: m,
-    key: `mods.motion_${m}`,
-    label: m === 'default' ? 'Normal' : m === 'calm' ? 'Calm' : 'Snappy',
+  MOTION_PACKS.map((m) => ({
+    value: m.id as Motion,
+    key: `mods.motion_${m.id}`,
+    label: m.label,
   }));
 
 /**
@@ -79,6 +82,7 @@ export function ShadersItem({ label }: { label: LabelClass }) {
  * moves least would be the only one lying.
  */
 export function MotionItem({ label }: { label: LabelClass }) {
+  const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
   return (
@@ -94,7 +98,7 @@ export function MotionItem({ label }: { label: LabelClass }) {
       {/* A multiplier on every transition. Spinners and pulses are
           deliberately not on it — see index.css. */}
       <div className="flex flex-wrap gap-1">
-        {MOTION_OPTIONS.map((o) => (
+        {offered('motion', MOTION_OPTIONS, (o) => o.value).map((o) => (
           <Chip key={o.value} value={o.value} current={theme.motion} label={t(o.key, o.label)}
             onClick={(v) => setTheme({ motion: v })} />
         ))}

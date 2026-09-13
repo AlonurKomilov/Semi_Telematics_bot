@@ -39,6 +39,7 @@ const activeModId = (a: ModAxes): string => MODS.find((m) => modMatchesAxes(m, a
 import { THEME_PACKS, packById } from './store/items/theme';
 import { SIZE_MAX } from '../preferences/registry';
 import { CORNERS } from './store/items/corners';
+import { MOTION_PACKS } from './store/items/motion';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
 
@@ -194,6 +195,14 @@ describe('mods are combinations, not new colours', () => {
         .toBeDefined();
   });
 
+  it('wears a speed that exists', () => {
+    for (const m of MODS) {
+      if (m.motion === undefined) continue;
+      expect(MOTION_PACKS.map((x) => x.id), `mod "${m.id}" wears motion "${m.motion}"`)
+        .toContain(m.motion);
+    }
+  });
+
   it('wears a corner that exists', () => {
     // The same failure as the accent above, one axis over: a mod naming
     // a corner with no file stamps the attribute, nothing matches, and
@@ -235,17 +244,16 @@ describe('mods are combinations, not new colours', () => {
    */
   const DOMAIN: Record<ValueField, readonly unknown[] | 'range'> = {
     size: 'range',
-    motion: MOD_MOTIONS,
     icons: MOD_ICONS,
     entrance: [true, false],
     wallpaperLive: [true, false],
   };
 
   it('picks only values the system offers', () => {
-    // `radius` used to be here. It became an item — a corner is a thing
-    // a pack ships now, checked like any other id — and the type made
-    // its entry a compile error rather than leaving a stale line that
-    // still passed.
+    // `radius` and `motion` used to be here. Both became items — a
+    // corner and a speed are things a pack ships now, checked like any
+    // other id — and the type made each entry a compile error rather
+    // than leaving a stale line that still passed.
     // A mod naming a value with no rule behind it does not fail loudly:
     // the attribute is stamped, nothing matches, and the app paints the
     // default. That is the same silent failure the accent check above

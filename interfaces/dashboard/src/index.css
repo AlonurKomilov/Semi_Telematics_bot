@@ -24,6 +24,9 @@
 @import './mods/store/items/corners/sharp.css';
 @import './mods/store/items/corners/pill.css';
 @import './mods/store/items/corners/soft-panels.css';
+@import './mods/store/items/motion/calm.css';
+@import './mods/store/items/motion/snappy.css';
+@import './mods/store/items/motion/night-haul.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -1064,9 +1067,9 @@
 /* ─── MOTION AXIS ──────────────────────────────────────────────────────
    Multipliers, not three sets of literals, so a mod can dial the scale
    to any value the injector accepts rather than picking from what we
-   happened to write. */
-:root[data-motion="calm"]   { --motion-scale: 1.6; }
-:root[data-motion="snappy"] { --motion-scale: 0.6; }
+   happened to write.
+   The speeds are ITEMS now — `mods/store/items/motion/*.css` holds one
+   file per speed. Default has none: `--motion-scale: 1` is `:root`'s. */
 
 /* The accessibility floor, and the ONLY `!important` in this stylesheet.
    It is deliberate: this is a guarantee to someone whose vestibular

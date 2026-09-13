@@ -33,6 +33,7 @@ import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
 import { MATERIAL_PACKS } from './material';
 import { CORNERS } from './corners';
+import { MOTION_PACKS } from './motion';
 import { ICON_PACK_IDS } from './icons';
 import { MODS as MOD_PACKS } from './mods';
 import { ITEM_AXES } from './index';
@@ -161,6 +162,10 @@ const CSS_AXES = [
   // in the screen-only list below. The attribute is `data-radius`, the
   // folder is `corners`.
   ['radius', CORNERS, 'rounded', 'corners'],
+  // Motion prints as nothing either way — paper does not move — but the
+  // blocks were never screen-wrapped and wrapping them now would be a
+  // change with no effect to argue for.
+  ['motion', MOTION_PACKS, 'default'],
 ] as const;
 
 describe('a CSS item is a file, and the index is exactly the files', () => {

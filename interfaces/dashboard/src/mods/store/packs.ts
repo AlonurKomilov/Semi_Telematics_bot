@@ -63,7 +63,8 @@ const THEMED: readonly Pack[] = [
    */
   { id: 'night-haul', label: 'Night Haul', publisher: PUBLISHER,
     description: 'For the end of a long shift — low light, low sound, nothing in a hurry',
-    items: { wallpaper: ['night-haul'], sound: ['night-haul'], keys: ['night-haul'], mods: ['night-haul'] } },
+    items: { wallpaper: ['night-haul'], sound: ['night-haul'], keys: ['night-haul'],
+      motion: ['night-haul'], mods: ['night-haul'] } },
 ];
 
 const key = (axis: string, id: string) => `${axis}/${id}`;

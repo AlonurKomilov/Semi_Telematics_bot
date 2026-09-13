@@ -1,0 +1,13 @@
+/* Night Haul — slower than Calm, and eased differently.
+   The SCALE is the obvious half: 1.8x, longer than Calm's 1.6.
+   The CURVE is the half a value could never carry. The base ease is
+   `cubic-bezier(.4,0,.2,1)` — it leaves fast and arrives slow, which is
+   what makes an interface feel eager. This one leaves slowly and lands
+   softly, so nothing on the screen ever looks like it is in a hurry to
+   be answered. Same 200ms, different room.
+   The reduced-motion floor still ends every loop; nothing here is
+   `!important` and nothing here can be. */
+  :root[data-motion="night-haul"] {
+    --motion-scale: 1.8;
+    --motion-ease: cubic-bezier(0.33, 0, 0.2, 1);
+  }

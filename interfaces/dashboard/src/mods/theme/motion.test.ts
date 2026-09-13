@@ -13,15 +13,26 @@
  * every other test because nothing renders a spinner and measures it.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOTION_SCALE, motionPercent } from '../catalogue';
+import { MOTION_PACKS } from '../store/items/motion';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const CONFIG = readFileSync(join(ROOT, 'tailwind.config.js'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'src', 'index.css'), 'utf8');
 /** Comments blanked in place so offsets and line numbers survive. */
-const CODE = CSS.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+/**
+ * The engine sheet PLUS the speed items — the browser assembles both
+ * through `@import`, and since the speeds moved out of `index.css` a
+ * guard reading only the engine would find no `[data-motion]` block at
+ * all and say so about nothing.
+ */
+const MOTION_DIR = join(__dirname, '..', 'store', 'items', 'motion');
+const CSS_ALL = CSS + readdirSync(MOTION_DIR)
+  .filter((f) => f.endsWith('.css'))
+  .map((f) => readFileSync(join(MOTION_DIR, f), 'utf8')).join('\n');
+const CODE = CSS_ALL.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
 
 describe('every duration rides the multiplier', () => {
   it('scales transitions and the animate plugin, from one helper', () => {
@@ -147,5 +158,42 @@ describe('typography joins the token layer', () => {
     // stops the first one that does from silently bypassing the token
     // the whole app inherits from `html`.
     expect(CONFIG).toMatch(/sans:\s*\['var\(--font-sans\)'/);
+  });
+});
+
+describe('a speed may ship its own curve', () => {
+  /** Each item's file, by id, with comments stripped — a file that
+   *  EXPLAINS it may not reach for `!important` would otherwise read as
+   *  one that does. */
+  const FILES = Object.fromEntries(readdirSync(MOTION_DIR)
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => [f.replace(/\.css$/, ''),
+      readFileSync(join(MOTION_DIR, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')]));
+
+  it('the base curve is still a token, or nothing could override it', () => {
+    expect(/:root\s*\{[^}]*--motion-ease:\s*cubic-bezier/.test(CODE),
+      ':root declares no --motion-ease').toBe(true);
+  });
+
+  it('an item that claims a curve sets one, and one that does not does not', () => {
+    // The claim is what the store tile reads, so it has to be true. It
+    // is also the whole reason a speed is an item and not a value: a
+    // scale is three numbers, a curve is character.
+    const claimed = MOTION_PACKS.filter((m) => m.eases).map((m) => m.id);
+    expect(claimed.length, 'no item ships a curve — motion gained nothing by becoming one')
+      .toBeGreaterThan(0);
+    for (const m of MOTION_PACKS) {
+      if (m.id === 'default') continue;
+      const file = FILES[m.id];
+      expect(file, `motion/${m.id}.css is missing`).toBeTruthy();
+      expect(/--motion-ease:/.test(file), `${m.id}: eases=${!!m.eases} disagrees with its file`)
+        .toBe(!!m.eases);
+    }
+  });
+
+  it('and no item reaches for the floor', () => {
+    // The reduced-motion floor is the only `!important` in the system.
+    for (const [id, file] of Object.entries(FILES))
+      expect(file, `motion/${id}.css uses !important`).not.toMatch(/!important/);
   });
 });

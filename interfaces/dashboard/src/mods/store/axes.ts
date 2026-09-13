@@ -54,6 +54,7 @@ export const AXIS_UI: Readonly<Record<string, AxisUI>> = {
   icons:     { label: 'Icons',             home: { theme: ['iconPack'] } },
   material:  { label: 'Material',          home: { theme: ['material'] } },
   corners:   { label: 'Corners',           home: { theme: ['radius'] } },
+  motion:    { label: 'Motion',            home: { theme: ['motion'] } },
   wallpaper: { label: 'Wallpaper',         home: { theme: ['wallpaper', 'wallpaperPage'] } },
   cursor:    { label: 'Cursor',            home: { theme: ['cursor'] } },
   shader:    { label: 'Shaders',           home: { theme: ['shader'] } },

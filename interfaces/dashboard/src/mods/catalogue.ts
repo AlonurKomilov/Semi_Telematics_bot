@@ -37,6 +37,7 @@ import type { ThemeMode } from './theme/palette';
 import type { ModRadius } from '../preferences/registry';
 import { MOD_FIELD_CATEGORY, CATEGORY_IDS } from './taxonomy';
 import type { ItemMeta } from './store/items/meta';
+import { MOTION_PACKS, MOTION_IDS } from './store/items/motion';
 
 export interface ThemePack extends ItemMeta {
   /** `--primary` per mode. The canvas comes from the mode, not the pack;
@@ -57,7 +58,9 @@ export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as
 // Materials live in `mods/store/items/material/`; the contract is `mods/material.ts`.
 /** How fast the app moves. A multiplier on every transition — see the
  *  motion tokens in index.css for why the infinite loops are excluded. */
-export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
+/** Derived from the shelf: a speed that ships is a speed the picker
+ *  offers, the sanitiser accepts and a preset may name. */
+export const MOD_MOTIONS = MOTION_IDS;
 /**
  * What each setting does to a duration, so the panel can say it.
  *
@@ -72,11 +75,10 @@ export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
  * ways: calm is 1.6 because it takes longer. Anything showing this to a
  * person has to invert it — see `motionPercent`.
  */
-export const MOTION_SCALE: Readonly<Record<(typeof MOD_MOTIONS)[number], number>> = {
-  calm: 1.6,
-  default: 1,
-  snappy: 0.6,
-};
+/** Each item's own number, gathered — the stylesheet is held to these
+ *  by `theme/motion.test.ts`. */
+export const MOTION_SCALE: Readonly<Record<string, number>> =
+  Object.fromEntries(MOTION_PACKS.map((m) => [m.id, m.scale]));
 
 /**
  * The intensity a person reads, as a percentage.
@@ -343,8 +345,8 @@ export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
   shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
   sound: 'item', keys: 'item',
-  radius: 'item',
-  size: 'value', motion: 'value', icons: 'value',
+  radius: 'item', motion: 'item',
+  size: 'value', icons: 'value',
   entrance: 'value', wallpaperLive: 'value',
 } as const satisfies Record<keyof Omit<Mod, keyof ItemMeta>, 'item' | 'value'>;
 

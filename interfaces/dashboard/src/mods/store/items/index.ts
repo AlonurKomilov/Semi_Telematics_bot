@@ -19,6 +19,7 @@ import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
 import { ICON_PACKS } from './icons';
 import { CORNERS } from './corners';
+import { MOTION_PACKS } from './motion';
 
 export interface ItemAxis {
   /** The folder under `mods/packs/`, and the noun a tile is filed under. */
@@ -33,6 +34,7 @@ export const ITEM_AXES: readonly ItemAxis[] = [
   { axis: 'icons',     items: ICON_PACKS },
   { axis: 'material',  items: MATERIAL_PACKS },
   { axis: 'corners',   items: CORNERS },
+  { axis: 'motion',    items: MOTION_PACKS },
   { axis: 'wallpaper', items: WALLPAPERS },
   { axis: 'cursor',    items: CURSOR_PACKS },
   { axis: 'shader',    items: SHADER_PACKS },

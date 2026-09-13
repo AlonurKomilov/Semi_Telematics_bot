@@ -13,7 +13,7 @@ import type { Mod } from '../../../catalogue';
  * a shift, things that move fast read as things that need answering.
  */
 export const nightHaul: Mod = {
-  id: 'night-haul', label: 'Night Haul', accent: 'azure', motion: 'calm',
+  id: 'night-haul', label: 'Night Haul', accent: 'azure', motion: 'night-haul',
   wallpaper: 'night-haul', wallpaperPage: 'night-haul',
   sound: 'night-haul', keys: 'night-haul',
   description: 'For the end of a long shift — low light, low sound, nothing in a hurry',

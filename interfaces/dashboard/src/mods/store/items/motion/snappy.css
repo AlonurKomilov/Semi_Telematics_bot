@@ -1,0 +1,3 @@
+/* Snappy — every duration 0.6x, for a hand that is already ahead of the
+   screen. The reduced-motion floor still ends the loop. */
+  :root[data-motion="snappy"] { --motion-scale: 0.6; }
