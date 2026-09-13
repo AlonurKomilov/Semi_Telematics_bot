@@ -238,6 +238,7 @@ async def run_all(conn) -> None:
     await migrate_plan_price_rollouts(conn)
     await migrate_subscription_billed_quantity(conn)
     await migrate_account_usage_tiles(conn)
+    await migrate_poi_points(conn)
     await migrate_plan_requests(conn)
     await migrate_plan_offers(conn)
     await migrate_kb_platform_review(conn)
@@ -5426,6 +5427,63 @@ async def migrate_subscription_billed_quantity(conn) -> None:
         # missing column the same as NULL (no baseline), and the error
         # is logged for the operator to act on.
         logger.exception("migrate_subscription_billed_quantity failed")
+
+async def migrate_poi_points(conn) -> None:
+    """The built-in POI layers, imported from OSM and served from here.
+
+    They describe things that do not move — a truck stop is where it was
+    last year — so asking a live query service for them on every map pan
+    was the wrong shape.  Measured 2026-09-13: all three reachable
+    Overpass mirrors refused a one-node query inside the same hour, and
+    the map's layers depend on one answering within seconds.
+
+    PLATFORM-owned, no account_id: a fuel stop is the same fuel stop for
+    every account, like ``vendor_directory``.  Keyed by OSM identity so a
+    re-import updates rather than duplicates.  ``poi_imports`` carries the
+    per-layer date the map shows and the flag that says whether the last
+    run finished — a half-run must never be read as "this layer is
+    empty".
+
+    Idempotent; a new table, so this is the whole of it.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS poi_points (
+                layer       TEXT             NOT NULL,
+                osm_type    TEXT             NOT NULL,
+                osm_id      BIGINT           NOT NULL,
+                lat         DOUBLE PRECISION NOT NULL,
+                lng         DOUBLE PRECISION NOT NULL,
+                name        TEXT             NOT NULL DEFAULT '',
+                props       TEXT             NOT NULL DEFAULT '{}',
+                updated_at  TEXT             NOT NULL DEFAULT (now()::text),
+                PRIMARY KEY (layer, osm_type, osm_id)
+            )
+        """)
+        # The map's only query shape: one layer, one viewport.  Layer
+        # first because it is the equality, then the two ranges.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_poi_points_layer_bbox "
+            "ON poi_points(layer, lat, lng)")
+        # The sweep that removes what left OSM reads this.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_poi_points_layer_updated "
+            "ON poi_points(layer, updated_at)")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS poi_imports (
+                layer        TEXT    PRIMARY KEY,
+                imported_at  TEXT    NOT NULL,
+                points       INTEGER NOT NULL DEFAULT 0,
+                ok           INTEGER NOT NULL DEFAULT 0,
+                note         TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+    except Exception:
+        # Boot must not fail for this: without the tables the map falls
+        # back to the Overpass path it has always used, which is exactly
+        # the transition this feature is replacing and not a regression.
+        logger.exception("migrate_poi_points failed")
+
 
 async def migrate_account_usage_tiles(conn) -> None:
     """Map tiles, per account, per day — beside the request count and
