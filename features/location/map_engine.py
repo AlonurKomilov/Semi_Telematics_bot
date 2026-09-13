@@ -251,20 +251,83 @@ def reset_sessions_for_tests() -> None:
 
 
 def tile_wire(map_type: str, entry: dict, key: str) -> dict:
-    """What a browser needs to add the layer: the template Leaflet
-    expands, plus what its attribution control must show.
+    """What a browser needs to add the layer.
 
-    The key rides in the template because Google requires it on every
-    tile request; it is the same public, referrer-restricted key the
-    map already needs, not a second secret.
+    TWO templates, because two kinds of client ask.
+
+    ``tile_url`` goes straight to Google and carries the key, which
+    Google requires on every tile request.  It is the same public,
+    referrer-restricted key the map already needs, not a second secret
+    — and the restriction is what makes it safe to publish.
+
+    ``proxy_tile_url`` goes through us instead, and exists because that
+    restriction has a hard edge: a client whose page is not on one of
+    the allowed origins sends NO ``Referer`` at all, and Google answers
+    every tile with ``403 Requests from referer <empty> are blocked``.
+    A browser-extension page is exactly that — Chrome never sends a
+    ``chrome-extension://`` origin to an https host — so the panel drew
+    a grey rectangle while its session, its attribution and its
+    vehicles were all fine.  Measured, not guessed: with the referer
+    200, without it 403.
+
+    The two ways out were to teach the extension to forge the header,
+    or to let the server (which already sends it, right below) fetch
+    the tile.  Forging it would have meant shipping a header-rewriting
+    rule and the key together to every install, which turns a
+    restricted key into an unrestricted one for anybody who reads both.
+    So: the key stays here, and a client that cannot carry a referer
+    asks us.
     """
     query = f"session={entry['session']}&key={key}"
     return {
         "type": map_type,
         "tile_url": f"{TILE_URL}?{query}",
         "viewport_url": f"{VIEWPORT_URL}?{query}",
+        # Relative, and deliberately: the caller already knows which
+        # API it is talking to, and an absolute URL here would bake
+        # this deployment's host into a template the client caches.
+        "proxy_tile_url": f"/map/tile?type={map_type}&z={{z}}&x={{x}}&y={{y}}",
+        "proxy_copyright_url": f"/map/tile-copyright?type={map_type}",
         "tile_size": entry["tile_size"],
         "image_format": entry["image_format"],
         "expiry": entry["expiry"],
         "max_zoom": 22,
     }
+
+
+async def fetch_tile(map_type: str, z: int, x: int, y: int, key: str) -> tuple[bytes, str]:
+    """One tile, fetched with the referer Google's key restriction wants.
+
+    Raises ``TileSessionError`` for anything that is not a picture, so
+    the caller answers with a status rather than handing a browser an
+    error document dressed as a PNG — which is how the OpenStreetMap
+    block went unnoticed for a day.
+    """
+    import httpx
+    entry = await tile_session(map_type, key)
+    url = TILE_URL.format(z=z, x=x, y=y)
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(url, params={"session": entry["session"], "key": key},
+                        headers={"Referer": SESSION_REFERER})
+    if r.status_code != 200:
+        raise TileSessionError(
+            f"Google refused a {map_type} tile: HTTP {r.status_code} {r.text[:200]}")
+    ctype = r.headers.get("content-type", "")
+    if not ctype.startswith("image/"):
+        raise TileSessionError(f"Google answered a {map_type} tile with {ctype!r}")
+    return r.content, ctype
+
+
+async def fetch_copyright(map_type: str, viewport: dict, key: str) -> str:
+    """Google's per-view copyright line, fetched the same way and for
+    the same reason — the browser cannot ask for it either."""
+    import httpx
+    entry = await tile_session(map_type, key)
+    params = {"session": entry["session"], "key": key, **viewport}
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get(VIEWPORT_URL, params=params,
+                        headers={"Referer": SESSION_REFERER})
+    if r.status_code != 200:
+        raise TileSessionError(
+            f"Google refused the viewport line: HTTP {r.status_code} {r.text[:200]}")
+    return str(r.json().get("copyright") or "")

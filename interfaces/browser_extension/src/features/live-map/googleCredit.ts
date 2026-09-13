@@ -19,6 +19,8 @@
  */
 import type L from 'leaflet';
 
+import { apiFetch } from '../../api/client';
+
 export interface CreditState {
   control: L.Control | null;
   /** Google's viewport service for the CURRENT session, or ''. */
@@ -88,7 +90,11 @@ export async function refreshCredit(map: L.Map, state: CreditState): Promise<voi
     map.getZoom(),
   );
   try {
-    const r = await fetch(`${url}&${q}`);
+    // Through our API, for the same reason the tiles are: this page
+    // sends no Referer, and Google's viewport service is behind the
+    // same referrer-restricted key.  `apiFetch` supplies the token and
+    // the base; `url` is the relative path the session handed us.
+    const r = await apiFetch(`${url}&${q}`);
     if (!r.ok) return;
     const j = await r.json() as { copyright?: string };
     // The session may have been swapped while this was in the air; a

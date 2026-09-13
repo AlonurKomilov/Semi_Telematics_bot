@@ -20,6 +20,8 @@ const mocked = apiJSON as unknown as ReturnType<typeof vi.fn>;
 // rejects — and it did, while the suite stayed green.
 const session = (expiry: number) => ({
   type: 'roadmap' as const, tile_url: 'https://t/{z}/{x}/{y}', viewport_url: 'https://v',
+  proxy_tile_url: '/map/tile?type=roadmap&z={z}&x={x}&y={y}',
+  proxy_copyright_url: '/map/tile-copyright?type=roadmap',
   tile_size: 256, image_format: 'png', expiry, max_zoom: 22,
 });
 

@@ -34,8 +34,20 @@ export interface EngineWire {
 
 export interface TileSession {
   type: TileType;
+  /** Straight to Google, key in the query.  The PANEL MUST NOT USE
+   *  THIS.  The key is HTTP-referrer restricted and a
+   *  `chrome-extension://` page sends no Referer at all, so Google
+   *  answers every one of these `403 Requests from referer <empty> are
+   *  blocked` — a grey rectangle with a working session behind it.
+   *  Kept in the type because the dashboard, whose pages ARE on an
+   *  allowed origin, uses it and pays no proxy bandwidth for the
+   *  privilege. */
   tile_url: string;
   viewport_url: string;
+  /** Through our API, which holds the key and sends the referer the
+   *  restriction wants.  This is the panel's path. */
+  proxy_tile_url: string;
+  proxy_copyright_url: string;
   tile_size: number;
   image_format: string;
   /** Unix seconds. */

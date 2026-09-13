@@ -224,8 +224,17 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     #                        Google, so the button was permanently
     #                        "unavailable" — an offer that could not be
     #                        taken, which is worse than no offer.
+    #   /map/tile            ONE Google tile, fetched by the server.
+    #   /map/tile-copyright  and the per-view line its terms require.
+    #                        Both exist because the platform key is
+    #                        HTTP-referrer restricted and an extension
+    #                        page sends no Referer at all: Google
+    #                        answers every direct tile request 403.
+    #                        Measured, not assumed — with the header
+    #                        200, without it "Requests from referer
+    #                        <empty> are blocked".
     "/map/engine", "/map/tiles/session", "/map/pois", "/map/custom-layers",
-    "/map/config",
+    "/map/config", "/map/tile", "/map/tile-copyright",
     "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
     # The three write verbs the panel may perform, and only these.
     # TRANSFER and REMOVE are absent on purpose: they are how a loss gets

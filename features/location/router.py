@@ -187,6 +187,120 @@ async def map_tiles_session(
     return map_engine.tile_wire(type, entry, engine["key"])
 
 
+@router.get("/tile")
+async def map_tile(
+    type: str = Query("roadmap"),
+    z: int = Query(..., ge=0, le=22),
+    x: int = Query(..., ge=0),
+    y: int = Query(..., ge=0),
+    user: dict = Depends(require_permission("can_view_location")),
+):
+    """One Google tile, fetched by us instead of by the browser.
+
+    This exists for one measured reason.  The platform key is protected
+    by an HTTP-referrer restriction, and a client whose page is not on
+    an allowed origin sends no ``Referer`` at all — Google then answers
+    every tile ``403 Requests from referer <empty> are blocked``.  The
+    browser extension is exactly that case: Chrome never sends a
+    ``chrome-extension://`` origin to an https host, so the panel drew
+    a grey rectangle while its session and its attribution were fine.
+
+    The alternative was to ship a header-rewriting rule to every
+    install alongside the key, which would have turned a restricted key
+    into an unrestricted one for anybody who read both.  So the key
+    stays on the server and the tile comes through it.
+
+    Costs OUR bandwidth, not Google's count: the same tiles are fetched
+    either way.  Only clients that cannot carry a referer should use
+    this — see ``proxy_tile_url`` in ``map_engine.tile_wire``.
+    """
+    from fastapi import Response
+    from features.location import map_engine
+
+    if type not in map_engine.TILE_TYPES:
+        raise HTTPException(422, f"unknown tile type {type!r}")
+    await _require_google(user)
+    try:
+        content, ctype = await map_engine.fetch_tile(
+            type, z, x, y, map_engine.google_key())
+    except map_engine.TileSessionError as e:
+        # 502, not 500: the refusal is Google's, and a client that sees
+        # its own server blamed goes looking in the wrong place.
+        raise HTTPException(status_code=502, detail=str(e))
+    # A tile at a given z/x/y does not change between sessions, and the
+    # cap is Google's own guidance for caching its tiles.  Private,
+    # because the response rode an account's permission to get here.
+    return Response(content, media_type=ctype,
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.get("/tile-copyright")
+async def map_tile_copyright(
+    type: str = Query("roadmap"),
+    zoom: int = Query(..., ge=0, le=22),
+    north: float = Query(..., ge=-85, le=85),
+    south: float = Query(..., ge=-85, le=85),
+    east: float = Query(...),
+    west: float = Query(...),
+    user: dict = Depends(require_permission("can_view_location")),
+):
+    """The per-view copyright line Google's terms require, for a client
+    that cannot ask Google directly — same reason as the tile above.
+
+    An empty line rather than an error when Google will not answer: an
+    attribution that is briefly stale is a smaller wrong than a map
+    that stops drawing over a credit lookup.
+    """
+    from features.location import map_engine
+
+    if type not in map_engine.TILE_TYPES:
+        raise HTTPException(422, f"unknown tile type {type!r}")
+    await _require_google(user)
+    try:
+        line = await map_engine.fetch_copyright(
+            type, {"zoom": zoom, "north": north, "south": south,
+                   "east": east, "west": west}, map_engine.google_key())
+    except map_engine.TileSessionError:
+        line = ""
+    return {"copyright": line}
+
+
+#: How long the answer to "is this account on Google" is trusted.  A
+#: tile request must not cost a tenant-DB read: one view is a dozen
+#: tiles and a drag is hundreds.  Sixty seconds is short enough that
+#: switching the engine off stops the spending within a minute, and
+#: long enough that a pan costs one lookup.
+_ENGINE_TTL_S = 60.0
+_engine_seen: dict[int, tuple[float, str]] = {}
+
+
+async def _require_google(user: dict) -> None:
+    """Refuse a tile to an account that did not choose Google.
+
+    The permission says this person may see a map; it does not say the
+    account agreed to pay Google for one.  Those are different
+    questions and the money one is answered here.
+    """
+    import time
+    from features.location import map_engine
+    from infra.platform import get_tenant_db
+
+    account_id = int(user["account_id"])
+    hit = _engine_seen.get(account_id)
+    now = time.time()
+    if hit and now - hit[0] < _ENGINE_TTL_S:
+        engine = hit[1]
+    else:
+        tenant = await get_tenant_db(account_id)
+        if tenant is None:
+            raise HTTPException(status_code=503, detail="tenant DB unavailable")
+        engine = (await map_engine.for_account(account_id, tenant))["engine"]
+        _engine_seen[account_id] = (now, engine)
+    if engine != map_engine.GOOGLE:
+        raise HTTPException(
+            status_code=403, detail="This account draws its map on OpenStreetMap.")
+
+
 @router.get("/vehicles/live")
 async def map_vehicles_live(
     company: str | None = Query(None),

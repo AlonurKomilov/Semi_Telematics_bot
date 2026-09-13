@@ -11,6 +11,7 @@
 import type * as L from 'leaflet';
 
 import { GOOGLE_TYPE, tileSession, type MapEngine } from './engine';
+import { proxyTileLayer } from './proxyTiles';
 import { LABELS, TILES, type MapType } from './tiles';
 
 export interface BaseState {
@@ -57,7 +58,13 @@ export async function applyBase(
     const sess = await tileSession(GOOGLE_TYPE[type]);
     if (mine !== state.seq) return { drew: 'google', viewportUrl: '' };  // superseded
     if (sess) {
-      layer = Leaf.tileLayer(sess.tile_url, {
+      // `proxy_tile_url`, never `tile_url`.  The key Google's direct
+      // template carries is HTTP-referrer restricted, and this page is
+      // `chrome-extension://…`, which Chrome sends no Referer for — so
+      // every direct tile comes back 403 and the map is a grey
+      // rectangle with a perfectly good session behind it.  See
+      // proxyTiles.ts for why the fix is here and not a forged header.
+      layer = proxyTileLayer(Leaf, sess.proxy_tile_url, {
         maxZoom: sess.max_zoom || 22,
         tileSize: sess.tile_size || 256,
         // Google's line is a viewport answer, not a fixed string, so the
@@ -66,7 +73,7 @@ export async function applyBase(
         attribution: '',
       });
       drew = 'google';
-      viewportUrl = sess.viewport_url;
+      viewportUrl = sess.proxy_copyright_url;
     }
   }
 
