@@ -10,7 +10,9 @@ from __future__ import annotations
 from capabilities.ai.tools.registry import (
     register_tool, register_action_executor, tool_propose, tool_error,
 )
-from capabilities.ai.tools.scope import filter_to_scope, scope_vehicle_set
+from capabilities.ai.tools.scope import (
+    filter_to_scope, row_in_scope, scope_vehicle_set,
+)
 
 
 # The alert_type values the store actually holds.  Kept beside the
@@ -240,12 +242,20 @@ async def acknowledge_alerts(tool_args, samsara_client,
     # user can't approve.
     scope = tool_args.get("_scope_vehicles")
     if scope is not None and db is not None and account_id is not None:
-        allowed = {str(v).strip().lower() for v in scope if v}
-        veh_by_id = await db.get_alert_history_vehicles(account_id, ids)
-        out_of_scope = [
-            i for i in ids
-            if i in veh_by_id and veh_by_id[i].strip().lower() not in allowed
-        ]
+        # Decide by the same ladder the READ path uses.
+        #
+        # This compared lowercased NAMES while get_alert_history admits
+        # rows by the identity rungs, so the two disagreed in both
+        # directions: a caller was shown an alert on a truck the provider
+        # had renamed and then refused the ack on it ("outside your
+        # access", for their own truck), and two same-numbered trucks in
+        # different companies were indistinguishable the other way.
+        rows_by_id = await db.get_alert_history_scope_rows(account_id, ids)
+        kept = {
+            i for i, row in rows_by_id.items()
+            if row_in_scope(row, tool_args, key="vehicle_name")
+        }
+        out_of_scope = [i for i in ids if i in rows_by_id and i not in kept]
         if out_of_scope:
             n_bad = len(out_of_scope)
             return tool_error(
@@ -277,11 +287,22 @@ async def _execute_acknowledge_alerts(payload, account_id, user_context, db):
     uid = int((user_context or {}).get("user_id") or 0)
     # None = unrestricted; a list = only those vehicles ([] = none).
     allowed = _scoped_vehicle_set(user_context, (user_context or {}).get("role"))
+    # The provider ids beside the names, so the SQL can decide a row that
+    # carries one by that rather than by its label. The router resolves
+    # this ladder on every turn and actions.py forwards the context.
+    allowed_ids: list[str] = []
+    for entry in ((user_context or {}).get("scoped_vehicle_ladder") or {}).get(
+            "identities", []) or []:
+        if isinstance(entry, (list, tuple)) and len(entry) > 1 and entry[1]:
+            allowed_ids.append(str(entry[1]).strip())
+        elif isinstance(entry, dict) and entry.get("external_id"):
+            allowed_ids.append(str(entry["external_id"]).strip())
     acked = 0
     for aid in ids:
         try:
             row = await db.acknowledge_alert_history(
-                int(aid), uid, account_id, allowed_vehicle_names=allowed)
+                int(aid), uid, account_id, allowed_vehicle_names=allowed,
+                allowed_vehicle_ids=allowed_ids or None)
             if row is not None:
                 acked += 1
         except (TypeError, ValueError):

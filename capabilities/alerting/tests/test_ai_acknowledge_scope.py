@@ -47,7 +47,7 @@ class TestStorageScope:
             aid, 7, acct, allowed_vehicle_names=["228"])
         assert got is None
         # And the row is still active (not cleared behind the scope check).
-        vmap = await pg_db.get_alert_history_vehicles(acct, [aid])
+        vmap = await pg_db.get_alert_history_scope_rows(acct, [aid])
         assert aid in vmap  # still present/active
 
     async def test_in_scope_id_is_cleared(self, pg_db):

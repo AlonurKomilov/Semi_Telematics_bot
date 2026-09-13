@@ -343,6 +343,7 @@ class AlertsMixin(_MixinBase):
     async def acknowledge_alert_history(
         self, history_id: int, user_id: int, account_id: int,
         *, allowed_vehicle_names: list[str] | None = None,
+        allowed_vehicle_ids: list[str] | None = None,
     ) -> Optional[dict]:
         """Clear an `alert_history` row (the canonical logical alert) and
         cascade-ack every related `alert_acknowledgments` delivery row.
@@ -360,6 +361,14 @@ class AlertsMixin(_MixinBase):
         ``None`` = unrestricted; a list = only alerts whose ``vehicle_name``
         matches (case-insensitive); ``[]`` = nothing.  An out-of-scope id
         returns None — the same idempotent-skip path as an unknown id.
+
+        ``allowed_vehicle_ids`` carries the caller's PROVIDER vehicle ids
+        and, when given, takes precedence per row exactly as the identity
+        ladder does: a row that HAS a ``vehicle_id`` is decided by it, and
+        only a row without one falls back to the name. Names alone could
+        not tell two same-numbered trucks apart, so this SQL could clear
+        the twin's alerts — and it refused the caller's own truck the day
+        the provider renamed it.
         """
         now = self._now()
         # Scope predicate, appended to BOTH the guard SELECT and the UPDATE so
@@ -368,11 +377,26 @@ class AlertsMixin(_MixinBase):
         scope_args: tuple = ()
         if allowed_vehicle_names is not None:
             names = [n.strip().lower() for n in allowed_vehicle_names if n and n.strip()]
-            if not names:
+            ids = [str(i).strip() for i in (allowed_vehicle_ids or []) if str(i).strip()]
+            if not names and not ids:
                 return None   # scoped to nothing — fail closed
-            placeholders = ",".join("?" for _ in names)
-            scope_sql = f" AND LOWER(vehicle_name) IN ({placeholders})"
-            scope_args = tuple(names)
+            if ids:
+                # The ladder's precedence, in SQL: where the row carries a
+                # provider id that id decides; a row without one falls
+                # back to the name.
+                id_marks = ",".join("?" for _ in ids)
+                name_marks = ",".join("?" for _ in names) if names else "NULL"
+                scope_sql = (
+                    f" AND ((COALESCE(vehicle_id, '') <> '' "
+                    f"       AND vehicle_id IN ({id_marks})) "
+                    f"   OR (COALESCE(vehicle_id, '') = '' "
+                    f"       AND LOWER(vehicle_name) IN ({name_marks})))"
+                )
+                scope_args = tuple(ids) + tuple(names)
+            else:
+                placeholders = ",".join("?" for _ in names)
+                scope_sql = f" AND LOWER(vehicle_name) IN ({placeholders})"
+                scope_args = tuple(names)
         cur = await self._db.execute(
             "SELECT * FROM alert_history "
             "WHERE id = ? AND account_id = ? AND status = 'active'" + scope_sql,
@@ -405,27 +429,39 @@ class AlertsMixin(_MixinBase):
         await self._db.commit()
         return history
 
-    async def get_alert_history_vehicles(
+    async def get_alert_history_scope_rows(
         self, account_id: int, history_ids: list[int],
-    ) -> dict[int, str]:
-        """Map each `alert_history` id (within this account) to its
-        `vehicle_name`.  Used to scope-check an acknowledge request BEFORE
-        proposing it — a scoped caller may only ack their own vehicles'
-        alerts.  Unknown / foreign ids are simply absent from the result
-        (account_id already filters cross-tenant ids out)."""
+    ) -> dict[int, dict]:
+        """Map each ``alert_history`` id to the row the scope ladder needs.
+
+        Used to scope-check an acknowledge request BEFORE proposing it —
+        a scoped caller may only ack their own vehicles' alerts. Unknown
+        and foreign ids are simply absent (``account_id`` already filters
+        cross-tenant ids out).
+
+        Returns ``vehicle_id`` beside the name, because the name alone
+        cannot answer the question: the READ path admits these rows by
+        the identity ladder, so a caller was shown an alert on a truck
+        the provider had renamed and then REFUSED the ack on it, and two
+        same-numbered trucks in different companies were indistinguishable
+        the other way.
+        """
         ids = [int(i) for i in history_ids][:50]
         if not ids:
             return {}
         placeholders = ",".join("?" for _ in ids)
         rows = await self.read_all(
-            f"SELECT id, vehicle_name FROM alert_history "
+            f"SELECT id, vehicle_name, vehicle_id FROM alert_history "
             f"WHERE account_id = ? AND id IN ({placeholders})",
             (account_id, *ids),
         )
-        out: dict[int, str] = {}
+        out: dict[int, dict] = {}
         for r in rows:
             d = dict(r)
-            out[int(d["id"])] = d.get("vehicle_name") or ""
+            out[int(d["id"])] = {
+                "vehicle_name": d.get("vehicle_name") or "",
+                "vehicle_id": d.get("vehicle_id") or "",
+            }
         return out
 
     async def get_alert_history(
