@@ -179,6 +179,12 @@ KNOWN_AUDIENCES = frozenset({EXTENSION_AUDIENCE, SETUP_AUDIENCE})
 # reads False for it (deps._narrow_to_token_scope).
 EXTENSION_SCOPE: tuple[str, ...] = (
     "can_view_live_map", "can_location_map", "can_location_vehicle",
+    # The overlays' own view verb.  A NEW flag, not a rename — so a token
+    # minted before this carries no alias for it and its holder gets a
+    # 403 on the layers until the token refreshes or the panel
+    # reconnects.  Eight hours at the outside; the map itself is
+    # untouched either way.
+    "can_view_poi",
     "can_view_inventory", "can_manage_inventory",
     # The config family, both halves.  The FOCUS is the narrow one — it
     # changes what one role is shown, never what a truck is short, and it

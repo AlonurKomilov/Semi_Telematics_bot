@@ -121,11 +121,20 @@ ENTRIES: tuple[Entry, ...] = (
     _e("tours", kind="service", modules=["core"], opens=["can_view_tours"],
        note="the interactive walkthroughs — a service like Mods: per person, no account data, withheld per role"),
     _e("live_map", tier="shared", modules=["core"], opens=["can_view_live_map"],
-       flags=["can_view_live_map", "can_manage_live_map", "can_manage_poi_layers"],
+       flags=["can_view_live_map", "can_manage_live_map"],
        note="named for the product: the backend package and the flag now "
             "agree with this id (features/live_map/, can_view_live_map). "
             "`can_manage_live_map` is reserved — nothing reads it yet, and "
             "its matrix row says so"),
+    _e("poi", tier="shared", modules=["core"], opens=["can_view_poi"],
+       flags=["can_view_poi", "can_manage_poi_layers"],
+       nav=False, parent="live_map",
+       note="the map's overlays — fuel, DEF, parking, showers, weigh "
+            "stations, rest areas, the repair-shop directory and an "
+            "account's own layers.  A sub-feature of Live Map rather than a "
+            "page: it has no route, it is drawn ON the map.  It became one "
+            "because seeing the overlays used to ride can_view_location, so "
+            "an owner could not withhold them without withholding the map"),
     _e("vehicles", tier="shared", modules=["core"], opens=["can_view_vehicles"],
        flags=["can_view_vehicles", "can_manage_vehicles",
               "can_view_health", "can_view_faults", "can_view_fuel", "can_view_efficiency"]),

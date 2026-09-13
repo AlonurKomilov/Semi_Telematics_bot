@@ -9481,3 +9481,56 @@ async def migrate_kb_platform_review(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 209: public KB articles need platform review")
+
+
+@_register("210_poi_view_follows_the_map")
+async def migrate_poi_view_follows_the_map(conn) -> None:
+    """POI layers became their own sub-feature, so seeing them is now
+    ``can_view_poi`` rather than a free ride on the Live Map grant.
+
+    NOBODY MAY LOSE WHAT THEY HAD.  A stored role row that grants the
+    live map gets the new flag set true, so the split is invisible on
+    the day it lands and withholding the overlays becomes an owner's
+    CHOICE rather than an impossibility.  A row that never granted the
+    map is left alone: it had no overlays to keep.
+
+    The map grant is looked for under every name it has carried — the
+    canonical one and the two legacy halves — because this runs against
+    rows written across the verb/scope migration, and reading only the
+    current name would silently skip the older ones.
+
+    Idempotent: a row that already carries the flag is not rewritten.
+    A missed row degrades to the role's code default, which seeds the
+    flag ON for every role that has the map.
+    """
+    import json as _json
+    MAP_GRANT = ("can_view_live_map", "can_view_location",
+                 "can_location_map", "can_location_vehicle")
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        touched = 0
+        for r in await cur.fetchall():
+            row = dict(r)
+            try:
+                perms = _json.loads(row.get("permissions") or "{}")
+            except (TypeError, ValueError):
+                continue
+            if "can_view_poi" in perms:
+                continue
+            if not any(perms.get(name) for name in MAP_GRANT):
+                continue
+            perms["can_view_poi"] = True
+            await conn.execute(
+                "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                (_json.dumps(perms), row["id"]),
+            )
+            touched += 1
+        await conn.commit()
+        logger.info("Migration 210: can_view_poi granted to %d stored roles "
+                    "that already had the live map", touched)
+    except Exception as e:
+        logger.error("Migration 210 poi view grant failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

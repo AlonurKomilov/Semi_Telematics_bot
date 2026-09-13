@@ -184,6 +184,12 @@ TAXONOMY: dict[str, Verdict] = {
     "can_manage_storage":           Verdict(M, "can_manage_storage"),
     "can_manage_work_hours":        Verdict(M, "can_manage_work_hours"),
     "can_manage_billing":           Verdict(M, "can_manage_billing"),
+    # POI layers, both halves.  The MANAGE half already existed; the
+    # VIEW half is new, and it is the whole point of the split: until
+    # now seeing POI layers rode `can_view_location`, so an owner
+    # could not withhold the overlays without withholding the map
+    # itself.  Grammatical from birth, so the target is the name.
+    "can_view_poi":                 Verdict(V, "can_view_poi"),
     "can_manage_poi_layers":        Verdict(M, "can_manage_poi_layers"),
     "can_manage_driver_docs":       Verdict(M, "can_manage_driver_docs"),
     "can_manage_drivers":           Verdict(M, "can_manage_drivers"),

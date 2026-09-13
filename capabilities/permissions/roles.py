@@ -178,6 +178,10 @@ class FeatureSet:
     can_view_live_map: bool = False      # live location map (all trucks)
     # Reserved: no map setting reads it yet — see the taxonomy note.
     can_manage_live_map: bool = False    # manage the live map itself
+    # The overlays' own view verb.  Seeded ON wherever the map is, so
+    # nobody loses what they had the day it split out; withholding it
+    # is now an owner's choice rather than an impossibility.
+    can_view_poi: bool = False           # see POI layers on the map
     can_view_fuel_cost: bool = False         # fuel cost tracker
     can_view_routes: bool = False         # route replay (all trucks)
     can_view_cost_per_mile: bool = False     # cost-per-mile dashboard
@@ -551,6 +555,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_cost_reports=True,
         can_view_scorecards=True,
         can_view_live_map=True,
+        can_view_poi=True,
         can_view_fuel_cost=True,
         can_view_routes=True,
         can_view_cost_per_mile=True,
@@ -590,6 +595,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_cost_reports=True,
         can_view_scorecards=True,
         can_view_live_map=True,
+        can_view_poi=True,
         can_view_fuel_cost=True,
         can_view_routes=True,
         can_view_cost_per_mile=True,
@@ -629,6 +635,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_cost_reports=True,
         can_view_scorecards=True,
         can_view_live_map=True,
+        can_view_poi=True,
         can_view_fuel_cost=True,
         can_view_routes=True,
         can_view_cost_per_mile=True,
@@ -659,6 +666,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_work_orders=True, can_view_work_orders=True,
         can_view_scorecards=True,
         can_view_live_map=True,
+        can_view_poi=True,
         can_view_fuel_cost=False,
         can_view_routes=True,
         can_view_cost_per_mile=False,
@@ -692,6 +700,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_maintenance=False, can_view_maintenance=False,
         can_view_scorecards=True,
         can_view_live_map=True,
+        can_view_poi=True,
         can_view_fuel_cost=False,
         can_view_routes=True,
         can_view_cost_per_mile=False,
@@ -724,6 +733,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_vehicles=True,                  # Which vehicle a driver is on
         can_view_inventory=True,
         can_view_live_map=True,                 # Where drivers are right now
+        can_view_poi=True,
         can_view_events=True,                   # Safety events drive coaching
         can_view_scorecards=True,                # Driver behaviour insight
         can_view_risk_reports=True,              # Personnel risk reporting
@@ -767,6 +777,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_parking=True,  # driver: assigned vehicle only
         can_view_scorecards=True,
         can_view_live_map=True,
+        can_view_poi=True,
         can_view_fuel_cost=False,
         can_view_routes=True,
         can_view_cost_per_mile=False,

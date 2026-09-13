@@ -173,7 +173,12 @@ export const PERM_GROUPS: PermGroup[] = [
       // The row is the OBJECT, the column supplies the verb: POI layers
       // are a flag-gated part of Live Map's surface (features/live_map/
       // pois.py — a file, not a home of its own), manage-only.
-      { key: 'can_manage_poi_layers', kind: 'component', label: 'POI Layers', indented: true, description: 'Custom map overlays — the Live Map grant shows them, this one edits them' },
+      // POI layers are their own sub-feature now (registry id `poi`,
+      // parent `live_map`), which is why they have a VIEW row at all:
+      // seeing them used to ride the Live Map grant, so an owner could
+      // not withhold the overlays without withholding the map.
+      { key: 'can_view_poi', kind: 'subfeature', label: 'POI Layers', indented: true, description: 'Fuel, DEF, truck parking, showers, weigh stations, rest areas and repair shops, drawn on the map' },
+      { key: 'can_manage_poi_layers', kind: 'action', label: 'Manage', indented: true, description: "Create and edit the account's own POI layers — the row above shows them, this one authors them" },
       { key: 'can_view_vehicles',  kind: 'feature', label: 'Vehicles' },
       { key: 'can_manage_vehicles', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
       // Filing a truck's papers is NOT the grant that renames and
