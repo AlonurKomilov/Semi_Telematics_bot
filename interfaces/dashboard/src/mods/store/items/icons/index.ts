@@ -15,10 +15,10 @@
  * rather than a folder per pack so the chunk keeps the pack's name.
  */
 import type { IconPackModule } from '../../../../lib/icons/pack';
-import type { PackMeta } from '../meta';
+import type { ItemMeta } from '../meta';
 import * as lucide from './lucide';
 
-export interface IconPackDef extends PackMeta {
+export interface IconPackDef extends ItemMeta {
   /** Fetches the module. The base pack resolves at once; the rest are
    *  their own chunk, paid for by the people who asked for them. */
   readonly load: () => Promise<IconPackModule>;

@@ -3,12 +3,12 @@
  *
  * Two questions stack here, and they are not the same one:
  *
- *   `local.ts`      does this install CARRY the pack?  (a fact about the app)
+ *   `local.ts`      does this install CARRY the item?  (a fact about the app)
  *   this file       did this person KEEP it?           (a choice they made)
  *
  * A picker offers the intersection. The store page draws everything
- * carried, marking what was kept — otherwise a pack you removed could
- * never be found again, which is not removal, it is loss.
+ * carried, marking what was kept — otherwise something you removed
+ * could never be found again, which is not removal, it is loss.
  *
  * It lives in React and reads a preference, which is exactly why
  * `local.ts` may not: `preferences/registry.ts` asks the store for its

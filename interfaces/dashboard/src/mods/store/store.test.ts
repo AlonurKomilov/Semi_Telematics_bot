@@ -5,12 +5,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PACK_AXES } from './packs';
-import { STORE, STORE_AXES, PUBLISHER, rowsOf, idsOf, rowById } from './index';
+import { ITEM_AXES } from './items';
+import { STORE, STORE_AXES, PUBLISHER, itemsOf, itemIdsOf, itemById } from './index';
 import { installed, installedIds, isInstalled } from './local';
 
 const STORE_DIR = __dirname;
-const PACKS = join(__dirname, 'packs');
+const PACKS = join(__dirname, 'items');
 const strip = (text: string) =>
   text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const src = (path: string) => strip(readFileSync(path, 'utf8'));
@@ -25,23 +25,23 @@ const packSources = (dir = PACKS): string[] =>
 
 describe('the catalogue is the packs, plus a stamp', () => {
   it('every pack on every axis has exactly one row', () => {
-    const expected = PACK_AXES.flatMap((a) => a.packs.map((p) => `${a.axis}/${p.id}`)).sort();
+    const expected = ITEM_AXES.flatMap((a) => a.packs.map((p) => `${a.axis}/${p.id}`)).sort();
     expect(STORE.map((r) => `${r.axis}/${r.id}`).sort()).toEqual(expected);
     expect(expected.length, 'the store is empty — nothing to keep').toBeGreaterThan(10);
   });
 
   it('the axes are the catalogue order', () => {
-    expect([...STORE_AXES]).toEqual(PACK_AXES.map((a) => a.axis));
+    expect([...STORE_AXES]).toEqual(ITEM_AXES.map((a) => a.axis));
   });
 
   it('a row carries its axis, and finds its way back', () => {
     for (const axis of STORE_AXES) {
-      const ids = idsOf(axis);
+      const ids = itemIdsOf(axis);
       expect(ids.length, `${axis}: no rows`).toBeGreaterThan(0);
-      for (const id of ids) expect(rowById(axis, id)?.axis).toBe(axis);
+      for (const id of ids) expect(itemById(axis, id)?.axis).toBe(axis);
     }
-    expect(rowsOf('not-an-axis')).toEqual([]);
-    expect(rowById('theme', 'not-a-pack')).toBeUndefined();
+    expect(itemsOf('not-an-axis')).toEqual([]);
+    expect(itemById('theme', 'not-a-pack')).toBeUndefined();
   });
 });
 
@@ -73,7 +73,7 @@ describe('the house says who owns what', () => {
 describe('local is the door, and it is a leaf', () => {
   it('everything the store lists is here today', () => {
     expect(installed().map((r) => r.id)).toEqual(STORE.map((r) => r.id));
-    for (const axis of STORE_AXES) expect([...installedIds(axis)]).toEqual([...idsOf(axis)]);
+    for (const axis of STORE_AXES) expect([...installedIds(axis)]).toEqual([...itemIdsOf(axis)]);
   });
 
   it('isInstalled answers for what is offered, and refuses the rest', () => {

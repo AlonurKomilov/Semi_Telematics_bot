@@ -36,16 +36,16 @@ import type { ThemeMode } from './theme/palette';
 // value, and this import is erased.
 import type { ModRadius } from '../preferences/registry';
 import { MOD_FIELD_CATEGORY, CATEGORY_IDS } from './taxonomy';
-import type { PackMeta } from './store/packs/meta';
+import type { ItemMeta } from './store/items/meta';
 
-export interface ThemePack extends PackMeta {
+export interface ThemePack extends ItemMeta {
   /** `--primary` per mode. The canvas comes from the mode, not the pack;
    *  a pack that carried its own canvas would be taking the light/dark
    *  choice away from the person using it. */
   readonly seed: Readonly<Record<ThemeMode, string>>;
 }
 
-// The packs — seeds and CSS — live in `mods/store/packs/theme/`. This file is
+// The packs — seeds and CSS — live in `mods/store/items/theme/`. This file is
 // the contract: what a pack is, and which tokens its seed answers for.
 
 /** The three tokens an accent block re-points, and therefore the three a
@@ -54,7 +54,7 @@ export interface ThemePack extends PackMeta {
  *  separation, which is a property of all five slots together. */
 export const PACK_TOKENS = ['--primary', '--primary-hover', '--primary-text'] as const;
 
-// Materials live in `mods/store/packs/material/`; the contract is `mods/material.ts`.
+// Materials live in `mods/store/items/material/`; the contract is `mods/material.ts`.
 /** How fast the app moves. A multiplier on every transition — see the
  *  motion tokens in index.css for why the infinite loops are excluded. */
 export const MOD_MOTIONS = ['calm', 'default', 'snappy'] as const;
@@ -123,9 +123,9 @@ export const motionPercent = (m: (typeof MOD_MOTIONS)[number]): number =>
  * webfont later is one `@import` in index.css, one block beside the
  * others, and one entry here. Nothing else in this file has to move.
  */
-export interface FontPack extends PackMeta {
+export interface FontPack extends ItemMeta {
 }
-// The faces live in `mods/store/packs/font/`, one file each.
+// The faces live in `mods/store/items/font/`, one file each.
 export type ModFont = string;
 
 /**
@@ -171,7 +171,7 @@ export type ModIcons = (typeof MOD_ICONS)[number];
  * on `<html>` — `data-radius` and the `--size-*` multipliers — so a mod
  * can simply carry them.
  */
-export interface Mod extends PackMeta {
+export interface Mod extends ItemMeta {
   /** The colour pack this look wears. Must be a `THEME_PACKS` id. */
   readonly accent: string;
   readonly radius?: ModRadius;
@@ -229,7 +229,7 @@ export interface Mod extends PackMeta {
   readonly sound?: string;
 }
 
-// The bundles themselves — Cab, Wall — live in `mods/store/packs/mods/`, one
+// The bundles themselves — Cab, Wall — live in `mods/store/items/mods/`, one
 // file each. This file says what a mod IS and how each field it carries
 // is placed and installed; it does not know which mods exist.
 
@@ -243,11 +243,11 @@ export interface Mod extends PackMeta {
  * than a test: it cannot be skipped, and it fails at the moment the
  * field is written rather than the moment the suite runs.
  *
- * The `PackMeta` fields are metadata about the mod, not things it
+ * The `ItemMeta` fields are metadata about the mod, not things it
  * changes about the app, so they are the excluded ones.
  */
 export const MOD_FIELD_SECTION: Record<
-  keyof Omit<Mod, keyof PackMeta>,
+  keyof Omit<Mod, keyof ItemMeta>,
   'interface' | 'effects' | 'sounds' | 'size'
 > = MOD_FIELD_CATEGORY;
 
@@ -291,7 +291,7 @@ export const modFootprint = (m: Mod): readonly string[] => {
  * construction.
  */
 export const MOD_FIELD_APPLIER: Record<
-  keyof Omit<Mod, keyof PackMeta>, 'theme' | 'size' | 'sound'
+  keyof Omit<Mod, keyof ItemMeta>, 'theme' | 'size' | 'sound'
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',

@@ -1,4 +1,4 @@
-import type { PackMeta } from './store/packs/meta';
+import type { ItemMeta } from './store/items/meta';
 /**
  * The light the interface sits in.
  *
@@ -25,7 +25,7 @@ import type { PackMeta } from './store/packs/meta';
  * the same thing `--radius` did for `rounded-*` and `--size-*` did for
  * every length — and not one of those call sites changed.
  */
-export interface ShaderPack extends PackMeta {
+export interface ShaderPack extends ItemMeta {
   /** How far a surface lifts off the ground — the shadow's offset. */
   readonly lift: number;
   /** How far the light spreads before it stops — the blur. */
@@ -60,7 +60,7 @@ export interface ShaderPack extends PackMeta {
  * be a flatter look, it would be a menu you cannot find the edge of.
  * The two departures move the light, they do not put it out.
  */
-// The presets — the numbers and the CSS — live in `mods/store/packs/shader/`.
+// The presets — the numbers and the CSS — live in `mods/store/items/shader/`.
 // This file is the contract: what a light is, and the band it may move in.
 
 /**

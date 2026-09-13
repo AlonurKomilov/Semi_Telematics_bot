@@ -11,10 +11,10 @@
  */
 import { MOD_DEFAULT, DEFS, type ModSetting, type SizeSetting } from '../../preferences';
 import { motionPercent } from '../catalogue';
-import { THEME_PACKS } from '../store/packs/theme';
-import { FONT_PACKS } from '../store/packs/font';
-import { SOUND_PACKS } from '../store/packs/sound';
-import { KEY_PACKS } from '../store/packs/keys';
+import { THEME_PACKS } from '../store/items/theme';
+import { FONT_PACKS } from '../store/items/font';
+import { SOUND_PACKS } from '../store/items/sound';
+import { KEY_PACKS } from '../store/items/keys';
 import type { TaxonomyCategory, TaxonomyItem } from '../taxonomy';
 
 /** How preference keys outside the theme blob are read. */

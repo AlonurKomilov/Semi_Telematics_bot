@@ -90,13 +90,13 @@ vi.mock('../components/banners/stagedAction', () => ({ undoableAction: undoSpy }
 
 import { ModsStorePage } from './store/StorePage';
 import { AXIS_UI } from './store/axes';
-import { PACK_AXES } from './store/packs';
-import { rowsOf } from './store/index';
+import { ITEM_AXES } from './store/items';
+import { itemsOf } from './store/index';
 import { TAXONOMY, headingsOf } from './taxonomy';
 
 describe('every shelf has a home', () => {
   it('the table and the catalogue name the same axes', () => {
-    expect(Object.keys(AXIS_UI).sort()).toEqual(PACK_AXES.map((a) => a.axis).sort());
+    expect(Object.keys(AXIS_UI).sort()).toEqual(ITEM_AXES.map((a) => a.axis).sort());
   });
 
   it('the presets shelf does not name the service it sits inside', () => {
@@ -129,7 +129,7 @@ describe('every shelf has a home', () => {
 describe('the store page', () => {
   it('draws a tile per pack, with the sentence the pack carries', () => {
     render(<ModsStorePage />);
-    const wallpapers = rowsOf('wallpaper');
+    const wallpapers = itemsOf('wallpaper');
     expect(wallpapers.length).toBeGreaterThan(1);
     for (const row of wallpapers) {
       expect(screen.getByText(row.label)).toBeTruthy();

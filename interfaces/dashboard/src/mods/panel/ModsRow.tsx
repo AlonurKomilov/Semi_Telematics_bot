@@ -21,8 +21,8 @@ import { useApplyMod } from '../useApplyMod';
 import {
   MOD_THEME_FIELDS, modMatchesAxes, modFootprint, type Mod,
 } from '../catalogue';
-import { MODS, modById } from '../store/packs/mods';
-import { accentSeed } from '../store/packs/theme';
+import { MODS, modById } from '../store/items/mods';
+import { accentSeed } from '../store/items/theme';
 import type { ModSetting } from '../../preferences/registry';
 import { Chip } from './Chip';
 import type { LabelClass } from './Interface';

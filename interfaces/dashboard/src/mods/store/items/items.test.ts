@@ -34,8 +34,8 @@ import { FONT_PACKS } from './font';
 import { MATERIAL_PACKS } from './material';
 import { ICON_PACK_IDS } from './icons';
 import { MODS as MOD_PACKS } from './mods';
-import { PACK_AXES } from './index';
-import type { PackMeta } from './meta';
+import { ITEM_AXES } from './index';
+import type { ItemMeta } from './meta';
 import { engineCss } from '../../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../../sound/engine';
 import { KEY_LIMITS, KEY_CLASSES } from '../../sound/keys';
@@ -55,7 +55,7 @@ const packFiles = (folder: string, ext: 'ts' | 'css' = 'ts') =>
 
 const ENGINE_FILES = ['sound/engine.ts', 'sound/keys.ts', 'sound/cue.ts', 'sound/useCue.ts', 'catalogue.ts'];
 
-describe('an engine file holds no pack content', () => {
+describe('an engine file holds no item content', () => {
   it('finds engine files to check', () => {
     for (const f of ENGINE_FILES) expect(src(f).length, `${f} is empty`).toBeGreaterThan(100);
   });
@@ -84,7 +84,7 @@ describe('an engine file holds no pack content', () => {
   });
 });
 
-describe('a pack is a file, and the index is exactly the files', () => {
+describe('an item is a file, and the index is exactly the files', () => {
   for (const [folder, packs] of [['sound', SOUND_PACKS], ['keys', KEY_PACKS], ['mods', MOD_PACKS]] as const) {
     it(`${folder}: every file is listed and every entry has a file`, () => {
       const files = packFiles(folder);
@@ -95,9 +95,9 @@ describe('a pack is a file, and the index is exactly the files', () => {
   }
 });
 
-describe('a pack file imports only types', () => {
+describe('an item file imports only types', () => {
   const onlyTypes = (rel: string) => {
-    const code = src(`store/packs/${rel}`);
+    const code = src(`store/items/${rel}`);
     const imports = [...code.matchAll(/^import\s+(?!type\s)[^;]*;/gm)].map((m) => m[0]);
     expect(imports, `packs/${rel} has a runtime import: ${imports[0] ?? ''}`).toEqual([]);
   };
@@ -113,7 +113,7 @@ describe('a pack file imports only types', () => {
   }
 });
 
-describe('every pack keeps the engine\'s contract', () => {
+describe('every item keeps the engine\'s contract', () => {
   // The rule that lived in engine.test.ts / keys.test.ts while the packs
   // did; it moves with them. A missing cue falls back to silence, which
   // reads as the feature being broken rather than as a typo.
@@ -158,7 +158,7 @@ const CSS_AXES = [
   ['material', MATERIAL_PACKS, 'solid'],
 ] as const;
 
-describe('a CSS pack is a file, and the index is exactly the files', () => {
+describe('a CSS item is a file, and the index is exactly the files', () => {
   for (const [axis, packs, dflt, folderName] of CSS_AXES) {
     const folder = folderName ?? axis;
     it(`${axis}: every non-default id has a file, and every file an id`, () => {
@@ -171,7 +171,7 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
 
     it(`${axis}: every pack file addresses only itself, and is screen-only where it must be`, () => {
       for (const id of packFiles(folder, 'css')) {
-        const code = src(`store/packs/${folder}/${id}.css`);
+        const code = src(`store/items/${folder}/${id}.css`);
         // Wallpaper, cursor and shader are screen-only: print puts the
         // light palette back through specificity alone, and a pattern
         // or a pointer that survived into paper would be ink saying
@@ -212,7 +212,7 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
       const folder = folderName ?? axis;
       for (const id of packFiles(folder, 'css'))
         expect(engine, `packs/${folder}/${id}.css exists and is never imported — a pack nobody can wear`)
-          .toContain(`@import './mods/store/packs/${folder}/${id}.css';`);
+          .toContain(`@import './mods/store/items/${folder}/${id}.css';`);
     }
   });
 });
@@ -226,7 +226,7 @@ describe('a CSS pack is a file, and the index is exactly the files', () => {
  * `iconLane.test.ts` holds the rest: every pack carries every name, no
  * library import outside the packs and the door, the door names none.
  */
-describe('icons: a pack is three files, and the index is exactly the packs', () => {
+describe('icons: an item is three files, and the index is exactly the items', () => {
   const files = readdirSync(join(__dirname, 'icons')).filter((f) => !/^index\.ts$/.test(f)).sort();
   const PARTS = ['.tsx', '.icons.ts', '.weights.ts'];
 
@@ -238,7 +238,7 @@ describe('icons: a pack is three files, and the index is exactly the packs', () 
 
   it('a pack file imports only its library, React, its siblings, and types', () => {
     for (const f of files) {
-      const imports = [...src(`store/packs/icons/${f}`).matchAll(/^(?:import|export)\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)]
+      const imports = [...src(`store/items/icons/${f}`).matchAll(/^(?:import|export)\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)]
         .map((m) => m[1]);
       for (const from of imports)
         expect(from, `packs/icons/${f} imports ${from}`)
@@ -247,18 +247,18 @@ describe('icons: a pack is three files, and the index is exactly the packs', () 
   });
 
   it('the index imports only the contract by type and its own packs', () => {
-    const imports = [...src('store/packs/icons/index.ts').matchAll(/^import\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)].map((m) => m[1]);
+    const imports = [...src('store/items/icons/index.ts').matchAll(/^import\s+(?!type\s)[^;]*?from\s+'([^']+)';/gm)].map((m) => m[1]);
     for (const from of imports) expect(from, `packs/icons/index.ts imports ${from}`).toMatch(/^\.\//);
   });
 });
 
 /**
  * Every pack on every axis carries the same three things a person reads
- * before choosing it — `PackMeta` — and the registry that gathers the
+ * before choosing it — `ItemMeta` — and the registry that gathers the
  * axes is exactly the folders beside it, so a new axis cannot ship
  * outside the list a store would read.
  */
-const metaFaults = (axis: string, packs: readonly PackMeta[]): string[] => {
+const metaFaults = (axis: string, packs: readonly ItemMeta[]): string[] => {
   const faults: string[] = [];
   const seen = new Set<string>();
   for (const p of packs) {
@@ -276,17 +276,17 @@ const metaFaults = (axis: string, packs: readonly PackMeta[]): string[] => {
   return faults;
 };
 
-describe('every pack on every axis carries its meta', () => {
+describe('every item on every axis carries its meta', () => {
   it('the registry is exactly the axis folders', () => {
     const folders = readdirSync(__dirname)
       .filter((f) => statSync(join(__dirname, f)).isDirectory()).sort();
     expect(folders.length, 'no axis folders').toBeGreaterThan(5);
-    expect(PACK_AXES.map((a) => a.axis).sort(), 'packs/index.ts and the folders disagree').toEqual(folders);
+    expect(ITEM_AXES.map((a) => a.axis).sort(), 'packs/index.ts and the folders disagree').toEqual(folders);
   });
 
   it('id, label, description — present, safe, one line', () => {
     let checked = 0;
-    for (const { axis, packs } of PACK_AXES) {
+    for (const { axis, packs } of ITEM_AXES) {
       expect(packs.length, `${axis} lists no packs`).toBeGreaterThan(0);
       checked += packs.length;
       expect(metaFaults(axis, packs)).toEqual([]);

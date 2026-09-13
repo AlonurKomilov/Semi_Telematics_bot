@@ -34,20 +34,20 @@
  */
 
 import type { IconPack } from '../lib/icons';
-import { ICON_PACK_IDS } from '../mods/store/packs/icons';
-import { WALLPAPER_IDS } from '../mods/store/packs/wallpaper';
-import { CURSOR_IDS } from '../mods/store/packs/cursor';
-import { SHADER_IDS } from '../mods/store/packs/shader';
+import { ICON_PACK_IDS } from '../mods/store/items/icons';
+import { WALLPAPER_IDS } from '../mods/store/items/wallpaper';
+import { CURSOR_IDS } from '../mods/store/items/cursor';
+import { SHADER_IDS } from '../mods/store/items/shader';
 import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
-import { MATERIAL_IDS } from '../mods/store/packs/material';
-import { MODS } from '../mods/store/packs/mods';
-import { PACK_AXES } from '../mods/store/packs';
-import { THEME_PACKS } from '../mods/store/packs/theme';
+import { MATERIAL_IDS } from '../mods/store/items/material';
+import { MODS } from '../mods/store/items/mods';
+import { ITEM_AXES } from '../mods/store/items';
+import { THEME_PACKS } from '../mods/store/items/theme';
 import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
-import { SOUND_PACKS } from '../mods/store/packs/sound';
-import { KEY_PACKS } from '../mods/store/packs/keys';
-import { MOD_FONTS } from '../mods/store/packs/font';
+import { SOUND_PACKS } from '../mods/store/items/sound';
+import { KEY_PACKS } from '../mods/store/items/keys';
+import { MOD_FONTS } from '../mods/store/items/font';
 import { SURFACES } from '../mods/surfaces';
 import { GROUND_IDS } from '../mods/theme/grounds';
 
@@ -560,7 +560,7 @@ export const DEFS = {
     sanitize: (v) => {
       if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
       const kept: Record<string, string[]> = {};
-      for (const axis of PACK_AXES) {
+      for (const axis of ITEM_AXES) {
         const list = (v as Record<string, unknown>)[axis.axis];
         if (!Array.isArray(list)) continue;
         const ids = list.filter((id): id is string =>

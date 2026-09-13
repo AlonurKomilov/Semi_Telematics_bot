@@ -5,9 +5,9 @@
  * sound); this file only gathers them, so that "everything a person can
  * choose" is one array and not ten imports. `packs.test.ts` holds it
  * equal to the folders beside it and sweeps every entry against
- * `PackMeta`.
+ * `ItemMeta`.
  */
-import type { PackMeta } from './meta';
+import type { ItemMeta } from './meta';
 import { MODS } from './mods';
 import { SOUND_PACKS } from './sound';
 import { KEY_PACKS } from './keys';
@@ -19,13 +19,13 @@ import { THEME_PACKS } from './theme';
 import { FONT_PACKS } from './font';
 import { ICON_PACKS } from './icons';
 
-export interface PackAxis {
+export interface ItemAxis {
   /** The folder under `mods/packs/`, and the noun a tile is filed under. */
   readonly axis: string;
-  readonly packs: readonly PackMeta[];
+  readonly packs: readonly ItemMeta[];
 }
 
-export const PACK_AXES: readonly PackAxis[] = [
+export const ITEM_AXES: readonly ItemAxis[] = [
   { axis: 'mods',      packs: MODS },
   { axis: 'theme',     packs: THEME_PACKS },
   { axis: 'font',      packs: FONT_PACKS },

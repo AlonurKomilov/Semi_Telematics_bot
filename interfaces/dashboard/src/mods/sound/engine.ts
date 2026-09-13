@@ -1,4 +1,4 @@
-import type { PackMeta } from '../store/packs/meta';
+import type { ItemMeta } from '../store/items/meta';
 /**
  * Cues, as synthesis parameters — not as files.
  *
@@ -52,7 +52,7 @@ export interface Cue {
   readonly gain: number;
 }
 
-export interface SoundPack extends PackMeta {
+export interface SoundPack extends ItemMeta {
   readonly cues: Readonly<Record<CueName, Cue>>;
 }
 
@@ -99,7 +99,7 @@ export function isSafeCue(c: unknown): c is Cue {
 }
 
 // ── the packs live elsewhere ─────────────────────────────────────────
-// `mods/store/packs/sound/` holds the cue sets, one file each. This file
+// `mods/store/items/sound/` holds the cue sets, one file each. This file
 // defines what a pack MUST BE — the shape above, the bounds, and the
 // player below — and does not know which ones exist. An engine that
 // listed its own content is an engine somebody has to open to add a

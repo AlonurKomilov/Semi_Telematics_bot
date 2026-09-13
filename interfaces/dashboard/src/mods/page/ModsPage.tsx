@@ -36,7 +36,7 @@ import { useMods } from '../context';
 import { ModControls } from '../panel/ModControls';
 import { ITEM_GROUPS, CATEGORY_CONTROLS } from '../panel/items';
 import SizeCard from '../SizeCard';
-import { modById } from '../store/packs/mods';
+import { modById } from '../store/items/mods';
 import { RotateCcw } from '../../lib/icons';
 import { undoableAction } from '../../components/banners/stagedAction';
 import { MOD_DEFAULT, DEFS } from '../../preferences/registry';

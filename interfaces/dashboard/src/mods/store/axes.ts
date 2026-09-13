@@ -6,7 +6,7 @@
  * — a field on the theme preference, a preference of its own, or, for a
  * whole look, the installer that writes seven fields at once. This table
  * is the only place that says which, and `store.test.ts` holds it equal
- * to `PACK_AXES` in both directions: an axis nobody filed in here would
+ * to `ITEM_AXES` in both directions: an axis nobody filed in here would
  * be a shelf whose Apply button did nothing.
  *
  * The labels are the words the rest of the product already uses — the

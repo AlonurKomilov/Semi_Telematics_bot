@@ -18,7 +18,7 @@
  * that problem does not exist for us.
  */
 import { type Cue, type CueLimits } from './engine';
-import type { PackMeta } from '../store/packs/meta';
+import type { ItemMeta } from '../store/items/meta';
 
 export const KEY_CLASSES = ['letter', 'space', 'enter', 'backspace'] as const;
 export type KeyClass = (typeof KEY_CLASSES)[number];
@@ -36,11 +36,11 @@ export const KEY_LIMITS: CueLimits = {
   gain: { min: 0, max: 0.08 },
 };
 
-export interface KeyPack extends PackMeta {
+export interface KeyPack extends ItemMeta {
   readonly cues: Readonly<Record<KeyClass, Cue>>;
 }
 
-// The packs live in `mods/store/packs/keys/`, one file each. This file is the
+// The packs live in `mods/store/items/keys/`, one file each. This file is the
 // keyboard as a MECHANISM — what counts as typing, which fields stay
 // silent, how fast a click may repeat — and it takes the pack it plays
 // from as an argument rather than looking one up, so it never has to

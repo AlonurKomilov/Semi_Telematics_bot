@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { usePreference } from '../../preferences';
 import { armAudio, playCue, type CueName } from './engine';
-import { soundPackById } from '../store/packs/sound';
+import { soundPackById } from '../store/items/sound';
 
 /**
  * Play a named cue at this screen's volume, from this person's pack.

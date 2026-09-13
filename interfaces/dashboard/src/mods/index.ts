@@ -76,11 +76,11 @@ export {
   isSafeCue, playCue, armAudio,
   type SoundPack, type Cue, type CueName, type Wave,
 } from './sound/engine';
-export { SOUND_PACKS, soundPackById } from './store/packs/sound';
+export { SOUND_PACKS, soundPackById } from './store/items/sound';
 export { useCue } from './sound/useCue';
-export { THEME_PACKS, packById } from './store/packs/theme';
-export { FONT_PACKS, MOD_FONTS } from './store/packs/font';
-export { MODS, modById } from './store/packs/mods';
+export { THEME_PACKS, packById } from './store/items/theme';
+export { FONT_PACKS, MOD_FONTS } from './store/items/font';
+export { MODS, modById } from './store/items/mods';
 export { ModsStorePage } from './store/StorePage';
-export { MATERIAL_PACKS, MATERIAL_IDS, materialPackById } from './store/packs/material';
+export { MATERIAL_PACKS, MATERIAL_IDS, materialPackById } from './store/items/material';
 export type { MaterialPack } from './material';

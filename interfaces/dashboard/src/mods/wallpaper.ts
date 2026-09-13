@@ -1,4 +1,4 @@
-import type { PackMeta } from './store/packs/meta';
+import type { ItemMeta } from './store/items/meta';
 /**
  * The ground the app sits on.
  *
@@ -63,7 +63,7 @@ import type { PackMeta } from './store/packs/meta';
  */
 export type WallpaperKind = 'still' | 'live';
 
-export interface Wallpaper extends PackMeta {
+export interface Wallpaper extends ItemMeta {
   readonly kind: WallpaperKind;
 }
 
@@ -109,7 +109,7 @@ export const WALLPAPER_LIVE_ATTR = 'data-wallpaper-live';
 export const LIVE_ANIMATES = ['transform', 'translate', 'rotate', 'scale'] as const;
 
 // The patterns themselves — the list and the CSS — live in
-// `mods/store/packs/wallpaper/`. This file is the mechanism: what a wallpaper
+// `mods/store/items/wallpaper/`. This file is the mechanism: what a wallpaper
 // IS, where it paints, what a live one may move, and what it must not
 // make unreadable.
 

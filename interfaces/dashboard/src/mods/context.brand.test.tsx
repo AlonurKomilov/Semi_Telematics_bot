@@ -41,7 +41,7 @@ import { modStyleText } from './inject';
 import { accentTokens } from './theme/accent';
 import { groundTokens } from './theme/grounds';
 import { paletteTokens, surfaceTokens } from './theme/canvas';
-import { packById } from './store/packs/theme';
+import { packById } from './store/items/theme';
 
 const THEME_KEY = 'mods.theme';
 const SIZE_KEY = 'mods.size';

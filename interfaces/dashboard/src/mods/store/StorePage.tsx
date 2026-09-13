@@ -4,7 +4,7 @@
  * /mods is what you HAVE: the settings drawn as depth, one control per
  * item. This is what there IS: one tile per pack, with the sentence the
  * pack carries about itself, which until now had nowhere to be read —
- * `PackMeta.description` was a single line under a chip row, replaced
+ * `ItemMeta.description` was a single line under a chip row, replaced
  * the moment you moved the mouse.
  *
  * It lists the STORE, not the engine: the rows come from the catalogue,
@@ -33,12 +33,12 @@ import { useApplyMod } from '../useApplyMod';
 import { MODS_PAGE_HREF } from '../href';
 import { armAudio, playCue } from '../sound/engine';
 import { KEY_LIMITS } from '../sound/keys';
-import { modById } from './packs/mods';
-import { accentSeed } from './packs/theme';
-import { soundPackById } from './packs/sound';
-import { keyPackById } from './packs/keys';
-import { PACK_AXES } from './packs';
-import { rowsOf, rowById, type StoreRow } from './index';
+import { modById } from './items/mods';
+import { accentSeed } from './items/theme';
+import { soundPackById } from './items/sound';
+import { keyPackById } from './items/keys';
+import { ITEM_AXES } from './items';
+import { itemsOf, itemById, type ItemRow } from './index';
 import { offered } from './local';
 import { AXIS_UI, defaultOf } from './axes';
 import { useShelves } from './useOffered';
@@ -189,9 +189,9 @@ export function ModsStorePage() {
           </Button>
         )}
       />
-      {PACK_AXES.map(({ axis }) => {
+      {ITEM_AXES.map(({ axis }) => {
         const ui = AXIS_UI[axis];
-        const rows = offered(axis, rowsOf(axis), (r) => r.id);
+        const rows = offered(axis, itemsOf(axis), (r) => r.id);
         if (!ui || rows.length === 0) return null;
         return (
           <section key={axis} data-testid={`store-axis-${axis}`}>
@@ -219,7 +219,7 @@ export function ModsStorePage() {
 }
 
 function PackTile({ row, dot, applied, kept, removable, onApply, onKeep, onRemove }: {
-  row: StoreRow; dot?: string; applied: boolean; kept: boolean; removable: boolean;
+  row: ItemRow; dot?: string; applied: boolean; kept: boolean; removable: boolean;
   onApply: () => void; onKeep: () => void; onRemove: () => void;
 }) {
   const { t } = useTranslation();

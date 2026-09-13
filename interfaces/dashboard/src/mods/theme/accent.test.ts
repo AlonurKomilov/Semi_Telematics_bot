@@ -15,7 +15,7 @@ import {
   oklchToSrgb, srgbToOklch, parseHex, toHex, distance, contrastRatio,
   AA_TEXT, AA_LARGE, type RGB,
 } from './contrast';
-import { THEME_PACKS } from '../store/packs/theme';
+import { THEME_PACKS } from '../store/items/theme';
 import { assembledCss } from '../../test/stylesheet';
 
 const CSS = assembledCss();

@@ -1,4 +1,4 @@
-import type { PackMeta } from './store/packs/meta';
+import type { ItemMeta } from './store/items/meta';
 /**
  * The pointer itself.
  *
@@ -25,10 +25,10 @@ import type { PackMeta } from './store/packs/meta';
  * the icon rule forbids, and more obvious here, since the arrow and the
  * hand are seen within a second of each other.
  */
-export interface CursorPack extends PackMeta {
+export interface CursorPack extends ItemMeta {
 }
 
-// The packs — the list and the CSS — live in `mods/store/packs/cursor/`.
+// The packs — the list and the CSS — live in `mods/store/items/cursor/`.
 // This file is the contract a pack has to keep.
 
 /**
