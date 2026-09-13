@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { FEATURE_CATALOG } from '../../config/featureCatalog';
-import { featureLines, money, overQuotaLines, plansIncluding, type CustomerPlan } from './planCards';
+import { featureLines, money, onOffer, overQuotaLines, plansIncluding, type CustomerPlan } from './planCards';
 import { cardVariants } from '@/components/ui/card';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -396,7 +396,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
 
 interface PlanCardProps {
   name: string; price: string;
-  features: string[]; current: boolean; highlighted: boolean; buyable: boolean;
+  features: string[]; current: boolean; highlighted: boolean; buyable: boolean; offered?: boolean;
   /** What this plan would not hold, from what the account has today. */
   warnings?: string[];
   /** A plan offered at no price is not for sale — it is a conversation.
@@ -413,7 +413,7 @@ interface PlanCardProps {
 }
 
 function PlanCard({
-  name, price, features, current, highlighted, buyable, warnings = [],
+  name, price, features, current, highlighted, buyable, offered = false, warnings = [],
   openCase, caseMessage, onUpgrade, onAsk, defaultEmail = '', loading,
 }: PlanCardProps) {
   // A plan with no price cannot be bought; asking about it is the whole
@@ -425,13 +425,18 @@ function PlanCard({
   const [email, setEmail] = useState(defaultEmail);
   const [sending, setSending] = useState(false);
   return (
-    <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', (current || highlighted) && 'border-primary ring-1 ring-primary/30')}>
+    <div className={cn(cardVariants({ padding: 'default' }), 'flex flex-col', (current || highlighted || offered) && 'border-primary ring-1 ring-primary/30')}>
       {current && (
         <span className="text-xs bg-primary/15 text-foreground border border-primary rounded-md px-2 py-0.5 self-start mb-2">
           Current Plan
         </span>
       )}
-      {!current && highlighted && (
+      {!current && offered && (
+        <span className="text-xs bg-primary/15 text-foreground border border-primary rounded-md px-2 py-0.5 self-start mb-2">
+          Prepared for your account
+        </span>
+      )}
+      {!current && !offered && highlighted && (
         <span className="text-xs bg-primary/15 text-foreground border border-primary rounded-md px-2 py-0.5 self-start mb-2">
           Includes what you asked for
         </span>
@@ -928,7 +933,8 @@ export default function Billing() {
               highlighted={upgradePlans.some((u) => u.tier === p.tier)}
               onUpgrade={() => handleCheckout(p.tier)}
               loading={checkoutLoading === p.tier}
-              buyable={p.public && p.price_monthly_cents > 0}
+              buyable={onOffer(p) && p.price_monthly_cents > 0}
+              offered={!!p.offered}
               warnings={overQuotaLines(
                 p,
                 { users: summary?.user_count ?? 0, companies: summary?.company_count ?? 0 },

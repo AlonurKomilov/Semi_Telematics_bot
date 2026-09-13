@@ -58,8 +58,9 @@ class StubBillingProvider:
         )
         # Stub: immediately upgrade the tier in DB so the UI reflects the change
         await db.get_or_create_subscription(account_id)
-        plan = await db.get_plan(tier)
-        if plan is None or not plan["public"]:
+        from capabilities.platform.billing.offers import purchasable_plan
+        plan = await purchasable_plan(db, tier, account_id)
+        if plan is None:
             raise ValueError(f"Plan '{tier}' is not available.")
         pricing = await db.pricing_for(tier)
         await db.update_subscription(

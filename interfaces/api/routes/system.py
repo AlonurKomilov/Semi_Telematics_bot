@@ -1202,6 +1202,12 @@ async def operator_set_user_security(
 
     A request is kept when EITHER the account or the person is watched,
     so this never needs the account moved as well.
+
+    Moving somebody TO ``quarantined`` ends their live sessions in the
+    same breath.  Without that the hold would begin at their next
+    sign-in — up to eight hours away, thirty days if they ticked
+    "remember me" — which is the hole the account-suspension gate has
+    carried since it was written.
     """
     target = await platform_db.get_user_by_id(user_id)
     if not target:
@@ -1213,20 +1219,34 @@ async def operator_set_user_security(
         forget_security(user_id, kind="user")
     except Exception:
         logger.exception("security cache drop failed for user %s", user_id)
+    try:
+        from capabilities.security import quarantine
+        quarantine.forget(user_id)
+    except Exception:
+        logger.exception("quarantine cache drop failed for user %s", user_id)
+
+    from capabilities.security import quarantine
+    ended = 0
+    if body.security == quarantine.HELD and previous != quarantine.HELD:
+        ended = await quarantine.hold_sessions(platform_db, user_id)
+
     logger.info(
-        "system: user security user=%s %s -> %s operator_tg=%s",
-        user_id, previous, body.security, user.get("sub"),
+        "system: user security user=%s %s -> %s operator_tg=%s sessions_ended=%s",
+        user_id, previous, body.security, user.get("sub"), ended,
     )
     if previous != body.security:
+        detail = f"user {user_id}: {previous} -> {body.security}"
+        if ended:
+            detail += f" ({ended} live session{'s' if ended != 1 else ''} ended)"
         try:
             await platform_db.add_platform_audit(
                 "user_security", account_id=target.account_id,
                 actor=f"operator:{user.get('sub')}",
-                details=f"user {user_id}: {previous} -> {body.security}",
+                details=detail,
             )
         except Exception:
             logger.exception("platform audit write failed for user %s", user_id)
-    return {"id": user_id, "security": body.security}
+    return {"id": user_id, "security": body.security, "sessions_ended": ended}
 
 
 @router.patch("/accounts/{account_id}/billing-email")
@@ -2178,7 +2198,7 @@ def _label_of(raw: str) -> str:
     return label
 
 
-def _plan_view(row: dict, counts: dict[str, int]) -> dict:
+def _plan_view(row: dict, counts: dict[str, int], offers: dict[str, list] | None = None) -> dict:
     from capabilities.permissions.plans import EVERYTHING, normalize_included, quota_defaults
     # normalized on read too: a row that names an id no longer for sale
     # (edited in the DB, or saved before the sellable set narrowed) is
@@ -2190,7 +2210,22 @@ def _plan_view(row: dict, counts: dict[str, int]) -> dict:
         "everything": EVERYTHING in inc,
         "accounts": counts.get(row["tier"], 0),
         "quota_defaults": quota_defaults(row["tier"]),
+        # the accounts a HIDDEN plan is open to — operator knowledge, never
+        # on the customer wire (adapters/storage/plan_offers.py)
+        "offered_to": (offers or {}).get(row["tier"], []),
     }
+
+
+async def _offers_by_tier(platform_db) -> dict[str, list]:
+    out: dict[str, list] = {}
+    for o in await platform_db.list_plan_offers():
+        out.setdefault(o["tier"], []).append({
+            "account_id": int(o["account_id"]),
+            "account_name": o.get("account_name") or f"#{o['account_id']}",
+            "request_id": o.get("request_id"),
+            "created_at": o.get("created_at") or "",
+        })
+    return out
 
 
 def _check_quotas(quotas: dict[str, int]) -> None:
@@ -2228,9 +2263,10 @@ async def system_plans(
     from capabilities.permissions.plans import PLAN_KEY_RE
     rows = await platform_db.list_plans()
     counts = await platform_db.count_accounts_by_tier()
+    offers = await _offers_by_tier(platform_db)
     known = {r["tier"] for r in rows}
     return {
-        "plans": [_plan_view(r, counts) for r in rows],
+        "plans": [_plan_view(r, counts, offers) for r in rows],
         "catalog": catalog(),
         "quota_keys": list(QUOTA_KEYS),
         "plan_key_pattern": PLAN_KEY_RE.pattern,
@@ -2289,6 +2325,98 @@ async def system_set_plan_request_status(
         raise HTTPException(status_code=404, detail="No such request.")
     logger.info("system: plan request %s -> %s by %s", request_id, body.status, user.get("sub"))
     return {"ok": True, "status": body.status}
+
+
+class PlanOfferBody(BaseModel):
+    account_id: int = Field(..., gt=0)
+    # the Contact-Sales case this answers, when there is one
+    request_id: int | None = Field(default=None, gt=0)
+
+
+@router.post("/plans/{tier}/offers", status_code=201)
+async def system_offer_plan(
+    tier: str,
+    body: PlanOfferBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Open a hidden plan to one account: the terms agreed after a
+    Contact-Sales conversation.
+
+    The plan goes on that account's Billing page and that account may
+    check out; nothing else moves — no tier, no subscription.  When the
+    offer answers a case, the case moves to *contacted* and the email
+    on it gets the terms; the account's billing admins hear on Telegram
+    either way.  Offering twice is reported, not repeated.
+    """
+    from capabilities.platform.billing.offers import email_offer, offer_refusal, telegram_offer
+    plan = await platform_db.get_plan(tier)
+    if plan is None:
+        raise HTTPException(status_code=404, detail=f"No plan named '{tier}' — create it on the Plans page first")
+    why_not = offer_refusal(plan, await platform_db.list_plans(), provider=_billing_provider_name())
+    if why_not:
+        raise HTTPException(status_code=409, detail=why_not)
+    acc = await platform_db.get_account(body.account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    req = None
+    if body.request_id is not None:
+        req = await platform_db.get_plan_request(body.request_id)
+        # a case belongs to the account that opened it; answering one
+        # account's case with an offer to another is a mix-up at best
+        if req is None or int(req["account_id"]) != int(body.account_id):
+            raise HTTPException(status_code=400, detail="That case does not belong to this account")
+    actor = f"operator:{user.get('sub') or user.get('telegram_id')}"
+    offer = await platform_db.offer_plan(
+        tier, body.account_id, request_id=body.request_id, created_by=actor)
+    if not offer.get("created"):
+        return {"created": False, "tier": tier, "account_id": body.account_id,
+                "message": f"{acc.name} already has this offer."}
+    if req is not None and req.get("status") == "open":
+        await platform_db.set_plan_request_status(int(req["id"]), "contacted", actor=actor)
+    try:
+        await platform_db.add_platform_audit(
+            "plan_offer", account_id=body.account_id, actor=actor,
+            details=json.dumps({"tier": tier, "request_id": body.request_id}),
+        )
+    except Exception:
+        logger.exception("platform audit write failed for plan offer %s/%s", tier, body.account_id)
+    case_number = (req or {}).get("case_number") or ""
+    emailed = email_offer((req or {}).get("contact_email") or "", plan=plan,
+                          account_name=acc.name, case_number=case_number)
+    try:
+        reached = await telegram_offer(body.account_id, plan=plan, case_number=case_number)
+    except Exception:
+        logger.exception("plan offer %s/%s: Telegram notice failed", tier, body.account_id)
+        reached = 0
+    logger.info("system: plan %s offered to acct=%s by %s (email=%s, telegram=%s)",
+                tier, body.account_id, actor, emailed, reached)
+    return {"created": True, "tier": tier, "account_id": body.account_id,
+            "case_number": case_number, "emailed": emailed, "telegram": reached}
+
+
+@router.delete("/plans/{tier}/offers/{account_id}")
+async def system_revoke_plan_offer(
+    tier: str,
+    account_id: int,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Close the door again.  A subscription the account already made
+    on this plan is untouched — the offer only ever gated the page and
+    the checkout."""
+    if not await platform_db.revoke_plan_offer(tier, account_id):
+        raise HTTPException(status_code=404, detail="No such offer")
+    actor = f"operator:{user.get('sub') or user.get('telegram_id')}"
+    try:
+        await platform_db.add_platform_audit(
+            "plan_offer_revoked", account_id=account_id, actor=actor,
+            details=json.dumps({"tier": tier}),
+        )
+    except Exception:
+        logger.exception("platform audit write failed for plan offer revoke %s/%s", tier, account_id)
+    logger.info("system: plan %s offer to acct=%s revoked by %s", tier, account_id, actor)
+    return {"ok": True}
 
 
 @router.get("/billing-mode")

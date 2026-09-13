@@ -130,10 +130,14 @@ class StripeBillingProvider:
         sub = await db.get_or_create_subscription(account_id)
 
         # The plan row is the catalog: its Stripe price id first, the env
-        # table when the operator has not set one; and a plan the
-        # operator hid from the customer's page cannot be bought by name.
-        plan = await db.get_plan(tier)
-        if plan is None or not plan["public"]:
+        # table when the operator has not set one.  A plan the operator
+        # hid from the customer's page cannot be bought by name unless it
+        # was offered to THIS account — one rule, in offers.py, asked
+        # here before the in-place switch below so a live subscriber
+        # cannot slip past it either.
+        from capabilities.platform.billing.offers import purchasable_plan
+        plan = await purchasable_plan(db, tier, account_id)
+        if plan is None:
             raise ValueError(f"Plan '{tier}' is not available.")
         base_price_id = (plan or {}).get("stripe_price_id") or _tier_price_id(tier)
         if not base_price_id:

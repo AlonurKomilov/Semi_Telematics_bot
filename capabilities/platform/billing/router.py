@@ -256,7 +256,10 @@ async def billing_plan_requests(
 # ── Checkout (upgrade) ───────────────────────────────────────────
 
 class CheckoutRequest(BaseModel):
-    tier: str = Field(..., pattern="^(starter|pro|enterprise)$")
+    # any plan key the operator can make (capabilities/permissions/plans.py
+    # PLAN_KEY_RE) — three names were hard-coded here, so a plan made on
+    # the console could be shown and priced but never bought
+    tier: str = Field(..., pattern=r"^[a-z][a-z0-9_]{1,31}$")
 
 
 @router.get("/plans")
@@ -265,17 +268,19 @@ async def billing_plans(
     platform_db=Depends(get_platform_db),
 ):
     """The plans a customer may pick, from the plan table: every public
-    plan plus the account's current one (public or not), each with its
-    price, the ids it includes (``["*"]`` = everything) and its quotas.
-    The dashboard names the ids from its own catalog, in the reader's
-    language; Billing never reads a feature flag."""
+    plan, the account's current one (public or not), and any hidden plan
+    offered to this account after a Contact-Sales conversation — each
+    with its price, the ids it includes (``["*"]`` = everything) and its
+    quotas.  The dashboard names the ids from its own catalog, in the
+    reader's language; Billing never reads a feature flag."""
     from capabilities.permissions.plans import EVERYTHING, EXCLUDABLE, quota_defaults, quota_for
     account = await platform_db.get_account(user["account_id"])
     current = (account.tier if account else None) or "free"
     rows = await platform_db.list_plans()
+    offered = set(await platform_db.offered_tiers_for_account(user["account_id"]))
     out = []
     for r in sorted(rows, key=lambda x: (x["sort"], x["tier"])):
-        if not r["public"] and r["tier"] != current:
+        if not r["public"] and r["tier"] != current and r["tier"] not in offered:
             continue
         inc = r["included"]
         everything = EVERYTHING in inc
@@ -289,6 +294,8 @@ async def billing_plans(
             # the number the API enforces: the row's, else the config table's
             "quotas": {k: quota_for(r["tier"], k, d) for k, d in quota_defaults(r["tier"]).items()},
             "public": bool(r["public"]),
+            # hidden from everyone else; on this page because it was offered here
+            "offered": r["tier"] in offered,
             "current": r["tier"] == current,
         })
     return {"plans": out, "current_tier": current}

@@ -988,6 +988,23 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_plan_requests_status
             ON plan_requests(status, created_at DESC);
+
+        -- A hidden plan opened to ONE account: the terms agreed after a
+        -- Contact-Sales conversation. The plan is an ordinary row above,
+        -- kept off the customer page; this row is what puts it on that
+        -- account's Billing page and lets that account check out. It
+        -- opens a door and nothing else — a subscription already made
+        -- does not change when the row goes (adapters/storage/plan_offers.py).
+        CREATE TABLE IF NOT EXISTS plan_offers (
+            tier        TEXT    NOT NULL,
+            account_id  INTEGER NOT NULL,
+            request_id  INTEGER,
+            created_by  TEXT    NOT NULL DEFAULT '',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (tier, account_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_plan_offers_account
+            ON plan_offers(account_id);
         CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_requests_open
             ON plan_requests(account_id, tier) WHERE status = 'open';
 

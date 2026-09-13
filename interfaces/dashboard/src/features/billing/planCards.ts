@@ -11,16 +11,21 @@ export interface CustomerPlan {
   included: string[];
   quotas: Record<string, number>;
   public: boolean;
+  /** hidden from everyone else; on this page because it was offered to this account */
+  offered?: boolean;
   current: boolean;
 }
+
+/** On this account's page for a reason it can act on: sold to all, or offered here. */
+export const onOffer = (p: CustomerPlan): boolean => p.public || !!p.offered;
 
 export const money = (cents: number): string =>
   cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
 
-/** The public plans that include *featureId* — where an Upgrade for it
- *  can go.  A plan that includes everything always qualifies. */
+/** The plans on offer here that include *featureId* — where an Upgrade
+ *  for it can go.  A plan that includes everything always qualifies. */
 export function plansIncluding(featureId: string, plans: CustomerPlan[]): CustomerPlan[] {
-  return plans.filter((p) => p.public && (p.everything || p.included.includes(featureId)));
+  return plans.filter((p) => onOffer(p) && (p.everything || p.included.includes(featureId)));
 }
 
 /** The bullet lines of a card: what the plan includes in the reader's

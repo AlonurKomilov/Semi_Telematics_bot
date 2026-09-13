@@ -133,6 +133,26 @@ beyond `SYSTEM_OWNER_IDS`. One open request per account and plan —
 pressing the button twice joins the one already made. Closing a request
 lets that customer ask again later.
 
+## 4d. A plan for one customer
+
+When a Contact-Sales conversation ends in terms nobody else gets — a
+flat monthly figure, their own truck allowance — the plan is an
+ordinary row made in the same editor as every other: **Plans → New
+plan**, set the price, the included trucks, the per-truck extra and the
+features, and **leave it hidden from customers**. Under Stripe, press
+**Create Stripe price** on it; a private plan needs a Price of its own
+because the webhook reads the tier back from the Price.
+
+Then open it to that one account: from the case on **Plan requests**
+("Offer a plan…", which also marks the case contacted and emails the
+address on it), or from the plan's column on **Plans** ("Offer to an
+account…"). The plan appears on that account's Billing page as
+"Prepared for your account"; every other account still cannot see it or
+buy it by name. Nothing else moves — the customer pays for it there by
+pressing Upgrade, and from then on the subscription row is the truth.
+The × beside "only for …" withdraws the offer; a subscription already
+made on the plan is untouched (`capabilities/platform/billing/offers.py`).
+
 ## 5. Known limits, decided
 
 - One extras Price for every plan (per-tier extras would need a

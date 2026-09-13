@@ -238,6 +238,7 @@ async def run_all(conn) -> None:
     await migrate_plan_price_rollouts(conn)
     await migrate_subscription_billed_quantity(conn)
     await migrate_plan_requests(conn)
+    await migrate_plan_offers(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -5424,6 +5425,33 @@ async def migrate_subscription_billed_quantity(conn) -> None:
         # missing column the same as NULL (no baseline), and the error
         # is logged for the operator to act on.
         logger.exception("migrate_subscription_billed_quantity failed")
+
+async def migrate_plan_offers(conn) -> None:
+    """A hidden plan opened to one account — the terms agreed after a
+    Contact-Sales conversation.  The row opens that account's door to
+    the plan (its Billing page, its checkout) and does nothing else;
+    the primary key is the anti-duplicate rule.  Idempotent.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS plan_offers (
+                tier        TEXT    NOT NULL,
+                account_id  INTEGER NOT NULL,
+                request_id  INTEGER,
+                created_by  TEXT    NOT NULL DEFAULT '',
+                created_at  TEXT    NOT NULL DEFAULT (now()::text),
+                PRIMARY KEY (tier, account_id)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_plan_offers_account "
+            "ON plan_offers(account_id)")
+    except Exception:
+        # Boot must not fail for this: without the table no offer can be
+        # made and every hidden plan stays hidden, which is the state
+        # the platform was in before the table existed.
+        logger.exception("plan_offers migration failed")
+
 
 async def migrate_plan_requests(conn) -> None:
     """A customer asking for a plan that is not sold self-serve.

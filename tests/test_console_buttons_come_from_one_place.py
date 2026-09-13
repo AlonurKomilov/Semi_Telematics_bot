@@ -127,7 +127,9 @@ def _count(pattern: str) -> int:
 
 def test_raw_palette_and_native_tooltips_only_go_down():
     raw = _count(r"\b(?:text|bg|border)-(?:rose|emerald|amber|yellow)-\d")
-    tips = _count(r"title=\{|title=\"")
+    # a Dialog's `title` is its heading (components/ui/Dialog.tsx), not a
+    # native tooltip — the counter used to charge every dialog one tooltip
+    tips = _count(r"title=\{|title=\"") - _count(r"<Dialog\s+title=")
     assert raw <= RAW_PALETTE_BUDGET, (
         f"{raw} raw palette classes, budget {RAW_PALETTE_BUDGET} — "
         "meaning goes through accent/danger/warn/ok (design.md)")

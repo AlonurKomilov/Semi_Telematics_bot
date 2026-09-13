@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiJSON, ApiError } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Check, X, HelpCircle } from 'lucide-react';
+import { OfferPlanDialog } from '../components/OfferPlanDialog';
 
 // ── Plans: what each plan includes, as data ─────────────────────
 //
@@ -41,6 +42,9 @@ interface Plan {
   public: boolean;
   sort: number;
   trial_default: boolean;
+  // the accounts a HIDDEN plan was offered to after a Contact-Sales
+  // conversation — they see it on their Billing page, nobody else does
+  offered_to: { account_id: number; account_name: string; request_id: number | null; created_at: string }[];
 }
 
 /** The catalog fields the operator edits per column, as strings while typing. */
@@ -310,6 +314,9 @@ export default function PlansPage() {
 
   // A reload replaces every draft EXCEPT an unsaved edit to another
   // plan: saving Free must not throw away half-done work on Pro.
+  // the plan whose column opened the offer dialog
+  const [offering, setOffering] = useState<Plan | null>(null);
+
   const load = useCallback(async (savedTier?: string) => {
     setLoading(true);
     setErr('');
@@ -335,6 +342,16 @@ export default function PlansPage() {
       setLoading(false);
     }
   }, []);
+
+  const revokeOffer = async (p: Plan, accountId: number) => {
+    setErr('');
+    try {
+      await apiJSON(`/system/plans/${p.tier}/offers/${accountId}`, { method: 'DELETE' });
+      await load(p.tier);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Could not withdraw the offer');
+    }
+  };
 
   useEffect(() => {
     load();
@@ -550,9 +567,30 @@ export default function PlansPage() {
                         they used an hour ago.  Two separate reasons a plan
                         stays off that page, so the chip says which. */}
                     {!p.public ? (
-                      <div className="mt-1 text-[11px] font-normal rounded bg-slate-500/15 text-slate-400 px-1.5 py-0.5">
-                        hidden from customers
-                      </div>
+                      <>
+                        <div className="mt-1 text-[11px] font-normal rounded bg-slate-500/15 text-slate-400 px-1.5 py-0.5">
+                          hidden from customers
+                        </div>
+                        {/* except for these: an offer puts the plan on ONE
+                            account's Billing page.  The × withdraws it —
+                            a subscription already made is untouched. */}
+                        {(p.offered_to ?? []).map((o) => (
+                          <div key={o.account_id} className="mt-1 text-[11px] font-normal flex items-center justify-center gap-1 text-slate-300">
+                            <span>only for {o.account_name}</span>
+                            <button
+                              type="button"
+                              className="text-slate-500 hover:text-danger"
+                              aria-label={`Withdraw the offer to ${o.account_name}`}
+                              onClick={() => revokeOffer(p, o.account_id)}
+                            >
+                              <X size={12} aria-hidden="true" />
+                            </button>
+                          </div>
+                        ))}
+                        <Button size="sm" variant="ghost" className="mt-1 font-normal" onClick={() => setOffering(p)}>
+                          Offer to an account…
+                        </Button>
+                      </>
                     ) : p.price_monthly_cents === 0 ? (
                       <div className="mt-1 text-[11px] font-normal rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">
                         offered free — no price
@@ -767,8 +805,16 @@ export default function PlansPage() {
           <p className="text-xs text-slate-500 mt-2">
             A new plan starts with everything included, no price, and hidden from customers — its column will say so.
             Set its price and tick "Offered to customers" above when it is ready; Stripe stays the bill.
+            A plan for ONE customer stays hidden and is offered to that account from its column.
           </p>
         </div>
+      )}
+      {offering && (
+        <OfferPlanDialog
+          plan={offering}
+          onClose={() => setOffering(null)}
+          onDone={() => load(offering.tier)}
+        />
       )}
     </div>
   );

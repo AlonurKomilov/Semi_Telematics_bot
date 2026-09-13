@@ -31,6 +31,17 @@ describe('planCards — the customer sees the plan table, in their words', () =>
     expect(plansIncluding('vehicles', plans).map((p) => p.tier)).toEqual(['starter', 'pro']);
   });
 
+  it('a hidden plan offered to this account counts as on offer', () => {
+    // the terms agreed after a Contact-Sales conversation: hidden from
+    // everyone else, buyable here — so an Upgrade may land on it too
+    const plans = [
+      plan({ tier: 'pro', everything: true }),
+      plan({ tier: 'premier', everything: true, public: false, offered: true }),
+      plan({ tier: 'hidden', everything: true, public: false }),
+    ];
+    expect(plansIncluding('maintenance', plans).map((p) => p.tier)).toEqual(['pro', 'premier']);
+  });
+
   it('a card lists trucks, what is included, then quotas — unlimited when 0', () => {
     const lines = featureLines(
       plan({ base_vehicles: 10, extra_vehicle_cents: 299, included: ['vehicles', 'maintenance'], quotas: { max_users: 75, max_companies: 0 } }),

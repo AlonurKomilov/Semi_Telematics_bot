@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiJSON, ApiError } from '../api/client';
 import { Button } from '../components/ui/Button';
+import { OfferPlanDialog } from '../components/OfferPlanDialog';
 
 interface PlanRequest {
   id: number;
@@ -40,6 +41,8 @@ export default function PlanRequests() {
   const [openCount, setOpenCount] = useState(0);
   const [filter, setFilter] = useState<'' | PlanRequest['status']>('open');
   const [busy, setBusy] = useState<number | null>(null);
+  // the case being answered with a plan of its own
+  const [offerFor, setOfferFor] = useState<PlanRequest | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -125,8 +128,14 @@ export default function PlanRequests() {
               {r.handled_by && <p className="text-[11px] text-slate-500">last moved by {r.handled_by}</p>}
             </div>
             <div className="flex gap-2 px-3 py-2 border-t border-slate-800">
-              {r.status !== 'contacted' && (
+              {/* The offer is what a case is waiting for, so it carries the
+                  weight; "contacted" is the bookkeeping beside it. */}
+              {r.status !== 'closed' && (
                 <Button variant="primary" disabled={busy === r.id}
+                        onClick={() => setOfferFor(r)}>Offer a plan…</Button>
+              )}
+              {r.status !== 'contacted' && (
+                <Button disabled={busy === r.id}
                         onClick={() => move(r, 'contacted')}>Mark contacted</Button>
               )}
               {r.status !== 'closed' && (
@@ -139,6 +148,14 @@ export default function PlanRequests() {
           </section>
         ))}
       </div>
+      {offerFor && (
+        <OfferPlanDialog
+          account={{ id: offerFor.account_id, name: offerFor.account_name,
+                     request_id: offerFor.id, case_number: offerFor.case_number }}
+          onClose={() => setOfferFor(null)}
+          onDone={load}
+        />
+      )}
     </div>
   );
 }
