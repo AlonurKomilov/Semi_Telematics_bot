@@ -49,6 +49,13 @@ class IngestDataset:
     run: IngestRun
     tables: tuple[str, ...]     # physical tables written (watchdog + RLS audit read this)
     freshness_sla_min: int
+    #: Which provider serves this dataset.  ``"samsara"`` is the default
+    #: because the eight datasets that predate the resolver are all
+    #: Samsara-fed and their outer gate reads the Samsara integration
+    #: row.  ``None`` means RESOLVE BY CAPABILITY — the account's own
+    #: connected provider decides, which is what makes a feature
+    #: provider-agnostic in fact and not only in its own module.
+    provider_id: str | None = "samsara"
     expect_rows: bool = True
     label: str = ""
 

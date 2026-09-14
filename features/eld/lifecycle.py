@@ -22,6 +22,12 @@ register_dataset(IngestDataset(
     owner="eld",
     job_id="eld_driver_hos",
     capability=Capability.DRIVER_HOS,
+    # Resolve, do not assume.  The eight datasets that predate the
+    # resolver are Samsara-fed and keep the default; this one is the
+    # whole point of the resolver, and leaving it on the default would
+    # have gated a non-Samsara ELD on the Samsara integration row —
+    # skipping the account before its own provider could be found.
+    provider_id=None,
     # Five minutes is a compromise, and worth naming as one.  A duty
     # clock changes by the second, so any cadence is a staleness floor;
     # every surface therefore shows source_ts rather than implying the

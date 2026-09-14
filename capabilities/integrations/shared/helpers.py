@@ -232,9 +232,18 @@ async def _for_each_account_with_capability(
     capability: str,
     coro_factory,
     *,
-    provider_id: str = "samsara",
+    provider_id: str | None = "samsara",
 ) -> None:
     """Fan out a job to accounts that have ``capability`` enabled.
+
+    ``provider_id=None`` means the CALLER resolves which provider
+    serves this capability for each account, so this gate stops
+    deciding for it: the per-account loop runs and the job itself
+    returns early when nothing is connected.  Without that, a dataset
+    whose provider is not Samsara was gated on the SAMSARA integration
+    row — an account that swapped ELDs would be skipped here and its
+    own resolver would never run, leaving the feed silently dark with
+    nothing to distinguish it from "no provider connected".
 
     For each active account:
       1. Look up its integration row for ``provider_id``.
@@ -275,7 +284,10 @@ async def _for_each_account_with_capability(
                 tenant_db = await get_tenant_db(acc.id)
                 async with tenant_db.with_account(acc.id):
                     db = get_platform_db()
-                    ai = await db.get_account_integration(acc.id, provider_id)
+                    ai = (
+                        await db.get_account_integration(acc.id, provider_id)
+                        if provider_id is not None else None
+                    )
                     if ai is not None:
                         if ai.status != "connected":
                             async with lock:

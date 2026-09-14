@@ -30,6 +30,20 @@ async def run_dataset(dataset: IngestDataset) -> None:
     async def _run_and_record(account_id: int) -> int:
         from infra.platform import get_tenant_db
 
+        if dataset.provider_id is None:
+            # The dataset asked for resolution rather than assuming a
+            # vendor.  No connected provider is a fact about the
+            # account, not a run — recording it would make ingest_runs
+            # say we fetched and got nothing, which is the one thing a
+            # compliance feed must never imply.
+            from capabilities.integrations.shared.resolver import (
+                resolve_provider_for,
+            )
+            if await resolve_provider_for(
+                account_id, dataset.capability
+            ) is None:
+                return 0
+
         rows = await dataset.run(account_id)
         try:
             tenant = await get_tenant_db(account_id)
@@ -48,4 +62,7 @@ async def run_dataset(dataset: IngestDataset) -> None:
             )
         return rows
 
-    await _for_each_account_with_capability(dataset.capability, _run_and_record)
+    await _for_each_account_with_capability(
+        dataset.capability, _run_and_record,
+        provider_id=dataset.provider_id,
+    )
