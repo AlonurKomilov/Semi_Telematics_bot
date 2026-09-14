@@ -1177,9 +1177,10 @@ deliberately returns slot 5). Guard 37 fails on it.
 
 
 
-**Vendor chrome follows the axis; three vendor circles do not.** Leaflet's
-popup, tooltip and zoom bar and sonner's toast, action button and loading
-bar are themed from `index.css` with one extra ancestor class each — never
+**Vendor chrome follows the axis where we reach it — and Leaflet's own
+controls we do not.** Leaflet's popup and tooltip and sonner's toast,
+action button and loading bar are themed from `index.css` with one extra
+ancestor class each — never
 `!important`, and never at equal specificity, because both vendors inject
 their stylesheets at runtime and the winner would otherwise depend on
 build mode (sonner is imported before `index.css`, so an equal-specificity

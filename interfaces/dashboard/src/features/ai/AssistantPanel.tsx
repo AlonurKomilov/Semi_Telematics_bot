@@ -152,7 +152,10 @@ export default function AssistantPanel() {
           />
         </div>
         {/* The chat canvas — a rounded content card inside the bg-sidebar
-            chrome (mirrors the shells' <main>).  The assistant's header
+            chrome (mirrors the shells' <main>, `page-ground` included:
+            it mirrored everything about that element except the class
+            that lets a wallpaper reach it, so the dock sat as a flat
+            slab while the page behind it wore the pattern).  The assistant's header
             now lives INSIDE this card as a mini bar with a divider
             (Samsara/Gemini), not on the chrome above it — so the title +
             controls read as the top of the chat surface, not a separate
@@ -161,7 +164,7 @@ export default function AssistantPanel() {
             at the same y as the shells' <main> content card, so the two
             align — an 8px top gap here read as the chat sitting lower. */}
         <div className="h-full px-2 pb-2">
-          <div className="flex h-full flex-col rounded-xl border border-border bg-background text-foreground overflow-hidden">
+          <div className="page-ground flex h-full flex-col rounded-xl border border-border bg-background text-foreground overflow-hidden">
             {/* Mini header bar — title + New-chat / History (portalled) +
                 Expand + Close, divided from the messages by a border. */}
             <div className="flex h-11 items-center justify-between px-3 border-b border-border shrink-0">

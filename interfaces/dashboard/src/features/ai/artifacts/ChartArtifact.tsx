@@ -9,11 +9,14 @@ import {
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
 import { chartColor } from '../../../lib/status';
+import { useRadiusPx } from '@/lib/radius';
+import { RoundedBar } from '@/components/charts/RoundedBar';
 import { registerArtifact } from './registry';
 import { isChart, type Artifact } from './types';
 
 import { CHART_FONT_SM } from "@/lib/chartText";
 function ChartArtifactView({ artifact }: { artifact: Artifact }) {
+  const radiusPx = useRadiusPx();
   if (!isChart(artifact)) return null;
   const { chart, data, xKey, series, title } = artifact;
   return (
@@ -42,7 +45,7 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
             <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (
-              <Bar key={s.key} dataKey={s.key} name={s.label ?? s.key} fill={chartColor(i + 1)} />
+              <Bar key={s.key} dataKey={s.key} name={s.label ?? s.key} fill={chartColor(i + 1)} shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
             ))}
           </BarChart>
         )}

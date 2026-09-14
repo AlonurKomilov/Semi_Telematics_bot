@@ -152,3 +152,31 @@ describe('the primitives actually use it', () => {
     expect(src).not.toContain('surface-popover');
   });
 });
+
+describe('glass does not switch the shader off', () => {
+  const GLASS = readFileSync(
+    join(__dirname, '..', 'store', 'items', 'material', 'glass.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('every shadow it declares answers the light', () => {
+    // The rule that applies this shadow out-specifies the light rung in
+    // index.css — deliberately, so it can beat the `shadow-lg` a dialog
+    // carries. That meant a literal here silently DISABLED the Shaders
+    // axis on every card, dialog, sheet, select and context-menu, and
+    // neither axis's own tests could see it: material checked its rule
+    // existed, shaders checked its tokens existed, and nothing checked
+    // that one read the other.
+    const decls = [...GLASS.matchAll(/--surface-shadow:\s*([^;]+);/g)].map((m) => m[1]);
+    expect(decls.length, 'glass declares no shadow — this checks nothing')
+      .toBeGreaterThan(1);
+    for (const d of decls) {
+      expect(d, `a --surface-shadow with no light term: ${d.slice(0, 60)}`)
+        .toMatch(/var\(--light-/);
+    }
+  });
+
+  it('and the scan can fail', () => {
+    expect('0 1px 2px rgb(0 0 0 / 6%)').not.toMatch(/var\(--light-/);
+    expect('0 calc(1px * var(--light-lift, 1)) 2px').toMatch(/var\(--light-/);
+  });
+});

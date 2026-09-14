@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRadiusPx } from '@/lib/radius';
+import { RoundedBar } from '@/components/charts/RoundedBar';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -110,6 +112,7 @@ function moneyDetail(n: number): string {
 }
 
 export default function Reports() {
+  const radiusPx = useRadiusPx();
   const { t } = useTranslation();
   const [days, setDays] = useState<number>(90);
   const navigate = useNavigate();
@@ -449,7 +452,7 @@ export default function Reports() {
                       itemStyle={{ color: 'var(--foreground)' }}
                       contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
-                    <Bar dataKey="total_spent" style={{ cursor: 'pointer' }}>
+                    <Bar dataKey="total_spent" style={{ cursor: 'pointer' }} shape={<RoundedBar corners="top" radiusPx={radiusPx} />}>
                       {vehicleChart.map((_, i) => (
                         <Cell key={i} fill={BAR_PALETTE[i % BAR_PALETTE.length]} />
                       ))}
@@ -536,6 +539,7 @@ export default function Reports() {
                     contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                   />
                   <Bar dataKey="combined" style={{ cursor: 'pointer' }}
+                    shape={<RoundedBar corners="top" radiusPx={radiusPx} />}
                     onClick={(d) => setDrillSystem(d as unknown as SystemRow)}>
                     {systemChart.map((_, i) => (
                       <Cell key={i} fill={BAR_PALETTE[i % BAR_PALETTE.length]} />

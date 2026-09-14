@@ -10,6 +10,8 @@
  * trends.
  */
 import { useQuery } from '@tanstack/react-query';
+import { useRadiusPx } from '@/lib/radius';
+import { RoundedBar } from '@/components/charts/RoundedBar';
 import {
   Bar,
   BarChart,
@@ -91,6 +93,7 @@ function StatTile({
 }
 
 export default function VehicleUsage({ vehicleName, company }: VehicleSectionProps) {
+  const radiusPx = useRadiusPx();
   const { data, isLoading, error } = useQuery<UsageResponse>({
     queryKey: ['vehicle-usage', vehicleName, company ?? '', 30],
     queryFn: () => {
@@ -186,7 +189,7 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
                       fontSize: CHART_FONT_MD,
                     }}
                   />
-                  <Bar dataKey="miles" fill="var(--info)" name="Miles" />
+                  <Bar dataKey="miles" fill="var(--info)" name="Miles" shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
                   <Line type="monotone" dataKey="drive_hours" stroke="var(--ok)" strokeWidth={2} dot={false} name="Drive h" />
                   <Line type="monotone" dataKey="harsh_event_count" stroke="var(--danger)" strokeWidth={2} dot={false} name="Harsh" />
                 </BarChart>

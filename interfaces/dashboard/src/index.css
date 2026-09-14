@@ -1,5 +1,11 @@
 @import "@fontsource-variable/geist";
-/* Mod PACKS — one file per pack, each wrapped in its own `@media screen`.
+/* Mod PACKS — one file per pack. The ones that paint SCREEN chrome
+   (wallpaper, cursor, shader, material) wrap themselves in `@media
+   screen`; accents, typefaces, corners and motion do NOT, because a
+   printed page keeps its colour, its face and the shape of a card.
+   This comment used to say every pack was wrapped — tidying the other
+   thirteen to match would have reverted every printed page to the base
+   font, silently.
    Imported here because CSS allows `@import` only at the top; the
    mechanism each pack plugs into stays further down this sheet, under
    its own heading. `mods/store/items/packs.test.ts` holds the index of every

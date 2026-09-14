@@ -159,7 +159,7 @@ export function vendorDirectoryPopup(f: PoiFeature): string {
     .filter(Boolean);
   const badges = services.length
     ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${
-        services.map((s) => `<span style="background:${POPUP.badgeBg};color:${POPUP.badgeText};font-size:10px;padding:2px 6px;border-radius:10px;white-space:nowrap">${esc(s)}</span>`).join('')
+        services.map((s) => `<span style="background:${POPUP.badgeBg};color:${POPUP.badgeText};font-size:10px;padding:2px 6px;border-radius:var(--radius-md);white-space:nowrap">${esc(s)}</span>`).join('')
       }</div>`
     : '';
   const meta: string[] = [];
@@ -176,7 +176,7 @@ export function vendorDirectoryPopup(f: PoiFeature): string {
   // Present only on the my_vendors layer: the caller's own vendor name.
   const mine = String(p.my_vendor_name ?? '').trim();
   const mineHtml = mine
-    ? `<div style="margin-top:4px;font-size:10px;color:${POPUP.badgeText}"><span style="background:${POPUP.badgeBg};padding:2px 6px;border-radius:10px">Your vendor · ${esc(mine)}</span></div>`
+    ? `<div style="margin-top:4px;font-size:10px;color:${POPUP.badgeText}"><span style="background:${POPUP.badgeBg};padding:2px 6px;border-radius:var(--radius-md)">Your vendor · ${esc(mine)}</span></div>`
     : '';
   return `<div style="min-width:160px;max-width:240px">`
     + `<div style="font-weight:600;font-size:13px">${esc(p.name)}</div>`

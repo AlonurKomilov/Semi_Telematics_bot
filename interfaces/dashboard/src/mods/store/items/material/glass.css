@@ -11,13 +11,31 @@
     --surface-blur: 14px;
     /* Glass without a saturation boost reads as fog. */
     --surface-saturate: 1.5;
-    --surface-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 12px 32px -16px rgb(0 0 0 / 18%);
+    /* The light's terms, not literals. This rule out-specifies the
+       `.surface` rung in index.css — deliberately, so it can beat the
+       `shadow-lg` a dialog carries — which meant that CHOOSING GLASS
+       SWITCHED THE SHADER AXIS OFF: Soft and Studio stopped lifting the
+       only surfaces the rung exists for, and neither axis's tests could
+       see it. Multiplying by the same three factors keeps glass's own
+       edge (it needs one to read as glass at all) while letting the
+       light shape it. `--light-elevate` is deliberately NOT a factor
+       here: at Flat it is 0, and a glass card with no shadow does not
+       read as glass. */
+    --surface-shadow:
+      0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1))
+        rgb(0 0 0 / calc(0.06 * var(--light-strength, 1))),
+      0 calc(12px * var(--light-lift, 1)) calc(32px * var(--light-spread, 1)) -16px
+        rgb(0 0 0 / calc(0.18 * var(--light-strength, 1)));
   }
   .dark[data-material="glass"] {
     /* Lower, because a dark surface has to let more of the ground
        through before the eye reads it as translucent at all. */
     --surface-alpha: 0.62;
-    --surface-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 12px 32px -14px rgb(0 0 0 / 55%);
+    --surface-shadow:
+      0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1))
+        rgb(0 0 0 / calc(0.40 * var(--light-strength, 1))),
+      0 calc(12px * var(--light-lift, 1)) calc(32px * var(--light-spread, 1)) -14px
+        rgb(0 0 0 / calc(0.55 * var(--light-strength, 1)));
   }
 
   /* `backdrop-filter` is applied ONLY under glass. At blur 0 it would

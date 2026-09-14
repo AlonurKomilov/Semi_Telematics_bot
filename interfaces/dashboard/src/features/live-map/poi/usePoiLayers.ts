@@ -250,7 +250,7 @@ export function defaultOsmPopup(f: PoiFeature, def: PoiLayerDef): string {
 
   const amenityHtml = amenities.length
     ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${
-        amenities.map((a) => `<span style="background:${POPUP.badgeBg};color:${POPUP.badgeText};font-size:10px;padding:2px 6px;border-radius:10px;white-space:nowrap">${a}</span>`).join('')
+        amenities.map((a) => `<span style="background:${POPUP.badgeBg};color:${POPUP.badgeText};font-size:10px;padding:2px 6px;border-radius:var(--radius-md);white-space:nowrap">${a}</span>`).join('')
       }</div>`
     : '';
   const metaHtml = meta.length
