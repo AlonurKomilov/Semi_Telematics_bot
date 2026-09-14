@@ -6,6 +6,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Toaster } from 'sonner';
 import { toast } from './lib/toast';
 import { useNotifPosition } from './components/banners';
+import { CheckCircle2, XCircle, TriangleAlert, Info, Loader2 } from './lib/icons';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
@@ -39,7 +40,25 @@ function AppToaster() {
     ? 'calc(3rem * var(--size-control, 1) * var(--size-region-controls, 1) + 0.5rem)'
     : undefined;
   return (
-    <Toaster richColors theme={mode} position={position} closeButton offset={offset} />
+    <Toaster
+      richColors
+      theme={mode}
+      position={position}
+      closeButton
+      offset={offset}
+      /* Sonner draws its own check / cross / warning / info SVGs, which
+         is a SECOND icon vocabulary on the one surface every page shows
+         — the rule the icon door exists to enforce ("one set on screen
+         at a time", design.md §7). These come from the door, so they
+         follow the icon pack and its weight like every other glyph. */
+      icons={{
+        success: <CheckCircle2 className="size-4" aria-hidden />,
+        error: <XCircle className="size-4" aria-hidden />,
+        warning: <TriangleAlert className="size-4" aria-hidden />,
+        info: <Info className="size-4" aria-hidden />,
+        loading: <Loader2 className="size-4 animate-spin" aria-hidden />,
+      }}
+    />
   );
 }
 

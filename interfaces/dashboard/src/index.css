@@ -875,6 +875,17 @@
 [data-sonner-toaster] [data-sonner-toast] { border-radius: var(--radius); }
 [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-button] { border-radius: var(--radius); }
 [data-sonner-toast] .sonner-loading-bar { border-radius: var(--radius); }
+/* Sonner ships its own `font-family` on the toaster and its own enter /
+   exit durations, both of which out-specify the `html` rule the rest of
+   the app inherits from — so the single notification lane in the product
+   was the one surface that ignored the typeface and the Motion axis. */
+[data-sonner-toaster][data-sonner-toaster] {
+  font-family: var(--font-sans);
+  --toast-duration: calc(400ms * var(--motion-scale, 1));
+}
+[data-sonner-toaster] [data-sonner-toast] {
+  transition-duration: calc(400ms * var(--motion-scale, 1));
+}
 .leaflet-container .leaflet-bar { border-radius: var(--radius); overflow: hidden; }
 /* Leaflet hardcodes `background: white; color: #333` on its popups and
    tooltips, so on the three dark themes a map popup was a white card in a
@@ -888,6 +899,54 @@
   color: var(--popover-foreground);
 }
 .leaflet-container .leaflet-popup-tip { background: var(--popover); }
+
+/* ── Leaflet's OWN controls join the colour, type and motion axes ─────
+ *
+ * The popup and the tooltip were themed years ago; the controls were
+ * not, and on the dark default the zoom pill is a white rectangle that
+ * never changes whatever anybody picks. They were missed because they
+ * are not ours to see: `leaflet.css` is fetched from a CDN at runtime,
+ * so it is outside the build, outside `dist/` and outside every guard in
+ * this repo — the only way to find it was to read the vendor file.
+ *
+ * Same rule as the block above: one extra ancestor, never equal
+ * specificity. `:root` is that ancestor for the container itself, which
+ * has no other.
+ *
+ * The CURSORS are deliberately not here. Leaflet ships seven, and a
+ * cursor is a whole axis with its own pack — answering them from this
+ * file would put a second vocabulary in a third place. They are counted
+ * as debt in `mods/coverage.test.ts` instead. */
+:root .leaflet-container {
+  background: var(--muted);
+  font-family: var(--font-sans);
+}
+.leaflet-container .leaflet-bar a,
+.leaflet-container .leaflet-bar a:hover {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border-bottom-color: var(--border);
+  /* Leaflet writes a `font:` SHORTHAND here, which resets the family AND
+     pins 18px — so the family alone is not enough to reach it. */
+  font: inherit;
+  font-size: 1.125rem;
+  line-height: 1.625rem;
+}
+.leaflet-container .leaflet-bar a.leaflet-disabled {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+.leaflet-container .leaflet-control-attribution {
+  background: color-mix(in oklab, var(--popover) 80%, transparent);
+  color: var(--muted-foreground);
+}
+.leaflet-container .leaflet-control-attribution a { color: var(--primary); }
+/* Leaflet's zoom animation is a fixed 0.25s. Every other transition in
+   the app rides the Motion axis; this one now does too, and the
+   reduced-motion floor at the end of this file ends it like any other. */
+.leaflet-container .leaflet-zoom-animated {
+  transition: transform calc(0.25s * var(--motion-scale, 1)) cubic-bezier(0, 0, 0.25, 1);
+}
 /* Leaflet gives the tooltip a white border and paints its arrow with a
    border-<side>-color chosen from the resolved direction. The app asks for
    `direction: 'auto'`, which Leaflet only ever resolves to left or right —
