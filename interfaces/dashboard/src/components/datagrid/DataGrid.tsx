@@ -2028,7 +2028,8 @@ export default function DataGrid({
     // the selection was the one you thought it was.
     const ok = await writeToClipboard(buildTsv(copyCols, rows));
     if (!ok) {
-      toast.error(t('datagrid.copy_failed', 'Could not copy to the clipboard'));
+      toast.error(t('datagrid.copy_failed',
+        'Could not copy to the clipboard — use Export CSV instead'));
       return;
     }
     toast.success(rows.length === 1
@@ -3129,7 +3130,7 @@ export default function DataGrid({
       if (grid.length === 0) return;      // nothing configured yet
       const pivotName = `${tableId}-pivot-${today0}.csv`;
       downloadCsv(pivotName, buildCsvFromRows(grid));
-      toast.success(t('datagrid.exported_file', 'Saved {{name}}', { name: pivotName }));
+      toast.success(t('datagrid.exported_file', 'Exported {{name}}', { name: pivotName }));
       return;
     }
     const visibleColIdsInOrder = table.getVisibleLeafColumns().map(c => c.id);
@@ -3149,8 +3150,8 @@ export default function DataGrid({
     // same, and the row count is what says which scope actually ran.
     const name = `${tableId}${suffix}-${today}.csv`;
     exportRowsAsCsv(name, exportCols, exportRows);
-    toast.success(t('datagrid.exported_rows', 'Saved {{n}} rows to {{name}}',
-      { n: exportRows.length, name }));
+    toast.success(t('datagrid.exported_rows', 'Exported {{n}} rows — {{name}}',
+      { n: exportRows.length.toLocaleString(), name }));
   };
 
   // Reset wipes every customization (filters / sort / search / column
