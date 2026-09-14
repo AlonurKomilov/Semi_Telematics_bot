@@ -172,3 +172,36 @@ async def test_asking_for_one_driver_returns_only_theirs(sdb):
 async def test_nothing_to_write_is_not_an_error(sdb):
     acct = await sdb.create_account("ELD Co 9")
     assert await sdb.upsert_driver_hos(acct.id, "samsara", []) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_omits_a_text_field_does_not_abort_the_write(sdb):
+    """A column DEFAULT does not save you from an explicit NULL.
+
+    The text columns are NOT NULL DEFAULT '', and the writer passes
+    every column by name — so a provider that simply omits
+    ``last_status_change`` used to abort the whole insert, taking every
+    other driver in the same poll with it.  A missing LABEL is blank; a
+    missing NUMBER stays unknown.
+    """
+    acct = await sdb.create_account("Sparse Provider Co")
+    n = await sdb.upsert_driver_hos(acct.id, "samsara", [
+        {"provider_driver_id": "p1", "duty_status": "driving",
+         "source_ts": "2026-09-14T09:00:00+00:00"},
+    ])
+    assert n == 1
+
+    row = (await sdb.get_driver_hos_live(acct.id))[0]
+    assert row["last_status_change"] == ""
+    assert row["driver_name"] == ""
+    assert row["drive_seconds_today"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_clock_that_is_not_a_number_is_unknown_not_zero(sdb):
+    acct = await sdb.create_account("Odd Provider Co")
+    await sdb.upsert_driver_hos(acct.id, "samsara", [
+        _row("p1", cycle_seconds_remaining="not a number"),
+    ])
+    row = (await sdb.get_driver_hos_live(acct.id))[0]
+    assert row["cycle_seconds_remaining"] is None

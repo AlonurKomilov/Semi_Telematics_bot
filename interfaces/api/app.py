@@ -52,6 +52,7 @@ from capabilities.object_storage import router as object_storage_routes
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
 from features.inventory import router as inventory_routes
+from features.eld import router as eld_routes
 from features.cameras import router as cameras_routes
 from features.live_map import router as maps
 from features.live_map import config as location_config
@@ -464,6 +465,12 @@ async def _lifespan(app: FastAPI):
         logger.info("API lifespan: initialised platform (gunicorn worker mode)")
     else:
         logger.info("API lifespan: reusing platform from parent (legacy run.py mode)")
+    # The system layer hands its hold policies and the ledger's retention
+    # rules DOWN to the customer layers — from this entrypoint, which may
+    # import ``system``; the layers it wires may not. Idempotent, so the
+    # legacy single-process mode (run.py installs it too) is unaffected.
+    from system import bootstrap as _system_bootstrap
+    _system_bootstrap.install()
 
     # queue-depth poller (no-op when prometheus deps absent).
     from infra import observability as _obs
@@ -642,6 +649,7 @@ def create_api() -> FastAPI:
         # The pre-move ``/vehicles/…`` addresses, kept working while
         # anything still holds one.  Same handlers; out of the schema.
         app.include_router(inventory_routes.legacy, prefix=prefix)
+        app.include_router(eld_routes.router, prefix=prefix)
         app.include_router(loads_routes.router, prefix=prefix)
         app.include_router(kpi_config.router, prefix=prefix)
         app.include_router(kpi_routes.router, prefix=prefix)

@@ -50,16 +50,42 @@ else:
 
 # The columns an upsert writes, in one place so the INSERT, the
 # conflict clause and the read below cannot drift apart.
-_HOS_FIELDS = (
+#
+# Split by NULLABILITY, which here is a domain rule and not a schema
+# detail.  The clocks are nullable because "the provider did not report
+# this" and "the driver is out of hours" are opposite answers.  The
+# text columns are NOT NULL DEFAULT '' — and a column default does not
+# save you from an explicit NULL, so a provider that simply omits
+# ``last_status_change`` would abort the whole insert.  Coercing here
+# rather than widening the schema keeps the meaning: a missing label is
+# blank, a missing NUMBER stays unknown.
+_HOS_TEXT_FIELDS = (
     "duty_status",
-    "drive_seconds_today",
-    "on_duty_seconds_today",
-    "cycle_seconds_remaining",
-    "shift_seconds_remaining",
     "last_status_change",
     "driver_name",
     "source_ts",
 )
+_HOS_CLOCK_FIELDS = (
+    "drive_seconds_today",
+    "on_duty_seconds_today",
+    "cycle_seconds_remaining",
+    "shift_seconds_remaining",
+)
+_HOS_FIELDS = _HOS_TEXT_FIELDS + _HOS_CLOCK_FIELDS
+
+
+def _clock_value(raw):
+    """A clock as a whole number of seconds, or None.
+
+    None passes through; anything unparseable becomes None rather than
+    zero, for the same reason the column is nullable at all.
+    """
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 class EldMixin(_MixinBase):
@@ -104,7 +130,10 @@ class EldMixin(_MixinBase):
                 # on and nothing to link to later.  Count it as skipped
                 # rather than inventing a key.
                 continue
-            values = [r.get(f) for f in _HOS_FIELDS]
+            values = (
+                [str(r.get(f) or "") for f in _HOS_TEXT_FIELDS]
+                + [_clock_value(r.get(f)) for f in _HOS_CLOCK_FIELDS]
+            )
             await self._db.execute(
                 f"""
                 INSERT INTO driver_hos_live
