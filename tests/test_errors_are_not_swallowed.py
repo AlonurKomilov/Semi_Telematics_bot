@@ -74,7 +74,7 @@ EXEMPT: dict[str, str] = {
 #: Measured 2026-09-10; each one is a debt, not a permission.
 BUDGET: dict[str, int] = {
     "adapters/samsara": 1, "adapters/storage": 14,
-    "capabilities/ai": 18, "capabilities/alerting": 4,
+    "capabilities/ai": 17, "capabilities/alerting": 4,
     "capabilities/data_lifecycle": 1, "capabilities/formatting": 1,
     "capabilities/integrations": 1, "capabilities/jobs": 1,
     "capabilities/localization": 1, "capabilities/permissions": 2,
