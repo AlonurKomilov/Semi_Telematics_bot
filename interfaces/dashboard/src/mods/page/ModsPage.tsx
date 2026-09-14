@@ -71,10 +71,13 @@ function Tile({ to, icon: Icon, title, meta, state }: {
   to: string; icon: LucideIcon; title: string; meta?: string; state?: TileState;
 }) {
   return (
-    <Link
-      to={to}
+    // A <Card>, not a hand-rolled one: the primitive carries `.surface`,
+    // which is the class the MATERIAL axis reaches. Painted by hand, this
+    // tile stayed solid while the app around it went to glass.
+    <Card
+      render={<Link to={to} />}
       className={cn(
-        'group flex flex-col gap-3 p-4 rounded-lg border border-border bg-card',
+        'group flex flex-col gap-3',
         'hover:bg-muted/60 hover:border-primary/40 transition-colors min-h-tap',
         state === 'changed' && 'border-primary/40',
       )}
@@ -101,7 +104,7 @@ function Tile({ to, icon: Icon, title, meta, state }: {
         <div className="text-sm font-medium text-foreground">{title}</div>
         {meta && <div className="text-xs text-muted-foreground tabular-nums mt-0.5">{meta}</div>}
       </div>
-    </Link>
+    </Card>
   );
 }
 

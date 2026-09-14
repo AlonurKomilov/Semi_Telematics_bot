@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { scaledPx } from '@/lib/scaledLength';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -134,14 +135,17 @@ function UserAvatar({ userId, name, size = 48, active = true }: { userId: number
   }, [userId]);
 
   const ini = initialsOf(name);
-  const px = `${size}px`;
+  // `scaledPx`, not `${size}px`. The name beside this avatar is a class
+  // and scales with the Size axis; a px string built in JS cannot, so at
+  // 150% the circle stayed put while the text around it grew.
+  const px = scaledPx(size);
   if (src) {
     return <img src={src} alt={name} className="rounded-full object-cover" style={{ width: px, height: px }} />;
   }
   return (
     <div className={`rounded-full flex items-center justify-center font-bold ${
       active ? 'bg-primary/15 text-foreground ring-1 ring-primary' : 'bg-muted text-muted-foreground'
-    }`} style={{ width: px, height: px, fontSize: `${size * 0.375}px` }}>
+    }`} style={{ width: px, height: px, fontSize: scaledPx(size * 0.375, 'text') }}>
       {ini}
     </div>
   );

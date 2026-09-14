@@ -401,8 +401,15 @@ const SIZE_DEBT = [
  */
 const cardShellSites = (src: string): number[] => {
   const out: number[] = [];
-  for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
-    const c = m[1] ?? m[2] ?? '';
+  // Every spelling, not two. A quoted string and a template were the
+  // only forms this read, so `cn(…)`, `[…].join(' ')` and array literals
+  // walked past it — three ways of writing a class that the app uses
+  // everywhere. For the compound forms the STRINGS INSIDE are joined
+  // and tested as one value, which is what the browser ends up with.
+  for (const m of src.matchAll(/className=(?:"([^"]*)"|\{([\s\S]{0,600}?)\}\s*(?:\n|\/?>|[a-zA-Z-]+=))/g)) {
+    const body = m[2] ?? '';
+    const c = m[1] ?? [...body.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)]
+      .map((s) => s[1] ?? s[2] ?? s[3] ?? '').join(' ');
     if (!/\bbg-card(?![/\w-])/.test(c)) continue;
     if (!/\bborder\b/.test(c)) continue;
     if (!/\brounded-(?:lg|xl)\b/.test(c)) continue;
@@ -430,6 +437,36 @@ const cardShellSites = (src: string): number[] => {
  *     a filter strip. Asymmetric padding is the tell: a card breathes
  *     evenly, a row is wider than it is tall.
  */
+/**
+ * Cards that ARE cards and have not been converted yet.
+ *
+ * Not the same list as the one below, and the difference matters: those
+ * wear a card's clothes and are NOT cards, so listing them is a
+ * judgement that has been made. These four are cards, and each one was
+ * INVISIBLE to this guard until the scanner above learned `cn(…)`,
+ * `[…].join(' ')` and array literals — three spellings the app uses
+ * everywhere and this file read past for as long as it has existed.
+ *
+ * Converting each changes its padding and its radius (the primitive is
+ * `p-4` and `rounded-lg`; these are `p-5`/`rounded-xl` and worse), so
+ * each needs a look at the rendered page rather than a find-and-replace.
+ * Tracked as debt, not excused — and the cost of leaving them is not
+ * cosmetic: `<Card>` carries `.surface`, which is the class the MATERIAL
+ * axis reaches, so every one of these stays solid while the app around
+ * it goes to glass.
+ *
+ * `App.tsx` is deliberately NOT here. It was offending under the OLD
+ * scanner too — it is somebody else's red, on somebody else's open edit,
+ * and listing it would turn their signal green on my say-so. A debt list
+ * is for what this change MADE VISIBLE, never for what it found already
+ * failing.
+ */
+const CARD_NOT_YET_CONVERTED = [
+  'components/datagrid/DataGrid.tsx',
+  'components/shell/OnboardingBanner.tsx',
+  'features/integrations/IntegrationCard.tsx',
+];
+
 const CARD_NOT_A_CARD = [
   'features/ai/Chat.tsx',
   'features/applications/Applications.tsx',
@@ -470,7 +507,19 @@ const inlineLengthSites = (src: string): { line: number; prop: string }[] => {
     )) {
       if (!PROPS.has(m[1])) continue;
       const v = m[2].replace(/^['"`]|['"`]$/g, '');
-      if (/%|\$\{|vh|vw|var\(|calc\(/.test(v)) continue;
+      if (/%|vh|vw|var\(|calc\(/.test(v)) continue;
+      // A template that RESOLVES to px/rem is a length too — the number
+      // comes from JS instead of from the source, and no Size multiplier
+      // can reach either one. Skipping every `${…}` was how three avatar
+      // boxes stayed frozen while the names beside them scaled. The
+      // sanctioned path is `scaledPx()`, so a template that calls it is
+      // the one that passes.
+      if (/\$\{/.test(v)) {
+        if (!/^\$\{[^}]+\}(?:px|rem)$/.test(v)) continue;
+        if (/scaledPx/.test(v)) continue;
+        out.push({ line: src.slice(0, style.index ?? 0).split('\n').length, prop: m[1] });
+        continue;
+      }
       if (!/^-?\d[\d.]*(?:px|rem)?$/.test(v)) continue;
       if (v === '0' || v === '0px') continue;
       out.push({ line: src.slice(0, style.index ?? 0).split('\n').length, prop: m[1] });
@@ -772,6 +821,7 @@ const DEBT: DebtList[] = [
   { name: 'STATUS_DOOR_DEBT',            entries: STATUS_DOOR_DEBT,            match: 'exact',     scope: TSX,   offends: (f) => statusDoorSites(f.src).length > 0 },
   { name: 'SIZE_DEBT',                   entries: SIZE_DEBT,                   match: 'exact',     scope: TSX,   offends: (f) => dialogWidthSites(f.src).length > 0 },
   { name: 'CARD_NOT_A_CARD',             entries: CARD_NOT_A_CARD,             match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
+  { name: 'CARD_NOT_YET_CONVERTED',      entries: CARD_NOT_YET_CONVERTED,      match: 'exact',     scope: TSX,   offends: (f) => cardShellSites(f.src).length > 0 },
   { name: 'INLINE_LENGTH_ALLOWED',       entries: INLINE_LENGTH_ALLOWED.map((e) => e.file), match: 'exact', scope: FILES, offends: (f) => inlineLengthSites(f.src).length > 0 },
   { name: 'COLOUR_LITERAL_ALLOWED',      entries: COLOUR_LITERAL_ALLOWED.map((e) => e.file), match: 'exact',
     scope: FILES, offends: (f) => colourLiteralSites(f.src).length > 0 },
@@ -803,6 +853,7 @@ describe('UI chrome', () => {
     // the one definition via `cn(cardVariants({ padding }), …)`.
     const offenders = TSX
       .filter((f) => !CARD_NOT_A_CARD.includes(f.rel))
+      .filter((f) => !CARD_NOT_YET_CONVERTED.includes(f.rel))
       .filter((f) => !f.rel.startsWith('components/ui/card'))
       .flatMap((f) => cardShellSites(f.src).map(
         (line) => `${f.rel}:${line} → <Card> or cn(cardVariants({…}), …)`,
