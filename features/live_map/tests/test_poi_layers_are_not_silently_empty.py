@@ -32,6 +32,7 @@ from __future__ import annotations
 import ast
 import inspect
 import re
+import textwrap
 
 from features.live_map.poi import custom, overpass
 from features.live_map.poi import router as poi_routes
@@ -255,3 +256,90 @@ def test_the_type_ahead_asks_the_mirror_once():
     assert '"exact"' in src, (
         "a tally taken from a capped sample must say it is a floor, or the "
         "client prints it as a total")
+
+
+# ── the same fault, wearing the other face ─────────────────────────────
+#
+# Every guard above catches a FAILURE dressed as an answer.  This one
+# catches its sibling: something STALE dressed as fresh.
+#
+# Both panels render `source_as_of` as "OpenStreetMap · N old".  When the
+# layers moved into our own Postgres the DB branch started filling that
+# field with `imported_at` — when WE ran the import, which is always a
+# few hours ago.  So the line said the data was fresh while the OSM
+# extract behind it was stamped 2026-06-01: the exact sentence that line
+# exists to prevent, answered in the voice of the question it was asked.
+#
+# The two dates are both real and both needed.  `imported_at` is a
+# VERSION — compared by a client to decide whether to re-download, never
+# shown.  `osm_base` is the DATA'S AGE.  Swapping them is silent, which
+# is why it is a test and not a comment.
+
+
+def _returned_source_as_of(fn) -> list[ast.AST]:
+    """Every value this function puts under a "source_as_of" key."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    out: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for k, v in zip(node.keys, node.values):
+            if isinstance(k, ast.Constant) and k.value == "source_as_of":
+                out.append(v)
+    return out
+
+
+def _mentions(node: ast.AST, name: str) -> bool:
+    return any(isinstance(n, ast.Name) and n.id == name for n in ast.walk(node))
+
+
+def test_the_freshness_line_is_never_told_our_import_time():
+    """`source_as_of` carries the EXTRACT's date, never the run's."""
+    for fn in (poi_routes.map_pois, poi_routes.poi_set):
+        values = _returned_source_as_of(fn)
+        assert values, (
+            f"{fn.__name__} returns no source_as_of at all — a layer served "
+            "with no date lets a months-old extract read as current")
+        for v in values:
+            for ours in ("imported_at", "version", "stamp"):
+                assert not _mentions(v, ours), (
+                    f"{fn.__name__} serves {ours!r} as source_as_of.  Both "
+                    "panels render that field as 'OpenStreetMap · N old', so "
+                    "our own import time makes a June extract read as hours "
+                    "old.  Read the extract date instead.")
+            # And POSITIVELY: it reads an extract date.  Absence of three
+            # spellings is a tripwire against the obvious revert and not
+            # a proof — the same regression through a differently named
+            # local would walk straight past it.
+            #
+            # Two legitimate sources, one per branch.  Served from our
+            # table: the date the import recorded.  Answered live by a
+            # mirror: the date that mirror reported, which is the module
+            # global in overpass.  Both are the EXTRACT's age; neither is
+            # ours.
+            called = {n.attr for n in ast.walk(v) if isinstance(n, ast.Attribute)}
+            assert called & {"poi_layer_source_as_of", "source_as_of"}, (
+                f"{fn.__name__}'s source_as_of no longer comes from an "
+                "extract date — whatever it is now, it is not the one fact "
+                f"that field is supposed to carry (reads: {sorted(called)})")
+
+
+def test_the_version_a_client_compares_is_still_the_import_time():
+    """The other half of the pair, so the fix cannot be made by deleting
+    one of them: /poi-set must keep handing over a version, and it must
+    be the import time — that is what changes when the points change."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(poi_routes.poi_set)))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for k, v in zip(node.keys, node.values):
+            if isinstance(k, ast.Constant) and k.value == "version":
+                assert _mentions(v, "version"), (
+                    "/poi-set's version is no longer the import stamp — a "
+                    "client compares it to decide whether its held copy is "
+                    "current, so anything that does not change on re-import "
+                    "leaves every client holding last week's points")
+                return
+    raise AssertionError(
+        "/poi-set no longer returns a version — without it a client cannot "
+        "tell a fresh copy from a stale one and must download every time")

@@ -122,3 +122,72 @@ async def test_a_layer_never_imported_has_no_date_rather_than_a_wrong_one(poi):
     # None is what lets the caller say "not loaded yet" instead of
     # drawing an empty layer and calling it "none in this view".
     assert await poi.count_poi_points("truck_parking") == {}
+
+
+# ── two dates, and they are not the same fact ──────────────────────────
+
+
+async def test_when_we_ran_and_how_old_the_data_is_are_kept_apart(poi):
+    """The freshness line asks the SECOND question.
+
+    `imported_at` is a version: it changes on every successful run and a
+    client compares it to decide whether to re-download.  `osm_base` is
+    what the mirror said its extract was stamped, and the mirrors run
+    months behind — measured 2026-09-13, the two this host could reach
+    were stamped 2026-06-01 and 2026-07-28.
+
+    Serving the first where the second belongs made the map say its data
+    was hours old while it was a season behind.  They differ by a season
+    here on purpose, so a swap cannot pass.
+    """
+    await poi.upsert_poi_points(
+        "shower", [_point(30, 41.0, -93.0, "Truck stop")], "2026-09-14T03:00:00Z")
+    await poi.finish_poi_import(
+        "shower", "2026-09-14T03:00:00Z", 1, ok=True,
+        osm_base="2026-06-01T00:00:00Z")
+
+    assert await poi.poi_layer_imported_at("shower") == "2026-09-14T03:00:00Z"
+    assert await poi.poi_layer_source_as_of("shower") == "2026-06-01T00:00:00Z"
+
+
+async def test_a_failed_run_moves_neither_date(poi):
+    """The same rule that protects the points protects both stamps: the
+    points still on the table are last week's, so last week's dates are
+    the ones still true of them."""
+    await poi.finish_poi_import(
+        "def_station", "2026-09-07T03:00:00Z", 5, ok=True,
+        osm_base="2026-06-01T00:00:00Z")
+    await poi.finish_poi_import(
+        "def_station", "2026-09-14T03:00:00Z", 0, ok=False, note="every mirror 504",
+        osm_base="2026-07-28T00:00:00Z")
+
+    assert await poi.poi_layer_imported_at("def_station") == "2026-09-07T03:00:00Z"
+    assert await poi.poi_layer_source_as_of("def_station") == "2026-06-01T00:00:00Z"
+
+
+async def test_a_first_run_that_failed_carries_neither_date(poi):
+    """The CASE arms only fire on conflict, so the very first run needs
+    its own guard — a layer that has never finished must not look like
+    one holding data from the run that brought back nothing."""
+    await poi.finish_poi_import(
+        "rest_area", "2026-09-14T03:00:00Z", 0, ok=False, note="no mirror answered",
+        osm_base="2026-07-28T00:00:00Z")
+
+    assert await poi.poi_layer_imported_at("rest_area") is None
+    assert await poi.poi_layer_source_as_of("rest_area") is None
+
+
+async def test_an_extract_date_the_mirror_never_gave_is_none_not_our_own(poi):
+    """Omitted, never guessed.  An unknown extract date draws no line at
+    all; substituting the import time would draw a confident one that is
+    wrong by however far behind the mirror was."""
+    await poi.finish_poi_import("fuel_station", "2026-09-14T03:00:00Z", 9, ok=True)
+
+    assert await poi.poi_layer_imported_at("fuel_station") == "2026-09-14T03:00:00Z"
+    assert await poi.poi_layer_source_as_of("fuel_station") is None
+    runs = await poi.poi_layer_imports()
+    assert runs["fuel_station"]["osm_base"] is None
+
+
+async def test_a_layer_never_imported_has_no_extract_date_either(poi):
+    assert await poi.poi_layer_source_as_of("truck_parking") is None

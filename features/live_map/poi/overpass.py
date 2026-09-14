@@ -181,11 +181,24 @@ def source_as_of() -> str | None:
     return _source_as_of
 
 
+def stamp_of(data: dict) -> str | None:
+    """THIS REPLY's extract date, or None if it did not carry one.
+
+    The per-reply fact, as opposed to `source_as_of()`'s per-worker one.
+    Anything that needs to know which answer a date belongs to must read
+    it here: the module global is whatever replied LAST, which is the
+    right answer for "how old is what this worker is serving" and the
+    wrong one for "how old is this box I just fetched".
+    """
+    ts = ((data or {}).get("osm3s") or {}).get("timestamp_osm_base")
+    return ts if isinstance(ts, str) and ts else None
+
+
 def _remember_source_age(data: dict) -> None:
     """Every Overpass reply carries its extract's date in `osm3s`."""
     global _source_as_of
-    ts = ((data or {}).get("osm3s") or {}).get("timestamp_osm_base")
-    if isinstance(ts, str) and ts:
+    ts = stamp_of(data)
+    if ts:
         _source_as_of = ts
 
 

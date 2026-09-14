@@ -134,13 +134,39 @@ def _quarter(box):
             (mid_lat, w, n, mid_lng), (mid_lat, mid_lng, n, e)]
 
 
-async def _fetch_box(layer: str, box, deadline: float, depth: int = 0) -> list[dict]:
-    """One box's points — quartered and retried if the mirror refuses it.
+def _older(a: str | None, b: str | None) -> str | None:
+    """The earlier of two extract dates, ignoring the unknown one.
+
+    None means "this reply carried no date", which is not evidence that
+    the data is old — or that it is new — so it never wins.  ISO-8601
+    UTC from one source, so a string compare is a date compare.
+    """
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
+
+
+async def _fetch_box(
+    layer: str, box, deadline: float, depth: int = 0,
+) -> tuple[list[dict], str | None]:
+    """One box's points AND the extract date they came from — quartered
+    and retried if the mirror refuses it.
 
     A refusal is usually about SIZE: the mirror estimates a query's cost
     and declines what it cannot afford right now.  So a box turned down
     twice is asked again in four smaller pieces rather than a third time
     unchanged.
+
+    THE DATE RIDES WITH THE POINTS, and it has to.  Reading
+    `overpass.source_as_of()` after this returns would read a module
+    global that every sub-fetch overwrites, so a quartered region would
+    report whichever of its four (or sixteen) pieces happened to answer
+    last — and the two mirrors this host can reach were stamped nearly
+    two months apart.  One fresh quarter would then speak for fifteen
+    stale ones.  Worse, the global is never cleared, so a layer whose
+    replies carried no date at all would inherit the PREVIOUS layer's.
     """
     loop = asyncio.get_running_loop()
     bbox = viewport._bbox_to_str(*box)
@@ -174,7 +200,7 @@ async def _fetch_box(layer: str, box, deadline: float, depth: int = 0) -> list[d
             if p is None or p.get("osm_id") is None:
                 continue
             points[(p["osm_type"], int(p["osm_id"]))] = p
-        return list(points.values())
+        return list(points.values()), overpass.stamp_of(data)
 
     if depth >= _MAX_SPLIT_DEPTH:
         raise last
@@ -184,10 +210,13 @@ async def _fetch_box(layer: str, box, deadline: float, depth: int = 0) -> list[d
     logger.info("poi import: %s %s refused — splitting into 4 (depth %d)",
                 layer, bbox, depth + 1)
     out = {}
+    oldest: str | None = None
     for quarter in _quarter(box):
-        for p in await _fetch_box(layer, quarter, deadline, depth + 1):
+        points, seen = await _fetch_box(layer, quarter, deadline, depth + 1)
+        for p in points:
             out[(p["osm_type"], int(p["osm_id"]))] = p
-    return list(out.values())
+        oldest = _older(oldest, seen)
+    return list(out.values()), oldest
 
 
 async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
@@ -201,6 +230,15 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     total = 0
     failures: list[str] = []
+    # The OLDEST extract any mirror served during this run.
+    #
+    # A layer is assembled from nine regions over up to an hour, and the
+    # mirrors do not share one extract date — measured 2026-09-13, two of
+    # them were stamped nearly two months apart.  Reporting the last one
+    # to answer would let a single fresh region speak for eight stale
+    # ones.  The oldest is the only claim true of the whole layer: no
+    # part of it is older than this.
+    oldest: str | None = None
     loop = asyncio.get_running_loop()
     # Each region gets its own slice, so the biggest cannot eat the lot.
     share = _LAYER_BUDGET_S / max(1, len(viewport._USA_REGIONS))
@@ -208,7 +246,8 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     for region in viewport._USA_REGIONS:
         bbox = viewport._bbox_to_str(*region)
         try:
-            points = await _fetch_box(layer, region, loop.time() + share)
+            points, seen = await _fetch_box(layer, region, loop.time() + share)
+            oldest = _older(oldest, seen)
         except Exception as exc:
             # ONE region short is the whole layer short: sweeping now
             # would delete every point that region was going to supply.
@@ -222,7 +261,7 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     ok = not failures
     note = "" if ok else " | ".join(failures)
     try:
-        await db.finish_poi_import(layer, stamp, total, ok, note)
+        await db.finish_poi_import(layer, stamp, total, ok, note, oldest)
     except Exception:
         logger.exception("poi import: could not close %s", layer)
     logger.info("poi import: %s — %d points, ok=%s%s",

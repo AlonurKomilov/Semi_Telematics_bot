@@ -322,3 +322,131 @@ async def test_the_cheapest_queries_are_tried_first(store):
     assert order == ["rest_area", "shower"], order
     cheapest = sorted(POI_OVERPASS_QUERIES, key=importer._query_cost)[:2]
     assert order == cheapest
+
+
+# ── how old the data is, as opposed to when we fetched it ──────────────
+#
+# A layer is assembled from every US region, and a refused region is
+# re-asked in quarters — so one layer is many replies, over up to an
+# hour, from two mirrors whose extracts were measured nearly two months
+# apart on 2026-09-13.  "When was this layer's data made" therefore has
+# several answers within one run, and only one of them is safe to print:
+# the oldest.  Anything newer lets one fresh piece speak for the stale
+# ones beside it.
+#
+# These drive the REAL mechanism — replies carrying `osm3s`, the way
+# Overpass sends them.  An earlier version of them patched
+# `overpass.source_as_of` instead, and could not tell correct
+# attribution from lucky iteration order: the module global is
+# overwritten by every sub-fetch, so a quartered region reported
+# whichever piece answered last.
+
+
+def _reply_at(stamp, *elements):
+    """An Overpass reply that says which extract it came from."""
+    r = _reply(*elements)
+    if stamp is not None:
+        r["osm3s"] = {"timestamp_osm_base": stamp}
+    return r
+
+
+async def test_the_oldest_extract_any_region_saw_is_the_one_recorded(store):
+    # Region two came from a mirror three months behind the other two.
+    replies = [_reply_at("2026-09-01T00:00:00Z", _osm(1, 41.8, -87.6)),
+               _reply_at("2026-06-01T00:00:00Z", _osm(2, 61.2, -149.9)),
+               _reply_at("2026-08-15T00:00:00Z", _osm(3, 21.3, -157.8))]
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=replies)):
+        result = await importer.import_layer(store, "fuel_station",
+                                             stamp="2026-09-13T10:00:00Z")
+
+    assert result["ok"] is True
+    assert await store.poi_layer_source_as_of("fuel_station") == "2026-06-01T00:00:00Z", (
+        "a fresh region was allowed to speak for the stale ones — the "
+        "recorded date has to be true of the WHOLE layer")
+    # And it is a different fact from when the run happened.
+    assert await store.poi_layer_imported_at("fuel_station") == "2026-09-13T10:00:00Z"
+
+
+async def test_a_split_region_reports_its_oldest_quarter_not_its_last(store):
+    """THE ONE THE MODULE GLOBAL COULD NOT ANSWER.
+
+    A refused region is fetched as four smaller boxes, one after
+    another, and each reply overwrote `overpass._source_as_of` — so
+    reading that global after the region finished returned whichever
+    quarter answered LAST.
+
+    Exactly one box in this whole run is stale, and it is the FIRST
+    quarter of CONUS.  Every other box, in every other region, is fresh.
+    So the recorded date can only be right if the quarters were folded;
+    anything that reads one of them reads September.
+    """
+    conus_split = []
+
+    async def _reply_for(query, **_kw):
+        import re as _re
+        box = _re.search(r"\(([-\d.,]+)\);", query).group(1)
+        south, west, north, east = (float(x) for x in box.split(","))
+        if (north - south) * (east - west) > 400:      # CONUS and Alaska whole
+            raise RuntimeError("Overpass 504")
+        # CONUS's south-western quarter — `_quarter` yields it first.
+        conus_sw = (abs(south - 24.396308) < 0.01 and abs(west + 125.0) < 0.01
+                    and north < 40.0)
+        if conus_sw:
+            conus_split.append(box)
+        stamp = "2026-06-01T00:00:00Z" if conus_sw else "2026-09-01T00:00:00Z"
+        return _reply_at(stamp, _osm(int(abs(south * 100) + abs(west)) + 1,
+                                     (south + north) / 2, (west + east) / 2))
+
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=_reply_for)):
+        result = await importer.import_layer(store, "fuel_station",
+                                             stamp="2026-09-13T10:00:00Z")
+
+    assert result["ok"] is True, result["note"]
+    assert conus_split, (
+        "CONUS was never split, so this test proves nothing about "
+        "quarters — check the refusal threshold against the region list")
+    assert await store.poi_layer_source_as_of("fuel_station") == "2026-06-01T00:00:00Z", (
+        "a quartered region reported one quarter's date instead of its "
+        "oldest — one fresh piece spoke for the stale one beside it")
+
+
+async def test_a_mirror_that_reported_no_date_does_not_become_the_answer(store):
+    """None is "this reply said nothing", which is not evidence that the
+    data is old — or that it is new.  It must not win the minimum and it
+    must not erase what the others reported."""
+    replies = [_reply_at("2026-07-28T00:00:00Z", _osm(1, 41.8, -87.6)),
+               _reply_at(None, _osm(2, 61.2, -149.9)),
+               _reply_at("2026-09-01T00:00:00Z", _osm(3, 21.3, -157.8))]
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=replies)):
+        await importer.import_layer(store, "fuel_station",
+                                    stamp="2026-09-13T10:00:00Z")
+
+    assert await store.poi_layer_source_as_of("fuel_station") == "2026-07-28T00:00:00Z"
+
+
+async def test_no_reply_carried_a_date_and_none_was_invented(store):
+    """Including from the run before this one.
+
+    `overpass._source_as_of` is a per-worker global that nothing ever
+    clears, so a layer whose replies carry no date would have inherited
+    the PREVIOUS layer's — a real date, attached to data it says nothing
+    about.  It is primed here on purpose.
+    """
+    from features.live_map.poi import overpass as _ov
+    _ov._remember_source_age({"osm3s": {"timestamp_osm_base": "2026-06-01T00:00:00Z"}})
+    assert _ov.source_as_of() == "2026-06-01T00:00:00Z"
+
+    replies = [_reply_at(None, _osm(1, 41.8, -87.6)),
+               _reply_at(None, _osm(2, 61.2, -149.9)),
+               _reply_at(None, _osm(3, 21.3, -157.8))]
+    with patch("features.live_map.poi.overpass._overpass_post",
+               new=AsyncMock(side_effect=replies)):
+        await importer.import_layer(store, "fuel_station",
+                                    stamp="2026-09-13T10:00:00Z")
+
+    assert await store.poi_layer_source_as_of("fuel_station") is None, (
+        "an unknown extract date was filled in — omitted beats guessed, "
+        "and a date borrowed from another run is the worst kind of guess")

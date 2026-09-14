@@ -93,8 +93,24 @@ class PoiDirectoryMixin:
         """layer → its last import, for the freshness line and the
         operator's view of whether the job is running."""
         cur = await self._db.execute(
-            "SELECT layer, imported_at, points, ok, note FROM poi_imports")
+            "SELECT layer, imported_at, points, ok, note, osm_base "
+            "FROM poi_imports")
         return {r["layer"]: dict(r) for r in [dict(x) for x in await cur.fetchall()]}
+
+    async def poi_layer_source_as_of(self, layer: str) -> Optional[str]:
+        """What the OSM extract behind this layer was stamped, or None.
+
+        NOT ``imported_at``, and the difference is the whole point:
+        ``imported_at`` says when we ran, this says how old the data we
+        ran against was.  The mirrors are months behind, so the two can
+        differ by a season, and the map's freshness line is asking this
+        one.  None when no mirror reported a stamp — omitted, never
+        guessed, because a wrong date here is worse than no date.
+        """
+        cur = await self._db.execute(
+            "SELECT osm_base FROM poi_imports WHERE layer = ?", (layer,))
+        row = await cur.fetchone()
+        return (dict(row).get("osm_base") or None) if row else None
 
     async def poi_layer_imported_at(self, layer: str) -> Optional[str]:
         """When this layer's points were last replaced SUCCESSFULLY, or
@@ -153,6 +169,7 @@ class PoiDirectoryMixin:
 
     async def finish_poi_import(
         self, layer: str, stamp: str, points: int, ok: bool, note: str = "",
+        osm_base: Optional[str] = None,
     ) -> None:
         """Close one layer's import run.
 
@@ -167,22 +184,36 @@ class PoiDirectoryMixin:
             await self._db.execute(
                 "DELETE FROM poi_points WHERE layer = ? AND updated_at < ?",
                 (layer, stamp))
-        # Only a SUCCESSFUL run may write the date.  On the first-ever
-        # run this matters at the INSERT, not just the update: a layer
-        # whose very first import failed must not end up carrying that
-        # run's timestamp as though it had data from then.
+        # Only a SUCCESSFUL run may write the dates — both of them, for
+        # the same reason: a failed run leaves last week's points in
+        # place, so last week's stamps are the ones still true of them.
+        # On the first-ever run this matters at the INSERT, not just the
+        # update — which the CASE arms do not reach — so a layer whose
+        # very first import failed must carry NEITHER date rather than
+        # appearing to hold data from the run that brought back nothing.
         await self._db.execute(
-            """INSERT INTO poi_imports (layer, imported_at, points, ok, note)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO poi_imports
+                   (layer, imported_at, points, ok, note, osm_base)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT (layer) DO UPDATE SET
                  imported_at = CASE WHEN excluded.ok = 1
                                     THEN excluded.imported_at
                                     ELSE poi_imports.imported_at END,
                  points = CASE WHEN excluded.ok = 1
                                THEN excluded.points ELSE poi_imports.points END,
+                 -- A successful run with no discovered date OVERWRITES a
+                 -- known-good one with NULL, deliberately: that run
+                 -- replaced the points, so the old extract date belongs
+                 -- to data that is gone.  Keeping it would attach a real
+                 -- date to points it says nothing about, which is the
+                 -- exact failure this column was added to end.
+                 osm_base = CASE WHEN excluded.ok = 1
+                                 THEN excluded.osm_base
+                                 ELSE poi_imports.osm_base END,
                  ok = excluded.ok,
                  note = excluded.note""",
-            (layer, stamp if ok else "", int(points), 1 if ok else 0, note[:400]),
+            (layer, stamp if ok else "", int(points), 1 if ok else 0, note[:400],
+             (osm_base or None) if ok else None),
         )
 
     async def count_poi_points(self, layer: Optional[str] = None) -> dict[str, int]:

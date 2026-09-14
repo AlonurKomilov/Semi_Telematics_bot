@@ -5543,9 +5543,36 @@ async def migrate_poi_points(conn) -> None:
                 imported_at  TEXT    NOT NULL,
                 points       INTEGER NOT NULL DEFAULT 0,
                 ok           INTEGER NOT NULL DEFAULT 0,
-                note         TEXT    NOT NULL DEFAULT ''
+                note         TEXT    NOT NULL DEFAULT '',
+                osm_base     TEXT
             )
         """)
+        # TWO DATES, AND THEY ARE NOT THE SAME FACT.
+        #
+        # ``imported_at`` is when WE ran the import — it is the version a
+        # client compares to decide whether to re-download, and it is
+        # always about now.  ``osm_base`` is what the mirror said its
+        # extract was stamped, and the mirrors run months behind: the two
+        # this host could reach on 2026-09-13 were stamped 2026-06-01 and
+        # 2026-07-28.
+        #
+        # The map's freshness line answers "why is the truck stop that
+        # opened in July not here", so it must read the SECOND one.  It
+        # was briefly served the first, which made it say the data was
+        # hours old when its OSM base was three months behind — the one
+        # sentence that line exists to prevent, in the voice of the
+        # question it was asked.  NULL means unknown, and unknown says
+        # nothing rather than guessing.
+        #
+        # Declared in the CREATE above AND added here, on purpose: this
+        # whole function is wrapped in a blanket except, so a failed
+        # ALTER would be a log line — and `finish_poi_import` writes all
+        # six columns in one INSERT, which would then start failing
+        # AFTER its sweep had already deleted rows.  A fresh install
+        # gets the column from the CREATE and never reaches this line;
+        # only a deployment that already had the table depends on it.
+        await conn.execute(
+            "ALTER TABLE poi_imports ADD COLUMN IF NOT EXISTS osm_base TEXT")
     except Exception:
         # Boot must not fail for this: without the tables the map falls
         # back to the Overpass path it has always used, which is exactly
@@ -5643,6 +5670,8 @@ async def migrate_plan_requests(conn) -> None:
         # which is worse than a working platform and better than a
         # crash loop.
         logger.exception("migrate_plan_requests failed")
+
+
 async def migrate_eld_hos_live(conn) -> None:
     """Create ``driver_hos_live`` — the ELD feature's own store.
 

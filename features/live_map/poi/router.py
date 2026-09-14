@@ -100,7 +100,13 @@ async def poi_set(
     rows = await tenant.poi_points_all(poi_type)
     return {
         "layer": poi_type,
+        # TWO DATES, DELIBERATELY.  `version` is when we imported — the
+        # value a client compares to decide whether its copy is current,
+        # and never something to show a person.  `source_as_of` is what
+        # the OSM extract behind it was stamped, which is the only one
+        # that answers "is this map up to date".
         "version": version,
+        "source_as_of": await tenant.poi_layer_source_as_of(poi_type),
         "type": "FeatureCollection",
         "features": [point_to_feature(r) for r in rows],
     }
@@ -244,9 +250,17 @@ async def map_pois(
         return {
             "type": "FeatureCollection",
             "features": [point_to_feature(r) for r in rows],
-            # OUR date now, not the mirror's: the panels already show it,
-            # and what they will be showing is how old OUR copy is.
-            "source_as_of": imported_at,
+            # THE MIRROR'S DATE, not ours.  Both panels render this field
+            # as "OpenStreetMap · N old", which is a claim about OSM's
+            # data — so handing it our import time made it say the data
+            # was hours old while its OSM base was three months behind.
+            # That line exists to explain a truck stop that opened in
+            # July being absent; our own timestamp answers a question
+            # nobody asked, in the voice of the one they did.
+            #
+            # None until an import has recorded one, and None draws no
+            # line at all.  Saying nothing is the honest unknown.
+            "source_as_of": await tenant.poi_layer_source_as_of(poi_type),
         }
 
     bbox_key = _round_bbox(bbox)

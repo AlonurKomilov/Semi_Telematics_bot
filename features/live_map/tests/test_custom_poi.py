@@ -626,7 +626,12 @@ class TestServedFromOurTable:
             {"osm_type": "node", "osm_id": 2, "lat": 34.05, "lng": -118.24,
              "name": "Love's", "props": {"amenity": "fuel"}},
         ], "2026-09-13T03:40:00Z")
-        await db.finish_poi_import("fuel_station", "2026-09-13T03:40:00Z", 2, ok=True)
+        await db.finish_poi_import(
+            "fuel_station", "2026-09-13T03:40:00Z", 2, ok=True,
+            # What the mirror said ITS extract was stamped — three and a
+            # half months behind the run, which is ordinary for the free
+            # mirrors and is the whole reason the panels show a date.
+            osm_base="2026-06-01T00:00:00Z")
 
         async def _must_not_be_called(*_a, **_k):
             raise AssertionError("the mirror was asked for an imported layer")
@@ -646,8 +651,57 @@ class TestServedFromOurTable:
         assert f["properties"]["name"] == "Pilot"
         assert f["properties"]["brand"] == "Pilot"
         assert f["geometry"]["coordinates"] == [-87.65, 41.85]
-        # And the freshness the panels show is OURS now, not a mirror's.
-        assert body["source_as_of"] == "2026-09-13T03:40:00Z"
+        # And the freshness the panels show is THE DATA'S age, not ours.
+        # Both of them render this field as "OpenStreetMap · N old", so
+        # our import time would have claimed the data was hours old when
+        # its OSM base was a season behind — the one sentence that line
+        # exists to prevent.
+        assert body["source_as_of"] == "2026-06-01T00:00:00Z"
+        assert body["source_as_of"] != "2026-09-13T03:40:00Z"
+
+    async def test_the_whole_layer_carries_both_dates(self, app_ctx):
+        """/poi-set hands over a version AND a data age, and they are
+        different values doing different jobs: the client compares the
+        first to decide whether to re-download, and shows the second."""
+        db = app_ctx["db"]
+        await db.upsert_poi_points("weigh_station", [
+            {"osm_type": "node", "osm_id": 7, "lat": 41.85, "lng": -87.65,
+             "name": "Scale", "props": {}},
+        ], "2026-09-13T03:40:00Z")
+        await db.finish_poi_import(
+            "weigh_station", "2026-09-13T03:40:00Z", 1, ok=True,
+            osm_base="2026-06-01T00:00:00Z")
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get("/api/map/poi-set?type=weigh_station",
+                            headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body["features"]) == 1
+        assert body["version"] == "2026-09-13T03:40:00Z", (
+            "the version is the import stamp — it has to change when the "
+            "points change, or a held copy is never refreshed")
+        assert body["source_as_of"] == "2026-06-01T00:00:00Z", (
+            "the shown date is the extract's, not the run's")
+
+    async def test_an_unknown_extract_date_is_omitted_not_invented(self, app_ctx):
+        """A mirror that reported no stamp leaves the field null, and a
+        null draws no freshness line at all.  Substituting the import
+        time would draw a confident one, wrong by however far behind the
+        mirror was."""
+        db = app_ctx["db"]
+        await db.upsert_poi_points("truck_parking", [
+            {"osm_type": "node", "osm_id": 9, "lat": 41.85, "lng": -87.65,
+             "name": "Lot", "props": {}},
+        ], "2026-09-13T03:40:00Z")
+        await db.finish_poi_import(
+            "truck_parking", "2026-09-13T03:40:00Z", 1, ok=True)
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get("/api/map/poi-set?type=truck_parking",
+                            headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 200, r.text
+        assert r.json()["source_as_of"] is None
 
     async def test_a_layer_never_imported_still_asks_the_mirror(self, app_ctx):
         """The whole migration in one test: nothing breaks before the
