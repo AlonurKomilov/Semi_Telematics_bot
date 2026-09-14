@@ -460,3 +460,36 @@ async def test_renaming_a_plan_carries_the_new_name_onto_the_customers_invoice(s
     await s["client"].put("/api/system/plans/gold", headers=s["op"],
                           json={"label": "Premier", "included": ["*"], "quotas": {}})
     assert len([c for c in fake.calls if c[0] == "Product.modify"]) == n
+
+
+@pytest.mark.asyncio
+async def test_a_save_heals_a_plan_whose_extras_price_predates_its_own_product(system_app, monkeypatch):
+    """The plans saved before the extras Product existed carry a Price on
+    the plan's own Product — the shape that printed the plan's name twice
+    on a bill.  A Save must remake it, or the operator is sent to SQL."""
+    s = system_app
+    monkeypatch.setenv("BILLING_PROVIDER", "stripe")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    import capabilities.platform.billing as _b
+    monkeypatch.setattr(_b, "_provider", None)
+    fake = _fake_stripe()
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: fake)
+    # the old shape: an extras Price, no extras Product
+    await s["db"].upsert_plan("gold", label="Gold", included=["*"], price_monthly_cents=15000,
+                              extra_vehicle_cents=499, stripe_price_id="price_g",
+                              stripe_product_id="prod_g", stripe_extra_price_id="price_gx_old")
+    r = await s["client"].put("/api/system/plans/gold", headers=s["op"],
+                              json={"label": "Gold", "included": ["*"], "quotas": {},
+                                    "price_monthly_cents": 15000, "extra_vehicle_cents": 499})
+    assert r.status_code == 200, r.text
+    row = await s["db"].get_plan("gold")
+    assert row["stripe_extra_product_id"] == "prod_x_new", "a Product of its own was made"
+    assert row["stripe_extra_price_id"] == "price_x_new" and row["stripe_price_id"] == "price_g", \
+        "the extras Price moved; the base Price was already right and was left alone"
+    assert ("Price.modify", "price_gx_old", {"active": False}) in fake.calls, "the old extras Price is archived"
+    # and a second Save, now in the new shape, creates nothing
+    n = len(fake.calls)
+    await s["client"].put("/api/system/plans/gold", headers=s["op"],
+                          json={"label": "Gold", "included": ["*"], "quotas": {},
+                                "price_monthly_cents": 15000, "extra_vehicle_cents": 499})
+    assert len(fake.calls) == n

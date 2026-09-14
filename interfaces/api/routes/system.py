@@ -2604,8 +2604,16 @@ async def system_put_plan(
     stripe_extra_product_id = None
     archived_extra = ""
     extra_cents = body.extra_vehicle_cents
-    if extra_cents is not None and (extra_cents != int(before.get("extra_vehicle_cents") or 0)
-                                    or (extra_cents > 0 and not before.get("stripe_extra_price_id"))):
+    # Remade when the amount changed, when there is no Price yet, and when
+    # the Price predates the extras Product: a Price on the plan's own
+    # Product made a bill print the plan's name twice, and the only way
+    # off it is a new Price on the new Product.  So a Save heals a plan
+    # carrying the old shape, rather than asking for SQL.
+    needs_extra_price = extra_cents is not None and extra_cents > 0 and (
+        extra_cents != int(before.get("extra_vehicle_cents") or 0)
+        or not before.get("stripe_extra_price_id")
+        or not before.get("stripe_extra_product_id"))
+    if needs_extra_price or (extra_cents == 0 and before.get("stripe_extra_price_id")):
         from capabilities.platform.billing import get_provider
         # the base call above may have just made the Product: hand it on
         before_for_extra = {**before, **({"stripe_product_id": stripe_product_id} if stripe_product_id else {})}
