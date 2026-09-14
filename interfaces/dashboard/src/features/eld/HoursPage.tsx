@@ -137,23 +137,31 @@ const COLUMNS: AnyColumn[] = [
 function HeaderMeta({ data }: { data: HoursResponse }) {
   const low = countLowOnDrive(data.drivers);
   return (
-    <div className="flex items-center gap-3 flex-wrap text-xs">
-      {low > 0 && (
-        <span className={toneText('warn')}>
-          {low} {low === 1 ? 'driver has' : 'drivers have'} under 1h drive
-          time left
-        </span>
+    <div className="flex flex-col gap-1 text-xs">
+      {/* Act on this.  Kept adjacent and at warn weight so the eye
+          finds them without reading the whole strip. */}
+      {(low > 0 || data.stale_count > 0) && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {low > 0 && (
+            <span className={toneText('warn')}>
+              {low} {low === 1 ? 'driver has' : 'drivers have'} under 1h
+              drive time left
+            </span>
+          )}
+          {data.stale_count > 0 && (
+            <span className={toneText('warn')}>
+              {data.stale_count} of {data.count} readings older than{' '}
+              {data.stale_after_minutes} min
+            </span>
+          )}
+        </div>
       )}
-      {data.stale_count > 0 && (
-        <span className={toneText('warn')}>
-          {data.stale_count} of {data.count} readings older than{' '}
-          {data.stale_after_minutes} min
-        </span>
-      )}
+      {/* What you are looking at.  Context, not a warning — its own
+          line and muted, so it never competes with the two above. */}
       {data.hidden_by_scope > 0 && (
         <span className="text-muted-foreground">
-          Showing {data.count} of {data.count + data.hidden_by_scope} drivers —
-          limited to your vehicle access
+          Showing {data.count} of {data.count + data.hidden_by_scope} drivers
+          — limited to your vehicle access
         </span>
       )}
     </div>

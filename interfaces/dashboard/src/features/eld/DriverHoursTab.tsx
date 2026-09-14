@@ -39,16 +39,31 @@ function ClockTile({ label, clock }: { label: string; clock: ClockValue | null }
   );
 }
 
+/**
+ * A floor under every branch.
+ *
+ * Skeleton, empty state and loaded body have very different heights,
+ * and this panel sits in a drawer with content below it.  Without a
+ * floor the region collapses and re-expands as the query resolves —
+ * and again on every 60-second refetch, whenever `connected` or the
+ * row's presence flips.  One box, contents swapped.
+ */
+function TabBody({ children }: { children: React.ReactNode }) {
+  return <div className="min-h-48">{children}</div>;
+}
+
 export default function DriverHoursTab({ userId }: { userId: number }) {
   const { data, isLoading, isError, refetch } = useHours(userId);
 
-  if (isLoading) return <CardSkeleton />;
+  if (isLoading) return <TabBody><CardSkeleton /></TabBody>;
   if (isError) {
     return (
-      <ErrorState
-        message="Couldn't load hours of service"
-        onRetry={() => void refetch()}
-      />
+      <TabBody>
+        <ErrorState
+          message="Couldn't load hours of service"
+          onRetry={() => void refetch()}
+        />
+      </TabBody>
     );
   }
 
@@ -56,7 +71,8 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
   // driver with hours left must not look the same.
   if (!data?.connected) {
     return (
-      <EmptyState
+      <TabBody>
+        <EmptyState
         icon={Plug}
         title="No electronic logging device is connected"
         description="Nothing has been recorded for this account, so this is not a statement that this driver has hours remaining."
@@ -67,25 +83,32 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
           >
             Go to Integrations
           </Link>
-        }
-      />
+          }
+        />
+      </TabBody>
     );
   }
 
   const row: DriverHours | undefined = data.drivers[0];
   if (!row) {
     return (
-      <EmptyState
-        icon={Clock}
-        title="No reading for this driver"
-        description="Hours of service IS connected for this account. This driver may not be linked to their record on the connected ELD yet — the Integrations tab is where that link is made."
-      />
+      <TabBody>
+        <EmptyState
+          icon={Clock}
+          title="No reading for this driver"
+          description="Hours of service IS connected for this account. This driver may not be linked to their record on the connected ELD yet — the Integrations tab is where that link is made."
+        />
+      </TabBody>
     );
   }
 
   return (
+    <TabBody>
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      {/* gap-2 inside, space-y-4 between: the same 2:1 ratio the tile
+          grid uses, so this row and the tiles read as two groups
+          rather than one continuous run. */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <Badge tone={statusTone(row.duty_status)}>
           {DUTY_LABELS[row.duty_status] ?? row.duty_status}
         </Badge>
@@ -119,5 +142,6 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
         </Link>
       </p>
     </div>
+    </TabBody>
   );
 }
