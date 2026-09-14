@@ -147,11 +147,33 @@ class HosSnapshot:
     identity of its own."""
 
     duty_status: str = DutyStatus.UNKNOWN
-    drive_seconds_today: int | None = None
-    on_duty_seconds_today: int | None = None
-    cycle_seconds_remaining: int | None = None
-    shift_seconds_remaining: int | None = None
+
+    # Four clocks, and every one of them counts DOWN.
+    #
+    # This used to carry two "today" fields holding time USED, which was
+    # wrong in the most dangerous direction available: an ELD reports
+    # what is LEFT, so a driver with one hour of drive time remaining —
+    # ten hours driven — was being recorded as having driven one hour.
+    # A dispatcher reading that concludes the opposite of the truth.
+    #
+    # Turning "remaining" into "used" needs the ruleset's limit (US 70/8
+    # vs 60/7 vs Canada vs a short-haul exemption), which is exactly the
+    # computation this feature refuses to do: the certified device knows
+    # the ruleset and we do not.  So we store what the device reports and
+    # nothing else.
+    drive_remaining_seconds: int | None = None
+    shift_remaining_seconds: int | None = None
+    cycle_remaining_seconds: int | None = None
+    break_in_seconds: int | None = None
+    """Until the mandatory 30-minute break is due.  A real fourth clock,
+    not a derivation — a driver with hours left on every other clock
+    still has to stop for this one."""
+
     last_status_change: str = ""
+    """When the current duty status began.  Often blank: it is not on
+    every provider's current-status payload, and a blank is the honest
+    answer rather than a guess at the poll time."""
+
     source_ts: str = ""
     driver_name: str = ""
     """Vendor-reported name, for diagnostics when a link is missing.

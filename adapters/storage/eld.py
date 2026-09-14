@@ -65,11 +65,15 @@ _HOS_TEXT_FIELDS = (
     "driver_name",
     "source_ts",
 )
+# All four count DOWN.  They used to include two "today" columns
+# holding time USED, which an ELD never reports — see HosSnapshot for
+# why deriving one from the other is the computation this feature
+# refuses to do.
 _HOS_CLOCK_FIELDS = (
-    "drive_seconds_today",
-    "on_duty_seconds_today",
-    "cycle_seconds_remaining",
-    "shift_seconds_remaining",
+    "drive_remaining_seconds",
+    "shift_remaining_seconds",
+    "cycle_remaining_seconds",
+    "break_in_seconds",
 )
 _HOS_FIELDS = _HOS_TEXT_FIELDS + _HOS_CLOCK_FIELDS
 
@@ -171,9 +175,9 @@ class EldMixin(_MixinBase):
         """
         sql = (
             "SELECT h.provider_id, h.provider_driver_id, h.user_id, "
-            "       h.duty_status, h.drive_seconds_today, "
-            "       h.on_duty_seconds_today, h.cycle_seconds_remaining, "
-            "       h.shift_seconds_remaining, h.last_status_change, "
+            "       h.duty_status, h.drive_remaining_seconds, "
+            "       h.shift_remaining_seconds, h.cycle_remaining_seconds, "
+            "       h.break_in_seconds, h.last_status_change, "
             "       h.driver_name, h.source_ts, h.updated_at, "
             "       u.display_name, u.truck_num "
             "FROM driver_hos_live h "
@@ -191,9 +195,9 @@ class EldMixin(_MixinBase):
         for r in await cur.fetchall():
             row = dict(zip((
                 "provider_id", "provider_driver_id", "user_id",
-                "duty_status", "drive_seconds_today",
-                "on_duty_seconds_today", "cycle_seconds_remaining",
-                "shift_seconds_remaining", "last_status_change",
+                "duty_status", "drive_remaining_seconds",
+                "shift_remaining_seconds", "cycle_remaining_seconds",
+                "break_in_seconds", "last_status_change",
                 "driver_name", "source_ts", "updated_at",
                 "display_name", "truck_num",
             ), tuple(r)))

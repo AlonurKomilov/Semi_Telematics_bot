@@ -54,10 +54,10 @@ def test_unknown_stays_in_the_set():
 def test_an_unreported_clock_is_none_and_not_zero():
     """Zero means "out of hours".  They are opposite answers."""
     snap = HosSnapshot(provider_driver_id="d1")
-    assert snap.cycle_seconds_remaining is None
-    assert snap.shift_seconds_remaining is None
-    assert snap.drive_seconds_today is None
-    assert snap.on_duty_seconds_today is None
+    assert snap.drive_remaining_seconds is None
+    assert snap.shift_remaining_seconds is None
+    assert snap.cycle_remaining_seconds is None
+    assert snap.break_in_seconds is None
 
 
 def test_the_snapshot_is_frozen():

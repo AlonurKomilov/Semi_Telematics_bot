@@ -57,10 +57,14 @@ def project(row: dict, *, now=None) -> dict:
         "vehicle": row.get("truck_num") or "",
         "duty_status": row.get("duty_status") or "unknown",
         "since": row.get("last_status_change") or "",
-        "drive_today": _clock(row.get("drive_seconds_today")),
-        "on_duty_today": _clock(row.get("on_duty_seconds_today")),
-        "cycle_remaining": _clock(row.get("cycle_seconds_remaining")),
-        "shift_remaining": _clock(row.get("shift_seconds_remaining")),
+        # Four countdowns, named for what they are.  There is no
+        # "used today" here because an ELD does not report one, and
+        # deriving it needs the ruleset limit — the computation this
+        # feature refuses to do.
+        "drive_remaining": _clock(row.get("drive_remaining_seconds")),
+        "shift_remaining": _clock(row.get("shift_remaining_seconds")),
+        "cycle_remaining": _clock(row.get("cycle_remaining_seconds")),
+        "break_in": _clock(row.get("break_in_seconds")),
         "source": row.get("provider_id") or "",
         "as_of": row.get("source_ts") or "",
         # None when we cannot read the timestamp at all — unknown age is

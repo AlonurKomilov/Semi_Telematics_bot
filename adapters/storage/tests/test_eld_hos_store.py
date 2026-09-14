@@ -26,10 +26,10 @@ def _row(pdid, **kw):
     base = {
         "provider_driver_id": pdid,
         "duty_status": "driving",
-        "drive_seconds_today": 3600,
-        "on_duty_seconds_today": 7200,
-        "cycle_seconds_remaining": 180000,
-        "shift_seconds_remaining": 25200,
+        "drive_remaining_seconds": 3600,
+        "shift_remaining_seconds": 7200,
+        "cycle_remaining_seconds": 180000,
+        "break_in_seconds": 25200,
         "last_status_change": "2026-09-14T08:00:00+00:00",
         "driver_name": f"Provider Name {pdid}",
         "source_ts": "2026-09-14T09:00:00+00:00",
@@ -78,12 +78,12 @@ async def test_an_unreported_clock_stays_null(sdb):
     DEFAULT 0 column would turn one into the other."""
     acct = await sdb.create_account("ELD Co 3")
     await sdb.upsert_driver_hos(acct.id, "samsara", [_row(
-        "p1", cycle_seconds_remaining=None, shift_seconds_remaining=0,
+        "p1", cycle_remaining_seconds=None, break_in_seconds=0,
     )])
 
     row = (await sdb.get_driver_hos_live(acct.id))[0]
-    assert row["cycle_seconds_remaining"] is None
-    assert row["shift_seconds_remaining"] == 0
+    assert row["cycle_remaining_seconds"] is None
+    assert row["break_in_seconds"] == 0
 
 
 @pytest.mark.asyncio
@@ -194,14 +194,14 @@ async def test_a_provider_that_omits_a_text_field_does_not_abort_the_write(sdb):
     row = (await sdb.get_driver_hos_live(acct.id))[0]
     assert row["last_status_change"] == ""
     assert row["driver_name"] == ""
-    assert row["drive_seconds_today"] is None
+    assert row["drive_remaining_seconds"] is None
 
 
 @pytest.mark.asyncio
 async def test_a_clock_that_is_not_a_number_is_unknown_not_zero(sdb):
     acct = await sdb.create_account("Odd Provider Co")
     await sdb.upsert_driver_hos(acct.id, "samsara", [
-        _row("p1", cycle_seconds_remaining="not a number"),
+        _row("p1", cycle_remaining_seconds="not a number"),
     ])
     row = (await sdb.get_driver_hos_live(acct.id))[0]
-    assert row["cycle_seconds_remaining"] is None
+    assert row["cycle_remaining_seconds"] is None

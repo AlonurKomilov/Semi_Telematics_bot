@@ -24,15 +24,17 @@ def _iso(minutes_ago: float) -> str:
 
 
 def _row(**kw):
+    """Every clock here is time REMAINING — an ELD reports what is left,
+    never what has been used, and the fixture must not imply otherwise."""
     base = {
         "provider_id": "samsara",
         "provider_driver_id": "p1",
         "user_id": 7,
         "duty_status": "driving",
-        "drive_seconds_today": 3600,
-        "on_duty_seconds_today": 7200,
-        "cycle_seconds_remaining": 180000,
-        "shift_seconds_remaining": 25200,
+        "drive_remaining_seconds": 3600,
+        "shift_remaining_seconds": 7200,
+        "cycle_remaining_seconds": 180000,
+        "break_in_seconds": 25200,
         "last_status_change": "2026-09-14T08:00:00+00:00",
         "driver_name": "Provider Jane",
         "source_ts": _iso(2),
@@ -131,9 +133,9 @@ async def test_the_tool_hands_the_model_the_age_and_the_limit():
 # ── Clocks ────────────────────────────────────────────────────────
 
 def test_an_unreported_clock_is_not_rendered_as_empty():
-    p = project(_row(cycle_seconds_remaining=None, shift_seconds_remaining=0))
+    p = project(_row(cycle_remaining_seconds=None, break_in_seconds=0))
     assert p["cycle_remaining"] is None
-    assert p["shift_remaining"] == {"seconds": 0, "hours": 0.0}
+    assert p["break_in"] == {"seconds": 0, "hours": 0.0}
 
 
 @pytest.mark.asyncio
@@ -141,11 +143,11 @@ async def test_unknown_and_out_of_hours_never_read_the_same():
     """``unknown`` vs ``0h``: the first is a gap in the feed, the
     second is a driver who must stop."""
     res = await get_driver_hos_status({}, None, account_id=1, db=_DB([
-        _row(cycle_seconds_remaining=None, shift_seconds_remaining=0),
+        _row(cycle_remaining_seconds=None, break_in_seconds=0),
     ]))
     d = res["drivers"][0]
     assert d["cycle_remaining"] == "unknown"
-    assert d["shift_remaining"] == "0m"
+    assert d["break_due_in"] == "0m"
 
 
 # ── Scope and identity ────────────────────────────────────────────

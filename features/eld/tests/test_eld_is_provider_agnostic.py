@@ -63,10 +63,10 @@ def _snap(pdid, **kw):
     base = dict(
         provider_driver_id=pdid,
         duty_status=DutyStatus.ON_DUTY,
-        drive_seconds_today=1800,
-        on_duty_seconds_today=5400,
-        cycle_seconds_remaining=200000,
-        shift_seconds_remaining=30000,
+        drive_remaining_seconds=1800,
+        shift_remaining_seconds=5400,
+        cycle_remaining_seconds=200000,
+        break_in_seconds=30000,
         last_status_change="2026-09-14T07:00:00+00:00",
         source_ts="2026-09-14T09:30:00+00:00",
         driver_name=f"Fake Driver {pdid}",
@@ -180,7 +180,7 @@ async def test_our_words_survive_the_trip(wired):
     row = store.calls[0]["rows"][0]
     assert row["duty_status"] == "personal_conveyance"
     assert row["source_ts"] == "2026-09-14T09:30:00+00:00"
-    assert row["cycle_seconds_remaining"] == 200000
+    assert row["cycle_remaining_seconds"] == 200000
 
 
 @pytest.mark.asyncio

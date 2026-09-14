@@ -47,12 +47,15 @@ def _clock_text(clock: dict | None) -> str:
         "Get hours-of-service status for one driver (by name) or for "
         "every driver on the account.  Returns duty status (driving / "
         "on_duty / off_duty / sleeper / personal_conveyance / "
-        "yard_move), drive and on-duty hours used today, cycle hours "
-        "remaining, shift hours remaining, when the status last "
-        "changed, the assigned truck, and HOW OLD each reading is.  "
-        "Use for questions like 'how many hours does John have left?', "
-        "'who's out of hours?', 'is the truck 102 driver still on "
-        "shift?'.  Always state the reading's age when you answer."
+        "yard_move) and FOUR COUNTDOWNS — drive time remaining, shift "
+        "remaining, cycle remaining, and time until the mandatory "
+        "break is due — plus when the status last changed, the "
+        "assigned truck, and HOW OLD each reading is.  Every clock is "
+        "time LEFT, never time used: an ELD does not report time used, "
+        "so never present these as hours already worked.  Use for "
+        "'how many hours does John have left?', 'who's out of hours?', "
+        "'who has to stop for a break soon?'.  Always state the "
+        "reading's age when you answer."
     ),
     "parameters": {
         "type": "object",
@@ -145,10 +148,10 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
                 "name": r.get("driver") or "?",
                 "truck": r.get("vehicle") or "",
                 "duty_status": r.get("duty_status") or "unknown",
-                "drive_today": _clock_text(r.get("drive_today")),
-                "on_duty_today": _clock_text(r.get("on_duty_today")),
-                "cycle_remaining": _clock_text(r.get("cycle_remaining")),
+                "drive_remaining": _clock_text(r.get("drive_remaining")),
                 "shift_remaining": _clock_text(r.get("shift_remaining")),
+                "cycle_remaining": _clock_text(r.get("cycle_remaining")),
+                "break_due_in": _clock_text(r.get("break_in")),
                 "last_status_change": r.get("since") or "",
                 # The reading's own age, not our write time.  A model
                 # told "2 hours left" with no age will say it as fact.

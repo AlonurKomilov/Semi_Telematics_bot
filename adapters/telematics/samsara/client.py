@@ -1423,19 +1423,24 @@ class SamsaraClient:
                 # the HTTP client's.
                 "raw_duty_status": duty.get("hosStatusType") or "",
                 "last_status_change": duty.get("utcStartTime") or "",
-                "drive_seconds_today": _ms_to_seconds(
+                # Each clock read from its OWN block.  The break clock
+                # used to be a fallback for the drive clock, which is
+                # not a fallback at all — they are different limits,
+                # and one standing in for the other would report a
+                # driver as able to keep driving when they are due to
+                # stop.
+                "drive_remaining_seconds": _ms_to_seconds(
                     _first_present(clocks.get("drive"),
-                                   "driveRemainingDurationMs",
-                                   "timeUntilBreakDurationMs")),
-                "on_duty_seconds_today": _ms_to_seconds(
+                                   "driveRemainingDurationMs")),
+                "shift_remaining_seconds": _ms_to_seconds(
                     _first_present(clocks.get("shift"),
                                    "shiftRemainingDurationMs")),
-                "cycle_seconds_remaining": _ms_to_seconds(
+                "cycle_remaining_seconds": _ms_to_seconds(
                     _first_present(clocks.get("cycle"),
                                    "cycleRemainingDurationMs")),
-                "shift_seconds_remaining": _ms_to_seconds(
-                    _first_present(clocks.get("shift"),
-                                   "shiftRemainingDurationMs")),
+                "break_in_seconds": _ms_to_seconds(
+                    _first_present(clocks.get("break"),
+                                   "timeUntilBreakDurationMs")),
             })
         return out
 

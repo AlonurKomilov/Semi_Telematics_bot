@@ -65,13 +65,13 @@ async def world(api):
         display_name="Sam Lee", truck_num="104")
     await db.upsert_driver_hos(acct.id, "samsara", [
         {"provider_driver_id": "p1", "duty_status": "driving",
-         "drive_seconds_today": 3600, "on_duty_seconds_today": 7200,
-         "cycle_seconds_remaining": 180000, "shift_seconds_remaining": 25200,
+         "drive_remaining_seconds": 3600, "shift_remaining_seconds": 7200,
+         "cycle_remaining_seconds": 180000, "break_in_seconds": 25200,
          "last_status_change": _now(120), "driver_name": "Jane R",
          "source_ts": _now(1)},
         {"provider_driver_id": "p2", "duty_status": "off_duty",
-         "drive_seconds_today": 0, "on_duty_seconds_today": 0,
-         "cycle_seconds_remaining": 252000, "shift_seconds_remaining": None,
+         "drive_remaining_seconds": 0, "shift_remaining_seconds": 0,
+         "cycle_remaining_seconds": 252000, "break_in_seconds": None,
          "last_status_change": _now(600), "driver_name": "Sam L",
          "source_ts": _now(1)},
     ], links={"p1": d1.id, "p2": d2.id})
@@ -134,14 +134,15 @@ async def test_every_reading_carries_its_age_and_its_source(world):
 
 @pytest.mark.asyncio
 async def test_an_unreported_clock_is_null_not_zero(world):
-    """Sam's shift clock was never reported.  Zero would mean he must
-    stop; null means we do not know."""
+    """Sam's break clock was never reported.  Zero would mean he is due
+    to stop right now; null means we do not know."""
     app, _db, acct, boss, _d1, _d2 = world
     async with await _client(app) as c:
         body = (await c.get("/api/v1/eld/hours",
                             headers=_headers(boss, acct, "owner"))).json()
     sam = next(d for d in body["drivers"] if d["driver"] == "Sam Lee")
-    assert sam["shift_remaining"] is None
+    assert sam["break_in"] is None
+    assert sam["shift_remaining"] == {"seconds": 0, "hours": 0.0}
     assert sam["cycle_remaining"]["hours"] == 70.0
 
 

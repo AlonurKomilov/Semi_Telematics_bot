@@ -5691,6 +5691,14 @@ async def migrate_eld_hos_live(conn) -> None:
     Clocks are NULLABLE on purpose.  ``NULL`` means the provider did
     not report that clock; ``0`` means the driver is out of hours.
     Defaulting them to zero would turn one into the other.
+
+    All four clocks count DOWN.  The first shape carried two "today"
+    columns holding time USED — which an ELD does not report, so they
+    were being filled with REMAINING time under a name that says the
+    opposite.  The rename below fixes any database that created that
+    shape; it is safe unconditionally because nothing had ever written
+    a row (the capability shipped after the table, and the accounts
+    that have it connected report no HOS).
     """
     try:
         await conn.execute("""
@@ -5700,10 +5708,10 @@ async def migrate_eld_hos_live(conn) -> None:
                 provider_driver_id      TEXT    NOT NULL,
                 user_id                 INTEGER,
                 duty_status             TEXT    NOT NULL DEFAULT 'unknown',
-                drive_seconds_today     INTEGER,
-                on_duty_seconds_today   INTEGER,
-                cycle_seconds_remaining INTEGER,
-                shift_seconds_remaining INTEGER,
+                drive_remaining_seconds INTEGER,
+                shift_remaining_seconds INTEGER,
+                cycle_remaining_seconds INTEGER,
+                break_in_seconds        INTEGER,
                 last_status_change      TEXT    NOT NULL DEFAULT '',
                 driver_name             TEXT    NOT NULL DEFAULT '',
                 source_ts               TEXT    NOT NULL DEFAULT '',
@@ -5734,6 +5742,21 @@ async def migrate_eld_hos_live(conn) -> None:
             USING      (account_id::text = current_setting('app.account_id', true))
             WITH CHECK (account_id::text = current_setting('app.account_id', true))
         """)
+        # A database created from the first shape keeps the wrong
+        # columns, because CREATE TABLE IF NOT EXISTS is a no-op on it.
+        # ADD/DROP IF EXISTS make this idempotent in both directions.
+        await conn.execute(
+            "ALTER TABLE driver_hos_live "
+            "ADD COLUMN IF NOT EXISTS drive_remaining_seconds INTEGER, "
+            "ADD COLUMN IF NOT EXISTS shift_remaining_seconds INTEGER, "
+            "ADD COLUMN IF NOT EXISTS cycle_remaining_seconds INTEGER, "
+            "ADD COLUMN IF NOT EXISTS break_in_seconds INTEGER")
+        await conn.execute(
+            "ALTER TABLE driver_hos_live "
+            "DROP COLUMN IF EXISTS drive_seconds_today, "
+            "DROP COLUMN IF EXISTS on_duty_seconds_today, "
+            "DROP COLUMN IF EXISTS cycle_seconds_remaining, "
+            "DROP COLUMN IF EXISTS shift_seconds_remaining")
     except Exception:
         # Boot must not fail for this.  Without the table the ELD
         # surfaces say the feed is not connected, which is exactly what

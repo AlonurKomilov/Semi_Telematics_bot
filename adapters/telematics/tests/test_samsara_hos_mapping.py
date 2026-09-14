@@ -40,10 +40,10 @@ def _flat(**kw):
         "driver_name": "Jane Ruiz",
         "raw_duty_status": "driving",
         "last_status_change": "2026-09-14T08:00:00Z",
-        "drive_seconds_today": 3600,
-        "on_duty_seconds_today": 7200,
-        "cycle_seconds_remaining": 180000,
-        "shift_seconds_remaining": 25200,
+        "drive_remaining_seconds": 3600,
+        "shift_remaining_seconds": 7200,
+        "cycle_remaining_seconds": 180000,
+        "break_in_seconds": 25200,
     }
     base.update(kw)
     return base
@@ -95,8 +95,8 @@ async def test_the_snapshot_carries_our_words_and_our_units():
     s = snaps[0]
     assert s.provider_driver_id == "d1"
     assert s.duty_status == DutyStatus.DRIVING
-    assert s.drive_seconds_today == 3600
-    assert s.cycle_seconds_remaining == 180000
+    assert s.drive_remaining_seconds == 3600
+    assert s.cycle_remaining_seconds == 180000
     assert s.driver_name == "Jane Ruiz"
     assert s.last_status_change == "2026-09-14T08:00:00Z"
 
@@ -117,11 +117,11 @@ async def test_source_ts_is_stamped_because_this_endpoint_means_now():
 @pytest.mark.asyncio
 async def test_an_unreported_clock_stays_none():
     provider = SamsaraProvider(_Client([_flat(
-        cycle_seconds_remaining=None, shift_seconds_remaining=0,
+        cycle_remaining_seconds=None, break_in_seconds=0,
     )]))
     s = (await provider.get_driver_hos())[0]
-    assert s.cycle_seconds_remaining is None
-    assert s.shift_seconds_remaining == 0
+    assert s.cycle_remaining_seconds is None
+    assert s.break_in_seconds == 0
 
 
 @pytest.mark.asyncio
@@ -181,6 +181,7 @@ def _clocks_payload(**over):
             "utcStartTime": "2026-09-14T08:00:00Z",
         },
         "clocks": {
+            "break": {"timeUntilBreakDurationMs": 1_800_000},
             "drive": {"driveRemainingDurationMs": 3_600_000},
             "shift": {"shiftRemainingDurationMs": 25_200_000},
             "cycle": {"cycleRemainingDurationMs": 180_000_000},
@@ -218,9 +219,10 @@ async def test_the_client_converts_milliseconds_to_seconds():
     assert http.path == "/fleet/hos/clocks"
     assert rows[0]["provider_driver_id"] == "12345"
     assert rows[0]["raw_duty_status"] == "driving"
-    assert rows[0]["drive_seconds_today"] == 3600
-    assert rows[0]["shift_seconds_remaining"] == 25200
-    assert rows[0]["cycle_seconds_remaining"] == 180000
+    assert rows[0]["drive_remaining_seconds"] == 3600
+    assert rows[0]["shift_remaining_seconds"] == 25200
+    assert rows[0]["cycle_remaining_seconds"] == 180000
+    assert rows[0]["break_in_seconds"] == 1800
 
 
 @pytest.mark.asyncio
@@ -234,16 +236,34 @@ async def test_a_renamed_clock_key_degrades_to_none_not_zero():
     }))
     row = (await c.get_hos_clocks())[0]
 
-    assert row["drive_seconds_today"] is None
-    assert row["shift_seconds_remaining"] is None
-    assert row["cycle_seconds_remaining"] == 180000
+    assert row["drive_remaining_seconds"] is None
+    assert row["shift_remaining_seconds"] is None
+    assert row["break_in_seconds"] is None
+    assert row["cycle_remaining_seconds"] == 180000
+
+
+@pytest.mark.asyncio
+async def test_the_break_clock_is_read_from_its_own_block():
+    """It used to stand in for a missing drive clock.  They are
+    different limits: a driver with drive time left can still be due to
+    stop, and one clock answering for the other reports the opposite."""
+    c, _ = _client_with(_clocks_payload(clocks={
+        "break": {"timeUntilBreakDurationMs": 900_000},
+        "drive": {},
+    }))
+    row = (await c.get_hos_clocks())[0]
+
+    assert row["break_in_seconds"] == 900
+    assert row["drive_remaining_seconds"] is None, (
+        "the break clock must never be reported as drive time"
+    )
 
 
 @pytest.mark.asyncio
 async def test_a_missing_clocks_block_does_not_raise():
     c, _ = _client_with(_clocks_payload(clocks=None))
     row = (await c.get_hos_clocks())[0]
-    assert row["cycle_seconds_remaining"] is None
+    assert row["cycle_remaining_seconds"] is None
     assert row["provider_driver_id"] == "12345"
 
 
@@ -260,4 +280,4 @@ async def test_a_non_numeric_duration_is_none_not_a_crash():
     c, _ = _client_with(_clocks_payload(clocks={
         "cycle": {"cycleRemainingDurationMs": "not a number"},
     }))
-    assert (await c.get_hos_clocks())[0]["cycle_seconds_remaining"] is None
+    assert (await c.get_hos_clocks())[0]["cycle_remaining_seconds"] is None
