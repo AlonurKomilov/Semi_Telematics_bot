@@ -83,7 +83,6 @@ from .driver_future import (
     DriverInspectionsMixin,
     PTITemplateMixin,
     DriverTrainingsMixin,
-    DriverHosStatusMixin,
 )
 from .user_companies import UserCompaniesMixin
 from .user_preferences import UserPreferencesMixin
@@ -168,7 +167,6 @@ class Database(
     DriverInspectionsMixin,
     PTITemplateMixin,
     DriverTrainingsMixin,
-    DriverHosStatusMixin,
     UserCompaniesMixin,
     UserPreferencesMixin,
     BillingMixin,
