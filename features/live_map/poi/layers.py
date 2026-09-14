@@ -54,22 +54,49 @@ def point_to_feature(point: dict) -> dict:
 
 POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     # ── Fuel Stations (diesel-capable) ────────────────────────────────────────
+    # A BRAND IS EVIDENCE ONLY FOR A CHAIN WHERE EVERY SITE QUALIFIES.
+    #
+    # Measured on this layer 2026-09-14, by share of a brand's points
+    # that carry `fuel:diesel`, `hgv` or `fuel:HGV_diesel`:
+    #
+    #     TA 81%   Petro 51%   Flying J 47%   Sapp Bros 46%
+    #     Pilot 37%   Road Ranger 37%   Love's 36%
+    #     ...        Kwik Trip 11%      Kwik Star 7%
+    #
+    # Those shares measure TAGGING, not capability — OSM is sparse, which
+    # is why the allowlist exists at all.  But the band is 36-81% for
+    # chains that are truck stops by definition, and Kwik Trip/Kwik Star
+    # sit three to five times below its floor.  They are a convenience
+    # chain: some sites have truck lanes, most do not, so the NAME says
+    # nothing about the pumps.  Both are gone from the list.
+    #
+    # It costs nothing: a Kwik Trip that OSM says has diesel still
+    # arrives through the tag clauses above.  What stops is claiming it
+    # for the 212 that say nothing either way.
     # Tag-based filtering misses ~70% of diesel-capable stations in the US, so
     # we supplement with a brand allowlist for major chains. Brand allowlist
     # uses `node` only (not `nwr`) — the area variant times out on CONUS bbox.
     #
-    # `Petro($| )` AND NOT `Petro`.  The alternation is prefix-anchored, so
-    # a bare `Petro` matched PETRO-CANADA — a different company in a
-    # different country — and brought 539 of its stations into this layer
-    # and 662 into DEF.  It also matched Petro-T, a Quebec chain.  The
-    # bbox cannot catch them either: "clipped to the USA" is a RECTANGLE,
-    # and the CONUS box reaches from 24.4N (northern Mexico) to 49.5N,
-    # which takes in southern Ontario and Quebec whole.
+    # The brand allowlist names `Petro` EXACTLY, plus its real suffixes —
+    # not as a prefix.  A bare `Petro` in a prefix-anchored alternation
+    # matched PETRO-CANADA, a different company in a different country,
+    # and brought 539 of its stations into this layer and 662 into DEF.
+    # The bbox cannot catch them either: "clipped to the USA" is a
+    # RECTANGLE, and the CONUS box reaches from 24.4N (northern Mexico)
+    # to 49.5N, taking in southern Ontario and Quebec whole.
+    #
+    # The first fix guarded only the hyphen and still let three through —
+    # measured on the layer itself: Petro Canada (the spelling WITHOUT a
+    # hyphen), Petro Seven, Petro Bras.  A guard written from IMAGINED
+    # spellings tests imagination; the one in
+    # test_poi_layers_are_not_silently_empty.py now iterates the values
+    # the table actually holds.  Naming the two real American forms is
+    # what closes it: a suffix cannot be enumerated, but a brand can.
     "fuel_station": [
         'node["amenity"="fuel"]["fuel:diesel"="yes"]',
         'node["amenity"="fuel"]["hgv"="yes"]',
         'nwr["amenity"="truck_stop"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger|Kwik Trip|Kwik Star|Bosselman|Ambest)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger|Bosselman|Ambest)",i]',
     ],
     # ── DEF / AdBlue Stations ─────────────────────────────────────────────────
     # fuel:adblue=yes has ~15-25% coverage; brand allowlist catches the rest.
@@ -81,8 +108,8 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     "def_station": [
         'node["amenity"="fuel"]["fuel:adblue"="yes"]',
         'nwr["amenity"="truck_stop"]["fuel:adblue"="yes"]',
-        'nwr["amenity"="truck_stop"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger)",i]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'nwr["amenity"="truck_stop"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger)",i]',
     ],
     # ── Truck parking ─────────────────────────────────────────────────────────
     # Node-only — way/relation queries silently timeout on large bboxes.
@@ -116,7 +143,7 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     "shower": [
         'node["amenity"="fuel"]["shower"="yes"]',
         'nwr["amenity"="truck_stop"]["shower"="yes"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger)",i]',
     ],
     # ── Rest areas ────────────────────────────────────────────────────────────
     "rest_area": [

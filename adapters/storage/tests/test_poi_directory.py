@@ -221,9 +221,11 @@ async def test_a_split_decided_later_is_applied_without_asking_the_source(poi):
         "weigh_station", "2026-09-14T10:00:00Z", 3, ok=True,
         osm_base="2026-06-01T00:00:00Z")
 
+    # A LATER stamp than the import: re-filing is a new version, and
+    # storage refuses one the clients have already seen.
     counts = await poi.reclassify_poi_points(
         ("weigh_station", "truck_scale"), _classify_by_operator,
-        "2026-09-14T10:00:00Z", "2026-06-01T00:00:00Z")
+        "2026-09-14T13:00:00Z", "2026-06-01T00:00:00Z")
 
     assert counts == {"weigh_station": 1, "truck_scale": 2}
     box = (40.0, -94.0, 42.0, -92.0)
@@ -245,13 +247,13 @@ async def test_the_new_half_gets_a_version_or_the_map_never_stops_asking(poi):
 
     await poi.reclassify_poi_points(
         ("weigh_station", "truck_scale"), _classify_by_operator,
-        "2026-09-14T10:00:00Z", "2026-06-01T00:00:00Z")
+        "2026-09-14T13:00:00Z", "2026-06-01T00:00:00Z")
 
-    assert await poi.poi_layer_imported_at("truck_scale") == "2026-09-14T10:00:00Z"
+    assert await poi.poi_layer_imported_at("truck_scale") == "2026-09-14T13:00:00Z"
     assert await poi.poi_layer_source_as_of("truck_scale") == "2026-06-01T00:00:00Z"
     # And the half that gave everything away still has a date, not a
     # zero-point layer that looks like a failed import.
-    assert await poi.poi_layer_imported_at("weigh_station") == "2026-09-14T10:00:00Z"
+    assert await poi.poi_layer_imported_at("weigh_station") == "2026-09-14T13:00:00Z"
 
 
 async def test_re_filing_twice_changes_nothing_the_second_time(poi):
@@ -264,10 +266,11 @@ async def test_re_filing_twice_changes_nothing_the_second_time(poi):
     ], "2026-09-14T10:00:00Z")
     await poi.finish_poi_import("weigh_station", "2026-09-14T10:00:00Z", 2, ok=True)
 
-    args = (("weigh_station", "truck_scale"), _classify_by_operator,
-            "2026-09-14T10:00:00Z", None)
-    first = await poi.reclassify_poi_points(*args)
-    second = await poi.reclassify_poi_points(*args)
+    # TWO STAMPS, because a second re-file is a second version: the
+    # points may not move but the clients have to be told to look.
+    layers, fn = ("weigh_station", "truck_scale"), _classify_by_operator
+    first = await poi.reclassify_poi_points(layers, fn, "2026-09-14T13:00:00Z", None)
+    second = await poi.reclassify_poi_points(layers, fn, "2026-09-14T14:00:00Z", None)
     assert first == second == {"weigh_station": 1, "truck_scale": 1}
 
 
@@ -297,3 +300,72 @@ async def test_re_filing_never_sweeps_whatever_stamp_it_is_given(poi):
     assert len(await poi.poi_points_in_bbox("weigh_station", *box)) == 1, (
         "re-filing swept the layer it was only meant to re-label")
     assert len(await poi.poi_points_in_bbox("truck_scale", *box)) == 1
+
+
+async def test_re_filing_mints_a_NEW_version_or_no_client_ever_hears(poi):
+    """THE ONE THAT WAS MISSING, and the owner found it on the map.
+
+    A client holds a layer keyed on `imported_at` and asks "is mine still
+    yours" before spending a byte.  Re-filing that reuses the existing
+    stamp moves points between layers and tells nobody: every client
+    compares the same string it already has and goes on drawing its stale
+    copy.  Weigh Stations kept showing a CAT Scale against a table that
+    no longer held one.
+
+    The extract date must NOT move with it — the points did not change,
+    so neither did their age, and that is the whole reason the two dates
+    were separated.
+    """
+    await poi.upsert_poi_points("weigh_station", [
+        _point(1, 41.0, -93.0, "", operator="CAT Scale"),
+        _point(2, 41.1, -93.1, "", operator="FDOT"),
+    ], "2026-09-14T02:00:00Z")
+    await poi.finish_poi_import(
+        "weigh_station", "2026-09-14T02:00:00Z", 2, ok=True,
+        osm_base="2026-06-01T00:00:00Z")
+
+    before = await poi.poi_layer_imported_at("weigh_station")
+    await poi.reclassify_poi_points(
+        ("weigh_station", "truck_scale"), _classify_by_operator,
+        "2026-09-14T13:45:00Z", "2026-06-01T00:00:00Z")
+
+    for layer in ("weigh_station", "truck_scale"):
+        after = await poi.poi_layer_imported_at(layer)
+        assert after != before, (
+            f"{layer} kept version {before} after its points moved — every "
+            "client will compare that string, match it, and keep drawing "
+            "what it already had")
+        assert after == "2026-09-14T13:45:00Z"
+        # …and the age of the DATA is untouched, so the freshness line
+        # does not start claiming the OSM extract got younger.
+        assert await poi.poi_layer_source_as_of(layer) == "2026-06-01T00:00:00Z"
+
+
+
+async def test_re_filing_refuses_a_stamp_the_clients_have_already_seen(poi):
+    """The invariant lives in STORAGE because the fault was in a caller.
+
+    `scripts/import_poi.py` read the layer's current `imported_at` and
+    handed it straight back, so re-filing moved 2,160 points and left
+    every client comparing the same string it already had.  The storage
+    tests all passed — they were testing the wrong side of the seam.
+
+    A caller cannot get this wrong now: the refusal is here.
+    """
+    await poi.upsert_poi_points("weigh_station", [
+        _point(1, 41.0, -93.0, "", operator="CAT Scale"),
+    ], "2026-09-14T02:00:00Z")
+    await poi.finish_poi_import(
+        "weigh_station", "2026-09-14T02:00:00Z", 1, ok=True)
+
+    for stale in ("2026-09-14T02:00:00Z",      # the very stamp they hold
+                  "2026-09-13T00:00:00Z"):     # and anything older
+        with pytest.raises(ValueError, match="NEW version"):
+            await poi.reclassify_poi_points(
+                ("weigh_station", "truck_scale"), _classify_by_operator,
+                stale, None)
+
+    # Nothing moved while it was refusing.
+    box = (40.0, -94.0, 42.0, -92.0)
+    assert len(await poi.poi_points_in_bbox("weigh_station", *box)) == 1
+    assert await poi.poi_points_in_bbox("truck_scale", *box) == []

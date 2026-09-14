@@ -374,25 +374,75 @@ def _brand_patterns() -> list[str]:
     return out
 
 
+#: Every `Petro…` brand value the imported layers actually held on
+#: 2026-09-14, read off the table rather than imagined.
+#:
+#: THE LIST IS THE POINT.  The first version of this guard checked
+#: "Petro-Canada" and "Petro-T" — the two spellings that had come to
+#: mind — and passed a pattern that still admitted Petro Canada (no
+#: hyphen), Petro Seven and Petro Bras.  A guard built from imagination
+#: tests imagination.  Anything new that appears in the data belongs
+#: here, on whichever side it falls.
+REAL_PETRO_BRANDS = {
+    # American, and the reason the entry exists at all.
+    "Petro": True,
+    "Petro Stopping Center": True,
+    "Petro Stopping Centers": True,
+    # Everything else that shares those five letters and does not share
+    # the company.  Counts are what they were in the fuel layer.
+    "Petro-Canada": False,    # 664
+    "Petro Canada": False,    # 2 — the one the first fix let through
+    "Petro-T": False,         # 36, Quebec
+    "Petro Seven": False,     # 5
+    "Petroplus": False,       # 2
+    "PetroUS": False,         # 1
+    "Petro Bras": False,      # 1
+}
+
+
 def test_the_brand_allowlists_admit_the_chains_they_name():
     """The fix must not cost us the brand it was aimed at."""
     pats = _brand_patterns()
     assert pats, "no brand allowlist found — the query shape moved"
     for pat in pats:
         rx = re.compile(pat, re.IGNORECASE)
-        for good in ("Petro", "Petro Stopping Center", "Pilot Travel Center",
-                     "Flying J Travel Center", "Love's Travel Stop"):
+        for good in ("Pilot Travel Center", "Flying J Travel Center",
+                     "Love's Travel Stop"):
             assert rx.match(good), f"{pat!r} no longer admits {good!r}"
 
 
-def test_the_brand_allowlists_refuse_a_company_that_only_shares_a_prefix():
+def test_the_brand_allowlists_sort_every_petro_the_data_holds():
+    """One test over the measured values, both directions at once — so a
+    pattern cannot pass by being generous in the half nobody listed."""
     pats = _brand_patterns()
     for pat in pats:
         rx = re.compile(pat, re.IGNORECASE)
-        for foreign in ("Petro-Canada", "Petro-T"):
-            assert not rx.match(foreign), (
-                f"{pat!r} matches {foreign!r} — a prefix is not a brand, and "
-                "this one put 1,201 Canadian stations on a US truck map")
+        for brand, ours in REAL_PETRO_BRANDS.items():
+            got = bool(rx.match(brand))
+            assert got is ours, (
+                f"{pat!r} {'refuses' if ours else 'matches'} {brand!r} — "
+                + ("that is the American chain the entry exists for"
+                   if ours else
+                   "a prefix is not a brand, and this class of leak put "
+                   "1,201 foreign stations on a US truck map"))
+
+
+def test_a_mixed_chain_is_not_on_the_fuel_allowlist():
+    """A brand is evidence only where EVERY site qualifies.
+
+    Kwik Trip and Kwik Star are a convenience chain — some sites have
+    truck lanes, most do not — and measured on the layer only 11% and 7%
+    of their points carried any diesel or hgv tag, against a 36-81% band
+    for the chains that are truck stops by definition.  A name that says
+    nothing about the pumps is not evidence, and dropping it costs
+    nothing: a tagged Kwik Trip still arrives through the tag clauses.
+    """
+    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+    joined = " ".join(POI_OVERPASS_QUERIES["fuel_station"])
+    for mixed in ("Kwik Trip", "Kwik Star"):
+        assert mixed not in joined, (
+            f"{mixed} is back on the fuel allowlist — it claims truck "
+            "diesel for sites that have never said they have any")
 
 
 # ── a layer's name is a promise ────────────────────────────────────────

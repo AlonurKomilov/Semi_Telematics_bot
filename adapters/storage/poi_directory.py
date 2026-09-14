@@ -234,10 +234,46 @@ class PoiDirectoryMixin:
         rows in place: seconds instead of an hour, and the volunteer
         mirrors are not touched at all.
 
+        ``stamp`` BECOMES THE NEW VERSION, and it has to.
+
+        A client holds a layer keyed on ``imported_at`` and asks "is mine
+        still yours" before spending a byte.  The first cut of this
+        passed the EXISTING stamp through, so re-filing moved 2,160
+        points between two layers and told nobody: every client compared
+        the same string it already had and went on drawing its stale
+        copy.  The owner switched Weigh Stations on and found a CAT Scale
+        still sitting in it, against a table that no longer held one.
+
+        That is the shape this whole feature exists to refuse — a change
+        that does not announce itself — and it cost nothing to get right
+        once ``imported_at`` and ``osm_base`` were separated: the version
+        moves, the DATA'S age does not, so the freshness line is
+        untouched while every client refetches.
+
         Returns layer → how many points it holds afterwards.  Each
         produced layer is also CLOSED, because a layer with no row in
         ``poi_imports`` is one the map asks the mirror for on every pan.
         """
+        # THE STAMP MUST BE NEW, and this refuses rather than trusts.
+        #
+        # A caller that passes the existing version moves points and tells
+        # nobody — every client compares the same string it already holds
+        # and keeps its stale copy.  That shipped once: the script read
+        # `poi_layer_imported_at` and handed it straight back, so Weigh
+        # Stations went on showing a CAT Scale against a table that no
+        # longer held one.  The storage test could not see it, because the
+        # fault was in the CALLER.
+        #
+        # So the invariant lives here, where no caller can miss it.
+        for name in produced:
+            current = await self.poi_layer_imported_at(name)
+            if current and stamp <= current:
+                raise ValueError(
+                    f"re-filing needs a NEW version: {stamp!r} is not newer "
+                    f"than {name}'s current {current!r}.  Clients compare "
+                    "that string before spending a byte, so re-using it "
+                    "moves the points and leaves every map unchanged.")
+
         placeholders = ",".join("?" for _ in produced)
         cur = await self._db.execute(
             f"SELECT layer, osm_type, osm_id, name, props FROM poi_points "

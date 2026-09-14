@@ -274,7 +274,15 @@ export const POI_LAYERS: PoiLayerDef[] = [
       { value: 'Chevron', label: 'Chevron' },
       { value: 'Valero', label: 'Valero' },
       { value: 'Speedway', label: 'Speedway' },
-      { value: 'Maverick', label: 'Maverick' },
+      // MAVERIK, no `c` — the chain spells itself that way, and OSM's
+      // `brand` tag follows it.  This chip carried `Maverick` with no
+      // matchTerms, so it could never match anything: chips render
+      // only for brands PRESENT IN THE VIEW, which meant it simply
+      // never appeared.  A filter that cannot fire looks like a chain
+      // with no stations rather than a typo.  Both spellings are
+      // matched now, so a mis-tagged node is caught too.
+      { value: 'Maverik', label: 'Maverik',
+        matchTerms: ['Maverik', 'Maverick'] },
     ],
   },
   {

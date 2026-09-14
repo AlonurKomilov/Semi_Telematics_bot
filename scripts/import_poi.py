@@ -35,6 +35,7 @@ What to expect
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import asyncio
 import logging
 import os
@@ -122,15 +123,23 @@ async def main_async(args: argparse.Namespace) -> int:
         # does not need the source asked again — every tag the classifier
         # reads is in the stored props.  Seconds, and the volunteer
         # mirrors are not touched at all.
+        # A NEW VERSION, and the OLD extract date.  Clients compare
+        # `imported_at` before spending a byte, so re-filing that kept the
+        # old stamp moved 2,160 points and told nobody — the owner found a
+        # CAT Scale still on the DOT layer against a table that no longer
+        # held one.  `osm_base` is untouched: the points did not change,
+        # so neither did their age.
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         for fetched, (produced, classify) in POI_SPLITS.items():
             when = await db.poi_layer_imported_at(fetched)
             base = await db.poi_layer_source_as_of(fetched)
             if not when:
                 print(f"  {fetched}: never imported — nothing to re-file")
                 continue
-            counts = await db.reclassify_poi_points(produced, classify, when, base)
+            counts = await db.reclassify_poi_points(produced, classify, stamp, base)
             print(f"  {fetched}: " + ", ".join(
-                f"{n}={counts.get(n, 0)}" for n in produced))
+                f"{n}={counts.get(n, 0)}" for n in produced)
+                + f"   (version {when} → {stamp})")
     elif args.all or args.missing:
         todo = list(POI_OVERPASS_QUERIES)   # fetches, not served layers
         if args.missing:
