@@ -208,7 +208,8 @@ def test_a_plan_price_from_the_other_mode_is_named_with_the_runbook_step(stripe_
                 return _Price(livemode=False)                                  # a test-mode Price…
     rows = [
         {"tier": "pro", "public": 1, "price_monthly_cents": 9900, "stripe_price_id": "price_sandbox_pro",
-         "extra_vehicle_cents": 299, "stripe_extra_price_id": "price_sandbox_pro_x"},
+         "extra_vehicle_cents": 299, "stripe_extra_price_id": "price_sandbox_pro_x",
+         "stripe_extra_product_id": "prod_sandbox_pro_x"},
         {"tier": "starter", "public": 1, "price_monthly_cents": 4900, "stripe_price_id": "price_s",
          "extra_vehicle_cents": 0},
     ]
@@ -218,6 +219,36 @@ def test_a_plan_price_from_the_other_mode_is_named_with_the_runbook_step(stripe_
     assert "other Stripe mode" in check["note"] and "4b step 2" in check["note"]
     # without a key nothing is asked of Stripe and the ids pass on presence alone, as before
     assert setup_check._check_plan_prices(rows, "live")["state"] == "ok"
+
+
+def test_an_extras_price_sharing_the_plans_product_is_named(stripe_env):
+    """Stripe names a bill's line after its Product.  An extras Price
+    made before the extras Product sits on the plan's own, so the
+    checkout page printed the plan's name twice — and the card has to
+    say so before the operator goes looking for a disabled button."""
+    rows = [{"tier": "gold", "public": 1, "price_monthly_cents": 15000, "stripe_price_id": "price_g",
+             "extra_vehicle_cents": 499, "stripe_extra_price_id": "price_gx", "stripe_extra_product_id": ""}]
+    check = setup_check._check_plan_prices(rows, "live")
+    assert check["state"] == "problem"
+    assert "gold" in check["note"] and "twice" in check["note"]
+    # The note names a button, so the button has to exist AND be
+    # pressable for this shape — a card that says "press Update Stripe
+    # price" beside a disabled "No changes" is worse than silence, and
+    # that is exactly the state this arrived in.
+    plans_page = (REPO / "interfaces" / "system_dashboard" / "src" / "pages" / "Plans.tsx").read_text()
+    assert "Update Stripe price" in check["note"] and "'Update Stripe price'" in plans_page
+    assert "missingPrice || staleExtraPrice" in plans_page, (
+        "the Plans page must ARM Save on the same shape the card names — "
+        "the button is what the note tells the operator to press")
+    # and that term must be computed from the same two fields this check
+    # reads, not stubbed: the card naming a button nobody can press is
+    # the state this arrived in, and it looked fine from either side
+    arming = plans_page.split("const staleExtraPrice", 1)[1].split(";", 1)[0]
+    for field in ("stripe_extra_price_id", "stripe_extra_product_id", "extra_vehicle_cents"):
+        assert field in arming, f"staleExtraPrice ignores {field}: {arming.strip()[:80]}"
+    # once it has its own Product the card is quiet again
+    fixed = [{**rows[0], "stripe_extra_product_id": "prod_gx"}]
+    assert setup_check._check_plan_prices(fixed, "live")["state"] == "ok"
 
 
 def test_nothing_to_sell_is_itself_the_problem(stripe_env):

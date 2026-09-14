@@ -244,6 +244,16 @@ def _check_plan_prices(plans: list[dict], mode: str, stripe=None) -> dict:
         return _check("plan_prices", label, _PROBLEM,
                       f"No Stripe price for the extra truck on {', '.join(sorted(no_extra))} — "
                       "press Create Stripe price on each of them below.")
+    # an extras Price from before the extras Product: it sits on the
+    # plan's own Product, and Stripe names a bill's line after its
+    # Product, so the checkout page prints the plan's name twice
+    shared = [p["tier"] for p in sellable
+              if (p.get("stripe_extra_price_id") or "").strip()
+              and not (p.get("stripe_extra_product_id") or "").strip()]
+    if shared:
+        return _check("plan_prices", label, _PROBLEM,
+                      f"The extra truck on {', '.join(sorted(shared))} shares the plan's Stripe product, "
+                      "so a bill prints the plan's name twice — press Update Stripe price on each.")
     # with a key in hand, ask Stripe whether each id is a Price of THIS
     # mode — the ids a dry run leaves behind are the ones this catches
     if stripe is not None:

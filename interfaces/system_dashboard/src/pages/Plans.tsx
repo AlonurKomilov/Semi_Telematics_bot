@@ -779,8 +779,10 @@ export default function PlansPage() {
                     {/* A plan that bills extra trucks needs this one too, or its
                         checkout refuses rather than bill at another plan's amount */}
                     {p.extra_vehicle_cents > 0 && (
-                      <div className={`text-[11px] break-all ${p.stripe_extra_price_id ? 'text-slate-500' : 'text-warn'}`}>
+                      <div className={`text-[11px] break-all ${p.stripe_extra_price_id && p.stripe_extra_product_id ? 'text-slate-500' : 'text-warn'}`}>
                         extra truck: {p.stripe_extra_price_id || 'no price yet'}
+                        {p.stripe_extra_price_id && !p.stripe_extra_product_id
+                          && ' — shares the plan\'s Stripe product, so a bill prints the plan\'s name twice; press Update Stripe price'}
                       </div>
                     )}
                     {data.billing_provider === 'stripe' && p.stripe_price_id && (
@@ -810,9 +812,18 @@ export default function PlansPage() {
                   // creates the Price when the row carries none.  Without
                   // this the page told the operator to press Save and handed
                   // them a disabled "No changes".
+                  const missingPrice = (p.price_monthly_cents > 0 && !p.stripe_price_id)
+                    || (p.extra_vehicle_cents > 0 && !p.stripe_extra_price_id);
+                  // An extras Price made before the extras Product existed sits
+                  // on the PLAN's Product, and Stripe names a bill's line after
+                  // its Product — so the checkout page printed the plan's name
+                  // twice with nothing saying which line was the trucks. Saving
+                  // remakes it; without this the button reads "No changes" and
+                  // the only way off the old shape is SQL.
+                  const staleExtraPrice = p.extra_vehicle_cents > 0
+                    && !!p.stripe_extra_price_id && !p.stripe_extra_product_id;
                   const needsPrice = data.billing_provider === 'stripe'
-                    && ((p.price_monthly_cents > 0 && !p.stripe_price_id)
-                        || (p.extra_vehicle_cents > 0 && !p.stripe_extra_price_id));
+                    && (missingPrice || staleExtraPrice);
                   const armed = dirty || needsPrice;
                   return (
                     <td key={p.tier} className="px-3 py-2 text-center align-top">
@@ -826,7 +837,8 @@ export default function PlansPage() {
                       >
                         {busy === p.tier ? 'Saving…'
                           : dirty ? 'Save'
-                          : needsPrice ? 'Create Stripe price'
+                          : missingPrice ? 'Create Stripe price'
+                          : staleExtraPrice ? 'Update Stripe price'
                           : saved === p.tier ? 'Saved' : 'No changes'}
                       </Button>
                       <div className="mt-1 text-[11px] text-slate-500">
