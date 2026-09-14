@@ -268,18 +268,32 @@ GRANDFATHERED_SYSTEM_IMPORTERS: dict[str, str] = {
 }
 
 
-def _files_importing_system():
-    """Every non-test file below the system layer that imports it.
+# The one-release alias packages at the old paths.  Importing the new
+# path is their entire job, so they are the one thing below the system
+# layer allowed to name it.  Delete these entries WITH the aliases: an
+# entry that outlives its package shelters the next real upward import.
+_ALIAS_PATHS = (
+    "capabilities/security/",
+    "capabilities/platform/capacity/",
+    "capabilities/platform/market_intel/",
+    "capabilities/platform/part_directory/",
+    "capabilities/platform/service_task_library/",
+    "capabilities/platform/service_assembly_library/",
+    "capabilities/platform/vendor_directory/",
+    "capabilities/platform/watchdog.py",
+)
 
-    The alias package ``capabilities/security/`` is skipped: importing
-    the new path is its entire job."""
+
+def _files_importing_system():
+    """Every non-test file below the system layer that imports it,
+    the alias packages excepted."""
     hits = {}
     for root in ("features", "capabilities", "adapters", "infra"):
         files = scanned(sorted((REPO / root).rglob("*.py")),
                         what=f"{root}/ python files")
         for py in files:
             rel = py.relative_to(REPO).as_posix()
-            if is_test_path(rel) or rel.startswith("capabilities/security/") \
+            if is_test_path(rel) or rel.startswith(_ALIAS_PATHS) \
                     or "node_modules" in rel:
                 continue
             if any(m == "system" or m.startswith("system.") for m in _imports_of(py)):
@@ -308,3 +322,10 @@ def test_a_grandfathered_seam_that_no_longer_imports_system_is_removed():
         "no longer import system/ — remove from GRANDFATHERED_SYSTEM_IMPORTERS:\n  "
         + "\n  ".join(stale)
     )
+
+
+def test_every_alias_path_still_exists():
+    """An alias entry that outlives its package shelters the next real
+    upward import. Delete the entry with the alias."""
+    missing = [a for a in _ALIAS_PATHS if not (REPO / a).exists()]
+    assert not missing, f"alias packages gone, remove from _ALIAS_PATHS: {missing}"

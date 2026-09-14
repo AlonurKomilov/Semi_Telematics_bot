@@ -32,7 +32,6 @@ _CONTRIBUTORS = (
     "capabilities.notifications.retention",  # owns notifications.digest_queue (undeliverable residue)
     "capabilities.activity_trail.retention",  # owns activity_trail.events (who-did-what + deletion recovery)
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
-    "capabilities.platform.capacity.retention",  # owns system.metrics_* + account_usage_daily (capacity monitoring)
 )
 
 discover = make_discover(_CONTRIBUTORS)

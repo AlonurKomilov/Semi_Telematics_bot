@@ -78,8 +78,8 @@ Rules and the incident behind each: [scripts/githooks/README.md](scripts/githook
 # The system layer — `system/`
 
 What serves 4truck the operator and nobody else lives in `system/`
-(today: `system/security/` — the ledger, the detector, the holds, the
-nightly watch). It sits ABOVE the customer layers because it watches
+(`system/security/`, `system/capacity/`, `system/watchdog.py`, the
+directories and service libraries). It sits ABOVE the customer layers because it watches
 and, when it must, holds them: `system/` may import `capabilities`,
 `adapters` and `infra`; **none of those may import `system`** —
 `tests/test_layer_boundaries.py` enforces the direction and lists the

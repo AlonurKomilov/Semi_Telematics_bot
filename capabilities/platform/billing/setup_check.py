@@ -194,7 +194,27 @@ def _check_return_url() -> dict:
     return _check("return_url", "Return address", _OK, f"{where} · HTTP {code}")
 
 
-def _check_plan_prices(plans: list[dict], mode: str) -> dict:
+#: What the sandbox→live switch leaves behind when its SQL step is
+#: skipped: plan rows still naming the other mode's Product and Prices.
+#: A Save then asks live Stripe to hang a Price on a sandbox Product,
+#: which it does not know — the operator sees a failure, not the cause.
+OTHER_MODE_HINT = ("belong to the other Stripe mode — run the sandbox→live SQL "
+                   "(docs/runbooks/stripe-go-live.md, 4b step 2), then press Create Stripe price again")
+
+
+def _price_mode_problem(stripe, price_id: str, mode: str) -> str:
+    """'' when *price_id* is a Price of this mode; else what is wrong."""
+    try:
+        price = stripe.Price.retrieve(price_id)
+    except Exception as exc:
+        # "No such price" is what the other mode's id looks like from here
+        return "unknown here" if "No such" in str(exc) else f"unreadable ({type(exc).__name__})"
+    if bool(getattr(price, "livemode", False)) != (mode == "live"):
+        return "from the other mode"
+    return ""
+
+
+def _check_plan_prices(plans: list[dict], mode: str, stripe=None) -> dict:
     """Every plan a customer can buy needs its own Stripe Price.
 
     A priced plan whose row has no ``stripe_price_id`` is the step people
@@ -224,6 +244,17 @@ def _check_plan_prices(plans: list[dict], mode: str) -> dict:
         return _check("plan_prices", label, _PROBLEM,
                       f"No Stripe price for the extra truck on {', '.join(sorted(no_extra))} — "
                       "press Create Stripe price on each of them below.")
+    # with a key in hand, ask Stripe whether each id is a Price of THIS
+    # mode — the ids a dry run leaves behind are the ones this catches
+    if stripe is not None:
+        wrong = []
+        for p in sellable:
+            for pid in ((p.get("stripe_price_id") or "").strip(), (p.get("stripe_extra_price_id") or "").strip()):
+                if pid and _price_mode_problem(stripe, pid, mode):
+                    wrong.append(p["tier"]); break
+        if wrong:
+            return _check("plan_prices", label, _PROBLEM,
+                          f"The Stripe prices on {', '.join(sorted(wrong))} {OTHER_MODE_HINT}.")
     return _check("plan_prices", label, _OK,
                   f"{len(sellable)} public plan{'s' if len(sellable) != 1 else ''} "
                   f"carry a {mode}-mode Stripe price")
@@ -253,7 +284,7 @@ def _run_checks(plans: list[dict]) -> list[dict]:
         _check_extras_price(stripe, mode),
         _check_webhook(stripe),
         _check_return_url(),
-        _check_plan_prices(plans, mode),
+        _check_plan_prices(plans, mode, stripe),
     ]
 
 

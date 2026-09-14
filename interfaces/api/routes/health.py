@@ -57,7 +57,7 @@ async def health_check():
     bot_status = "unknown"
     if db_ok:
         try:
-            from capabilities.platform.capacity.sampler import (
+            from system.capacity.sampler import (
                 bot_heartbeat_age_min,
             )
             age = await bot_heartbeat_age_min(db)

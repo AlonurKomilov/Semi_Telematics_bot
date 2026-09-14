@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from capabilities.platform.capacity.sampler import bot_heartbeat_age_min
+from capabilities.data_lifecycle.heartbeat import bot_heartbeat_age_min
 
 
 @pytest.mark.asyncio

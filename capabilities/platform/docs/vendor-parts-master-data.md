@@ -59,7 +59,7 @@ data to another.
   (alias==primary test-pinned; the alias router registers BEFORE the
   WO router so `/{work_order_id}` can't capture "parts-catalog").
 - **Global directory (C/D) = platform sub-family**:
-  `capabilities/platform/vendor_directory/` — system-owner domain like
+  `system/vendor_directory/` — system-owner domain like
   Billing; curated on system.4truck.us; guarded by test_layer_boundaries.
 
 ## 2. Design principles (non-negotiable)

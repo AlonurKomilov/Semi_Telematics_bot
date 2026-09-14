@@ -1618,7 +1618,7 @@ async def system_health(
     # minute row every 60s; its freshness IS live daemon state, closing
     # the "API can't see the bot process" gap documented above.
     try:
-        from capabilities.platform.capacity.sampler import bot_heartbeat_age_min
+        from capabilities.data_lifecycle.heartbeat import bot_heartbeat_age_min
         age = await bot_heartbeat_age_min(platform_db)
         if age is None:
             components["bot_process"] = {
@@ -2247,6 +2247,25 @@ def _label_of(raw: str) -> str:
     return label
 
 
+def _price_creation_failed(tier: str, what: str, e: Exception) -> HTTPException:
+    """The answer when Stripe would not make a plan's Price.
+
+    One cause has a name: the row still carries the OTHER mode's Product
+    or Price ids — a dry run's, after the keys were swapped without the
+    runbook's SQL step — and live Stripe answers "No such product".  That
+    is the operator's state to fix, so it is a 409 that says how, not a
+    502 that nginx may replace with its own page before the console
+    reads it.  Anything else stays what it is: the provider failed.
+    """
+    from capabilities.platform.billing.setup_check import OTHER_MODE_HINT
+    msg = str(e)
+    if "No such product" in msg or "No such price" in msg:
+        return HTTPException(
+            status_code=409,
+            detail=f"Stripe does not know the ids on plan '{tier}' — they {OTHER_MODE_HINT}. ({msg})")
+    return HTTPException(status_code=502, detail=f"The billing provider could not create the {what}: {msg}")
+
+
 def _plan_view(row: dict, counts: dict[str, int], offers: dict[str, list] | None = None) -> dict:
     from capabilities.permissions.plans import EVERYTHING, normalize_included, quota_defaults
     # normalized on read too: a row that names an id no longer for sale
@@ -2573,7 +2592,7 @@ async def system_put_plan(
             made = await get_provider().create_plan_price(tier=tier, label=label, cents=int(new_cents), before=before)
         except Exception as e:
             logger.exception("plan %s: the provider could not create a price for %s cents", tier, new_cents)
-            raise HTTPException(status_code=502, detail=f"The billing provider could not create the price: {e}")
+            raise _price_creation_failed(tier, "price", e)
         if not made.get("skipped"):
             stripe_price_id = made.get("stripe_price_id", "")
             stripe_product_id = made.get("stripe_product_id") or None
@@ -2594,7 +2613,7 @@ async def system_put_plan(
                 tier=tier, label=label, cents=int(extra_cents), before=before_for_extra)
         except Exception as e:
             logger.exception("plan %s: the provider could not create an extras price for %s cents", tier, extra_cents)
-            raise HTTPException(status_code=502, detail=f"The billing provider could not create the extras price: {e}")
+            raise _price_creation_failed(tier, "extras price", e)
         if not made_x.get("skipped"):
             stripe_extra_price_id = made_x.get("stripe_extra_price_id", "")
             stripe_product_id = made_x.get("stripe_product_id") or stripe_product_id

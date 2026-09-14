@@ -105,7 +105,7 @@ async def warehouse_status(
     # The bot process pulse (cross-process heartbeat — same source as
     # /health's "bot" field).
     try:
-        from capabilities.platform.capacity.sampler import bot_heartbeat_age_min
+        from capabilities.data_lifecycle.heartbeat import bot_heartbeat_age_min
         pulse = await bot_heartbeat_age_min(tenant)
         bot = {"age_min": round(pulse, 1) if pulse is not None else None,
                "status": "ok" if pulse is not None and pulse <= 3 else

@@ -17,6 +17,13 @@ customer's own card page).  A domain a customer can touch is not a
 system service, however much of it faces the operator.
 
 Members:
-  security   the request ledger, the detector, the holds, the nightly
-             watch, the owner notice
+  security                  the request ledger, the detector, the holds,
+                            the nightly watch, the owner notice
+  capacity                  the sampler, request metering, capacity alerts
+  watchdog                  the machinery watchdog (watches the WORK)
+  market_intel              market-intel rollups over shared work orders
+  vendor_directory          the global vendor directory + reviews
+  part_directory            the global part directory
+  service_task_library      the shared service-task vocabulary
+  service_assembly_library  the shared service-assembly library
 """

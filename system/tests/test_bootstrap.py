@@ -64,6 +64,8 @@ def test_installing_imports_the_ledgers_retention_module():
     import sys
     bootstrap.install()
     assert "system.security.retention" in sys.modules
+    assert "system.capacity.retention" in sys.modules, (
+        "a process that forgets this never prunes the capacity metrics")
     from system.security.retention import TARGET_KEY
     assert TARGET_KEY.startswith("security"), TARGET_KEY
 

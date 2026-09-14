@@ -129,7 +129,7 @@ async def test_prunes_respect_cutoffs(db):
 # ── Metering helpers ──────────────────────────────────────────────
 
 def test_surface_mapping_is_interface_not_persona():
-    from capabilities.platform.capacity.requests import surface_for_host
+    from system.capacity.requests import surface_for_host
 
     # Every dashboard subdomain is the SAME SPA — one surface.
     for host in ("dash.4truck.us", "fleet.4truck.us", "safety.4truck.us",
@@ -146,7 +146,7 @@ def test_surface_mapping_is_interface_not_persona():
 async def test_metering_is_noop_without_redis():
     """Counting and reading must never raise when Redis is absent —
     metering can't add a failure mode to the request path."""
-    from capabilities.platform.capacity import requests as metering
+    from system.capacity import requests as metering
 
     await metering.count_request("dash.4truck.us", 42)      # no raise
     assert await metering.requests_last_minute() is None    # unavailable ≠ 0
@@ -174,7 +174,7 @@ def test_a_tile_is_counted_against_its_account_but_not_as_a_request():
     neither).  Leaving them out of both is what actually shipped.
     """
     import inspect
-    from capabilities.platform.capacity import requests as metering
+    from system.capacity import requests as metering
 
     src = inspect.getsource(metering.count_request)
     assert "sysreq:tiles:" in src, "a tile is not counted against its account"
@@ -186,7 +186,7 @@ def test_a_tile_is_counted_against_its_account_but_not_as_a_request():
 
 
 def test_the_tile_path_is_what_counts_as_a_tile():
-    from capabilities.platform.capacity.requests import is_tile_path
+    from system.capacity.requests import is_tile_path
 
     assert is_tile_path("/api/map/tile")
     assert is_tile_path("/api/map/tile-copyright")
@@ -226,7 +226,7 @@ async def test_tiles_flush_beside_requests_and_never_walk_backwards(db):
 # ── Feature/surface breakdown ─────────────────────────────────────
 
 def test_feature_for_path_route_families():
-    from capabilities.platform.capacity.requests import feature_for_path
+    from system.capacity.requests import feature_for_path
 
     assert feature_for_path("/api/vehicles/103/inventory") == "vehicles"
     assert feature_for_path("/api/v1/work-orders/12/attachments") == "work-orders"
@@ -285,7 +285,7 @@ def _cpu_rows(avg: float) -> list[dict]:
 
 
 def test_evaluate_hysteresis_zones():
-    from capabilities.platform.capacity import alerts
+    from system.capacity import alerts
 
     fresh = {"ts": "2026-07-17T09:00", "disk_pct": 30.0}
     assert alerts.evaluate(_cpu_rows(92.0), fresh, None)["cpu"]["state"] == "breach"
@@ -300,7 +300,7 @@ def test_evaluate_hysteresis_zones():
 def test_evaluate_sampler_stall():
     from datetime import datetime, timedelta, timezone
 
-    from capabilities.platform.capacity import alerts
+    from system.capacity import alerts
 
     old = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M")
     sig = alerts.evaluate([], {"ts": old}, None)
@@ -339,7 +339,7 @@ def alert_env(monkeypatch):
 
     import capabilities.permissions.roles as perms
     import infra.cache as cache
-    from capabilities.platform.capacity import alerts
+    from system.capacity import alerts
 
     active: set[str] = set()
 
@@ -363,7 +363,7 @@ def alert_env(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_alert_fires_once_then_recovers(alert_env):
-    from capabilities.platform.capacity import alerts
+    from system.capacity import alerts
 
     fresh_latest = None  # no sampler-stall signal in play
 
@@ -397,7 +397,7 @@ async def test_alerts_skip_entirely_without_redis(monkeypatch, alert_env):
     """No shared state → no dedupe → the only safe move is silence."""
     import infra.cache as cache
 
-    from capabilities.platform.capacity import alerts
+    from system.capacity import alerts
 
     monkeypatch.setattr(cache, "is_available", lambda: False)
     sent = await alerts.check_and_alert(_FakeDB(_cpu_rows(99.0), None), alert_env["app"])
@@ -408,7 +408,7 @@ async def test_alerts_skip_entirely_without_redis(monkeypatch, alert_env):
 
 @pytest.mark.asyncio
 async def test_host_probe_warmup_then_rates(db):
-    import capabilities.platform.capacity.sampler as sampler
+    import system.capacity.sampler as sampler
 
     sampler._prev = None
     first = sampler._host_probe()
@@ -513,7 +513,7 @@ async def test_capacity_accounts_labels_and_filter(capacity_app):
 async def test_sampler_job_end_to_end(db, monkeypatch):
     """The scheduler job writes a real row through a real Database."""
     import infra.platform as platform
-    import capabilities.platform.capacity.sampler as sampler
+    import system.capacity.sampler as sampler
 
     monkeypatch.setattr(platform, "_db", db, raising=False)
     sampler._prev = None

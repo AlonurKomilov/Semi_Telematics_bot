@@ -194,6 +194,32 @@ def test_a_priced_offered_plan_without_a_stripe_price_is_named(stripe_env):
         f"the note tells the operator to press {label!r} and no button on the Plans page says it")
 
 
+def test_a_plan_price_from_the_other_mode_is_named_with_the_runbook_step(stripe_env):
+    """The state a skipped sandbox→live SQL step leaves: the rows still
+    name sandbox Prices, live Stripe does not know them, and every
+    Create Stripe price fails.  With a key in hand the card asks Stripe
+    and says so — and says which step fixes it."""
+    class _S:
+        class Price:
+            @staticmethod
+            def retrieve(pid):
+                if pid == "price_sandbox_pro":
+                    raise RuntimeError("No such price: 'price_sandbox_pro'")     # live key, sandbox id
+                return _Price(livemode=False)                                  # a test-mode Price…
+    rows = [
+        {"tier": "pro", "public": 1, "price_monthly_cents": 9900, "stripe_price_id": "price_sandbox_pro",
+         "extra_vehicle_cents": 299, "stripe_extra_price_id": "price_sandbox_pro_x"},
+        {"tier": "starter", "public": 1, "price_monthly_cents": 4900, "stripe_price_id": "price_s",
+         "extra_vehicle_cents": 0},
+    ]
+    check = setup_check._check_plan_prices(rows, "live", _S)                # …under a LIVE key
+    assert check["state"] == "problem"
+    assert "pro" in check["note"] and "starter" in check["note"]
+    assert "other Stripe mode" in check["note"] and "4b step 2" in check["note"]
+    # without a key nothing is asked of Stripe and the ids pass on presence alone, as before
+    assert setup_check._check_plan_prices(rows, "live")["state"] == "ok"
+
+
 def test_nothing_to_sell_is_itself_the_problem(stripe_env):
     rows = [{"tier": "free", "public": 1, "price_monthly_cents": 0, "stripe_price_id": ""}]
     assert setup_check._check_plan_prices(rows, "test")["state"] == "problem"

@@ -204,7 +204,7 @@ async def main():
                 # Dead-man stamps: every executed job records "I ran" so
                 # the machinery watchdog can catch an individual job
                 # dying even while the scheduler itself stays alive.
-                from capabilities.platform.watchdog import install_deadman_listener
+                from system.watchdog import install_deadman_listener
                 install_deadman_listener(scheduler)
                 scheduler.start()
                 logger.info(

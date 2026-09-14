@@ -49,6 +49,7 @@ def install() -> None:
     # Importing it IS registering it: the module calls register_target /
     # register_need at import time.
     import system.security.retention  # noqa: F401
+    import system.capacity.retention  # noqa: F401
 
     _installed = True
     logger.info("system layer installed: hold policies + ledger retention")

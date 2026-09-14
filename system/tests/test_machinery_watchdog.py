@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from capabilities.platform.watchdog import collect_problems
+from system.watchdog import collect_problems
 
 
 class _Cur:

@@ -203,7 +203,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # Market intel (Phase D): nightly rollup rebuild at 04:40 UTC —
     # after the 04:10 account purge, before morning traffic.  No-op
     # while MARKET_INTEL_ENABLED is unset (dark launch).
-    from capabilities.platform.market_intel.jobs import job_market_rollups
+    from system.market_intel.jobs import job_market_rollups
     scheduler.add_job(
         job_market_rollups, "cron",
         hour=4, minute=40, args=[app], id="market_rollups",
@@ -215,7 +215,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # tops of hours fold the previous hour + flush per-account metering.
     # The 00:10 job closes out yesterday's metering after its Redis hash
     # stops changing (after the 00:00 boundary, before the 04:10 purge).
-    from capabilities.platform.capacity.sampler import (
+    from system.capacity.sampler import (
         job_capacity_flush_yesterday,
         job_capacity_sample,
     )
@@ -245,7 +245,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     )
     # Threshold alerts: stateful breach/recovery (one message per
     # transition, hysteresis 80/85) — safe at a 5-min cadence.
-    from capabilities.platform.capacity.alerts import job_capacity_alerts
+    from system.capacity.alerts import job_capacity_alerts
     scheduler.add_job(
         job_capacity_alerts, "interval",
         minutes=5, args=[app], id="capacity_alerts",
@@ -254,7 +254,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # Machinery watchdog: watches the WORK (tier freshness + dead-man
     # stamps), not the process — the layer the 2026-08-10 schedulerless
     # nights proved was missing.  Hourly at :45, tz-independent.
-    from capabilities.platform.watchdog import job_machinery_watchdog
+    from system.watchdog import job_machinery_watchdog
     scheduler.add_job(
         job_machinery_watchdog, "cron",
         minute=45, args=[app], id="machinery_watchdog",

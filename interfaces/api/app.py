@@ -67,12 +67,12 @@ from features.work_orders import router as work_orders_routes
 from features.parts import router as parts_routes
 from features.service_tasks import router as service_tasks_routes
 from features.vendors import router as vendors_routes
-from capabilities.platform.vendor_directory import router as vendor_directory_routes
-from capabilities.platform.part_directory import router as part_directory_routes
-from capabilities.platform.service_task_library import router as service_task_library_routes
-from capabilities.platform.service_assembly_library import router as service_assembly_library_routes
-from capabilities.platform.market_intel import router as market_intel_routes
-from capabilities.platform.capacity import router as capacity_routes
+from system.vendor_directory import router as vendor_directory_routes
+from system.part_directory import router as part_directory_routes
+from system.service_task_library import router as service_task_library_routes
+from system.service_assembly_library import router as service_assembly_library_routes
+from system.market_intel import router as market_intel_routes
+from system.capacity import router as capacity_routes
 from features.loads import router as loads_routes
 from capabilities.object_storage import config as object_storage_config
 from features.applications import config as applications_config
@@ -186,7 +186,7 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
             and not path.endswith(("/metrics", "/api/health"))
         ):
             try:
-                from capabilities.platform.capacity.requests import count_request
+                from system.capacity.requests import count_request
                 await count_request(
                     request.headers.get("host", ""),
                     getattr(request.state, "account_id", None),

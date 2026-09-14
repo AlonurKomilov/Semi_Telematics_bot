@@ -40,7 +40,7 @@ async def geo_app(pg_db, monkeypatch):
     _cp._db = db
 
     # Isolate the module-global geocode cache between test runs.
-    import capabilities.platform.vendor_directory.router as vd_router
+    import system.vendor_directory.router as vd_router
     vd_router._geocode_cache.clear()
 
     from interfaces.api.app import create_api

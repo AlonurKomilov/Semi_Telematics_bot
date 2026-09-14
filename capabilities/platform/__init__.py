@@ -1,23 +1,22 @@
-"""Platform sub-family — SYSTEM-OWNER domains (AUDIENCE: platform).
+"""Platform sub-family — the DUAL-audience money domains.
 
-Everything under ``capabilities/platform/`` serves 4truck the operator, not
-the customer's daily work:
+A domain here has an operator face AND a customer face: billing is us
+charging the customer's account, and the customer's own card page.  A
+domain a customer can touch is not a system service, however much of it
+faces the operator — the operator-ONLY services (security, capacity,
+the directories, the watchdog) live one layer up, in ``system/``.
 
-    capabilities/            → tenant-serving machinery (alerting, reporting,
-                               ai, scorecards, warehouse, …) — AUDIENCE: tenant
-    capabilities/platform/   → system-owner domains (billing, …)
-                               — AUDIENCE: platform
-    features/                → the customer's working services (driver pay,
-                               loads, drivers, …) — AUDIENCE: tenant
+    features/                → the customer's working services — AUDIENCE: tenant
+    capabilities/            → tenant-serving machinery — AUDIENCE: tenant
+    capabilities/platform/   → dual-audience money domains — AUDIENCE: both
+    system/                  → operator-only services — AUDIENCE: platform
 
 Boundary rules (enforced by tests/test_layer_boundaries.py):
-  * ``features/**`` never imports ``capabilities.platform.*`` — the customer
-    product must not depend on system-owner domains.
-  * ``capabilities/platform/**`` never imports ``features.*`` — platform
-    domains must not reach into the customer product.
+  * ``features/**`` never imports ``capabilities.platform.*``.
+  * ``capabilities/platform/**`` never imports ``features.*``.
+  * nothing below ``system/`` imports ``system``.
 
-Current members: ``billing`` (us charging the customer account — displayed
-to customers as "Subscription").  Future members: the account-purge module
-(when extracted from the scheduler), operator-console services.
+Current members: ``billing``.  The six packages that once sat beside it
+remain here as one-release aliases to their ``system/`` homes.
 SSOT: docs/FEATURES.md "Money domains" + "Backend patterns".
 """
