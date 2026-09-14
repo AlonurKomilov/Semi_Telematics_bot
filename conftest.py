@@ -489,6 +489,21 @@ _PROCESS_CACHES = (
     # Ids repeat per test-database copy, so a stale entry is a
     # valid-looking hit — the ledger route test flaked on exactly this.
     ("system.security.recorder", "_security_cache"),
+    # Keyed by account id, which REPEATS across template copies — the
+    # textbook case this list exists for. The two lock dicts matter
+    # twice over: an asyncio.Lock left behind is bound to a previous
+    # test's event loop, and awaiting it there raises rather than waits.
+    ("features.live_map.service", "_live_local"),
+    ("features.live_map.service", "_live_locks"),
+    ("features.live_map.router", "_engine_seen"),
+    # Keyed by (api key, restriction kind): a Google Maps session token
+    # a test faked would otherwise be handed to the next test.
+    ("features.live_map.map_engine", "_sessions"),
+    ("features.live_map.map_engine", "_locks"),
+    # Keyed by (model, region), holding a BUILT client: a test that
+    # patches the builder would otherwise be served the previous
+    # test's object.
+    ("capabilities.ai.vision", "_vision_callers"),
     ("system.security.quarantine", "_cache"),
     ("system.security.quarantine", "_account_cache"),
     ("capabilities.permissions.scope", "_role_scope_cache"),

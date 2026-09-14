@@ -169,6 +169,17 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "writes one row here and every surface reads it.",
     ),
     SettingOwner(
+        "map.engine", "can_manage_config_all", "config", "live_map",
+        "Which renderer draws the live map for this account — Leaflet over "
+        "OpenStreetMap (free, keyless) or Google tiles (metered, billed per "
+        "session).  One truth for everyone: the map a dispatcher sees and the "
+        "map a driver sees are the same map, and the choice spends the "
+        "account's money either way.  Written by the engine resolver since it "
+        "shipped and declared nowhere, which meant PUT /settings refused the "
+        "one key an operator would most want to flip when a bill surprised "
+        "them.",
+    ),
+    SettingOwner(
         "inventory_focus.*", "can_manage_config_role", "config", "inventory",
         "Which of those categories a ROLE is flagged on — the red, not the "
         "fact.  The owner named the problem it solves: something showing red "
