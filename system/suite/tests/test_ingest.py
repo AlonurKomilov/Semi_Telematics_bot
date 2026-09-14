@@ -155,3 +155,55 @@ async def test_the_board_reads_are_the_operators_not_the_reporters(api):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         r = await c.get("/api/system/suite/runs", headers={"X-Suite-Token": TOKEN})
     assert r.status_code in (401, 403), r.status_code
+
+
+# ── per package, over the wire ────────────────────────────────────────
+
+async def test_packages_arrive_and_answer_from_the_run_that_ran_them(api):
+    """The view the operator actually asked for: features and services,
+    each speaking from the last run that exercised it."""
+    app, _ = api
+    await _post(app, _run_body(git_sha="aaa111", passed=65, packages=[
+        {"package": "features/loads", "passed": 40, "failed": 0, "skipped": 0},
+        {"package": "features/vehicles", "passed": 25, "failed": 0, "skipped": 0},
+    ]))
+    await _post(app, _run_body(git_sha="bbb222", scope="features/vehicles",
+                               passed=24, failed=1, packages=[
+        {"package": "features/vehicles", "passed": 24, "failed": 1, "skipped": 0},
+    ], failures=[{"nodeid": "features/vehicles/tests/test_a.py::test_x",
+                  "file": "features/vehicles/tests/test_a.py", "message": "boom"}]))
+
+    rows = {r["package"]: r for r in
+            (await _get(app, "/api/system/suite/packages")).json()["items"]}
+    assert rows["features/vehicles"]["failed"] == 1
+    assert rows["features/vehicles"]["git_sha"] == "bbb222"
+    assert rows["features/loads"]["git_sha"] == "aaa111", (
+        "loads answered from a run that never exercised it"
+    )
+
+
+async def test_a_packages_drawer_shows_its_own_failures_and_its_own_runs(api):
+    app, _ = api
+    await _post(app, _run_body(git_sha="aaa111", passed=1, failed=2, packages=[
+        {"package": "features/loads", "passed": 1, "failed": 1, "skipped": 0},
+        {"package": "features/vehicles", "passed": 0, "failed": 1, "skipped": 0},
+    ], failures=[
+        {"nodeid": "features/loads/tests/test_a.py::test_x",
+         "file": "features/loads/tests/test_a.py", "message": "loads boom"},
+        {"nodeid": "features/vehicles/tests/test_b.py::test_y",
+         "file": "features/vehicles/tests/test_b.py", "message": "vehicles boom"},
+    ]))
+    detail = (await _get(app, "/api/system/suite/packages/features/loads")).json()
+    assert detail["package"] == "features/loads"
+    assert [f["nodeid"] for f in detail["failures"]] == [
+        "features/loads/tests/test_a.py::test_x"], "it was handed another package's red"
+    assert len(detail["history"]) == 1
+
+
+async def test_a_package_nobody_ran_is_absent_from_the_board(api):
+    app, _ = api
+    await _post(app, _run_body(packages=[
+        {"package": "features/loads", "passed": 40, "failed": 0, "skipped": 0}]))
+    names = {r["package"] for r in
+             (await _get(app, "/api/system/suite/packages")).json()["items"]}
+    assert names == {"features/loads"}

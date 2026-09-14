@@ -1056,6 +1056,27 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_suite_runs_finished
             ON suite_runs(finished_at DESC);
 
+        -- suite_packages: the same run, counted per package, so the board
+        -- can be read the way the repo is organised — one row per feature
+        -- and per service — instead of only as a wall of runs.
+        --
+        -- A package absent from a run is ABSENT, never zero: a scoped run
+        -- that never touched features/loads says nothing about it, and a
+        -- board that rendered that as green would be lying in the
+        -- direction that matters.
+        CREATE TABLE IF NOT EXISTS suite_packages (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id    INTEGER NOT NULL,
+            package   TEXT    NOT NULL,
+            passed    INTEGER NOT NULL DEFAULT 0,
+            failed    INTEGER NOT NULL DEFAULT 0,
+            skipped   INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_suite_packages_run
+            ON suite_packages(run_id);
+        CREATE INDEX IF NOT EXISTS idx_suite_packages_name
+            ON suite_packages(package, run_id DESC);
+
         CREATE TABLE IF NOT EXISTS suite_failures (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id        INTEGER NOT NULL,

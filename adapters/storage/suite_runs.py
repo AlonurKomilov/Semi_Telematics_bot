@@ -54,6 +54,7 @@ class SuiteRunsMixin:
         errors: int = 0,
         duration_s: float | None = None,
         failures: Iterable[dict] | None = None,
+        packages: Iterable[dict] | None = None,
     ) -> int:
         """Store one run and its failures; return the run id.
 
@@ -86,6 +87,17 @@ class SuiteRunsMixin:
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (run_id, nodeid, str(f.get("file") or "")[:300],
                  str(f.get("message") or "")[:2000], first_seen, last_green),
+            )
+        for pkg in packages or ():
+            name = str(pkg.get("package", ""))[:300]
+            if not name:
+                continue
+            await self._db.execute(
+                """INSERT INTO suite_packages
+                     (run_id, package, passed, failed, skipped)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (run_id, name, int(pkg.get("passed") or 0),
+                 int(pkg.get("failed") or 0), int(pkg.get("skipped") or 0)),
             )
         await self._db.commit()
         return run_id
@@ -179,9 +191,59 @@ class SuiteRunsMixin:
         await self._db.execute(
             f"DELETE FROM suite_failures WHERE run_id IN ({marks})", ids)
         await self._db.execute(
+            f"DELETE FROM suite_packages WHERE run_id IN ({marks})", ids)
+        await self._db.execute(
             f"DELETE FROM suite_runs WHERE id IN ({marks})", ids)
         await self._db.commit()
         return len(ids)
+
+
+    async def suite_packages_latest(self) -> list[dict]:
+        """One row per package, from the most recent run that actually
+        EXERCISED it.
+
+        Not the most recent run: a scoped run that never touched
+        ``features/loads`` says nothing about it, and carrying its
+        silence forward as a verdict would be the board lying in the
+        direction that matters. Each package answers from the last run
+        that ran it, and says which run that was.
+        """
+        cur = await self._db.execute(
+            """SELECT DISTINCT ON (p.package)
+                      p.package, p.passed, p.failed, p.skipped,
+                      r.id AS run_id, r.finished_at, r.actor, r.source,
+                      r.git_sha, r.dirty, r.scope
+                 FROM suite_packages p
+                 JOIN suite_runs r ON r.id = p.run_id
+                ORDER BY p.package, p.run_id DESC"""
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def suite_package_history(self, package: str, *, limit: int = 20) -> list[dict]:
+        """Every run that exercised one package, newest first."""
+        cur = await self._db.execute(
+            """SELECT p.passed, p.failed, p.skipped,
+                      r.id AS run_id, r.finished_at, r.actor, r.source,
+                      r.git_sha, r.dirty, r.scope
+                 FROM suite_packages p
+                 JOIN suite_runs r ON r.id = p.run_id
+                WHERE p.package = ?
+                ORDER BY p.run_id DESC LIMIT ?""",
+            (package, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def suite_package_failures(self, package: str, run_id: int) -> list[dict]:
+        """The failing tests of one package in one run — what the reader
+        wants the moment a package row says red."""
+        cur = await self._db.execute(
+            """SELECT nodeid, file, message, first_seen_run, last_green_sha
+                 FROM suite_failures
+                WHERE run_id = ? AND (file = ? OR file LIKE ?)
+                ORDER BY nodeid""",
+            (run_id, package, f"{package}/%"),
+        )
+        return [dict(r) for r in await cur.fetchall()]
 
 
 def summarise(run: dict) -> dict[str, Any]:
@@ -208,3 +270,4 @@ def summarise(run: dict) -> dict[str, Any]:
 
 def _json(value) -> str:
     return json.dumps(value, separators=(",", ":"))
+

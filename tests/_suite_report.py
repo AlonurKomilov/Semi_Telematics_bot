@@ -72,7 +72,24 @@ def _load_from_dotenv() -> None:
 #: that nothing structured can hide inside.
 _MESSAGE_CHARS = 300
 
-_state: dict = {"started": None, "t0": None, "failures": []}
+_state: dict = {"started": None, "t0": None, "failures": [], "packages": {}}
+
+
+def package_of(file: str) -> str:
+    """Which feature or service a test file belongs to.
+
+    The repo's own law decides this, not a guess: a package owns its
+    tests in its own ``tests/`` subfolder, so everything before
+    ``/tests/`` IS the package. ``features/settings/team_management``
+    and ``capabilities/platform/billing`` come out at their real depth
+    rather than being flattened to two segments, because that is where
+    their tests actually live.
+    """
+    if "/tests/" in file:
+        return file.split("/tests/")[0]
+    if file.startswith("tests/"):
+        return "tests"                      # the repo-wide guards
+    return file.rsplit("/", 1)[0] or "?"
 
 
 def _enabled() -> bool:
@@ -107,7 +124,20 @@ def pytest_configure(config):
 
 
 def pytest_runtest_logreport(report):
-    if not _enabled() or report.outcome != "failed":
+    if not _enabled():
+        return
+    # Count every outcome per package, not just the failures: a board
+    # that can say "features/loads, 43 passed" is one a reader can use
+    # the way the repo is laid out. Counted on the CALL phase so a test
+    # is counted once; a setup error has no call phase and is counted
+    # there instead.
+    if report.when == "call" or (report.when == "setup" and report.outcome != "passed"):
+        pkg = package_of(report.nodeid.split("::", 1)[0])
+        row = _state["packages"].setdefault(pkg, {"passed": 0, "failed": 0, "skipped": 0})
+        key = report.outcome if report.outcome in row else "failed"
+        row[key] += 1
+
+    if report.outcome != "failed":
         return
     if report.when not in ("call", "setup"):
         return
@@ -168,6 +198,11 @@ def pytest_sessionfinish(session, exitstatus):
         # never as 500.
         "failures": list({f["nodeid"]: f
                           for f in _state["failures"]}.values())[:500],
+        # One row per package the run actually touched. A package absent
+        # from this list was not exercised, which is different from
+        # passing — the board must be able to tell those apart.
+        "packages": [{"package": k, **v} for k, v in
+                     sorted(_state["packages"].items())][:200],
     }
     _send(payload)
 

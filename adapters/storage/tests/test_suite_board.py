@@ -145,3 +145,88 @@ async def test_recent_runs_survive_a_prune(db):
     run_id = await _run(db, sha="aaa111", failures=("t.py::test_a",))
     assert await db.prune_suite_runs(keep_days=90) == 0
     assert [r["id"] for r in await db.list_suite_runs()] == [run_id]
+
+
+# ── per package: the view that reads the way the repo is laid out ─────
+
+async def _pkg_run(db, *, sha, packages, failures=(), **kw):
+    return await db.record_suite_run(
+        started_at="2026-09-14T10:00:00+00:00", git_sha=sha, actor="alice",
+        passed=sum(p["passed"] for p in packages), failed=len(failures),
+        failures=[{"nodeid": n, "file": n.split("::")[0], "message": "boom"}
+                  for n in failures],
+        packages=packages, **kw,
+    )
+
+
+async def test_each_package_answers_from_the_last_run_that_RAN_it(db):
+    """The property the whole view rests on. A scoped run that never
+    touched features/loads says nothing about it — carrying that silence
+    forward as a verdict would be the board lying in the direction that
+    matters."""
+    r1 = await _pkg_run(db, sha="aaa111", packages=[
+        {"package": "features/loads", "passed": 40, "failed": 0, "skipped": 0},
+        {"package": "features/vehicles", "passed": 25, "failed": 0, "skipped": 0},
+    ])
+    # a scoped run, vehicles only — loads was not exercised
+    r2 = await _pkg_run(db, sha="bbb222", scope="features/vehicles", packages=[
+        {"package": "features/vehicles", "passed": 24, "failed": 1, "skipped": 0},
+    ], failures=("features/vehicles/tests/test_a.py::test_x",))
+
+    rows = {r["package"]: r for r in await db.suite_packages_latest()}
+    assert rows["features/vehicles"]["run_id"] == r2
+    assert rows["features/vehicles"]["failed"] == 1
+    assert rows["features/loads"]["run_id"] == r1, (
+        "loads answered from a run that never ran it"
+    )
+    assert rows["features/loads"]["failed"] == 0
+
+
+async def test_a_package_never_run_is_absent_not_green(db):
+    await _pkg_run(db, sha="aaa111", packages=[
+        {"package": "features/loads", "passed": 40, "failed": 0, "skipped": 0},
+    ])
+    names = {r["package"] for r in await db.suite_packages_latest()}
+    assert names == {"features/loads"}
+    assert "features/vehicles" not in names, "a package nobody ran must not appear at all"
+
+
+async def test_a_packages_history_is_only_the_runs_that_ran_it(db):
+    r1 = await _pkg_run(db, sha="aaa111", packages=[
+        {"package": "features/loads", "passed": 40, "failed": 0, "skipped": 0}])
+    await _pkg_run(db, sha="bbb222", packages=[
+        {"package": "features/vehicles", "passed": 5, "failed": 0, "skipped": 0}])
+    r3 = await _pkg_run(db, sha="ccc333", packages=[
+        {"package": "features/loads", "passed": 41, "failed": 0, "skipped": 0}])
+
+    history = await db.suite_package_history("features/loads")
+    assert [h["run_id"] for h in history] == [r3, r1]
+
+
+async def test_a_packages_failures_are_its_own(db):
+    """features/loads must not be handed features/vehicles' red."""
+    run_id = await _pkg_run(db, sha="aaa111", packages=[
+        {"package": "features/loads", "passed": 39, "failed": 1, "skipped": 0},
+        {"package": "features/vehicles", "passed": 24, "failed": 1, "skipped": 0},
+    ], failures=("features/loads/tests/test_a.py::test_x",
+                 "features/vehicles/tests/test_b.py::test_y"))
+
+    mine = await db.suite_package_failures("features/loads", run_id)
+    assert [f["nodeid"] for f in mine] == ["features/loads/tests/test_a.py::test_x"]
+
+
+async def test_a_prefix_is_not_a_package(db):
+    """``features/load`` must not collect ``features/loads``' failures —
+    the LIKE is anchored with a slash for exactly this."""
+    run_id = await _pkg_run(db, sha="aaa111", packages=[
+        {"package": "features/loads", "passed": 1, "failed": 1, "skipped": 0}],
+        failures=("features/loads/tests/test_a.py::test_x",))
+    assert await db.suite_package_failures("features/load", run_id) == []
+
+
+async def test_pruning_takes_the_package_rows_too(db):
+    await _pkg_run(db, sha="aaa111", packages=[
+        {"package": "features/loads", "passed": 40, "failed": 0, "skipped": 0}])
+    await db.prune_suite_runs(keep_days=0)
+    cur = await db._db.execute("SELECT COUNT(*) AS n FROM suite_packages")
+    assert dict(await cur.fetchone())["n"] == 0, "orphaned package rows survived"

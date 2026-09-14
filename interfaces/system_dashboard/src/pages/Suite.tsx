@@ -79,16 +79,126 @@ function Verdict({ run }: { run: SuiteRun }) {
   return <span className="text-ok font-medium">green</span>;
 }
 
+interface SuitePackage {
+  package: string;
+  passed: number;
+  failed: number;
+  skipped: number;
+  run_id: number;
+  finished_at: string;
+  actor: string;
+  source: 'ci' | 'local';
+  git_sha: string;
+  dirty: boolean | number;
+  scope: string;
+}
+
+/** features/loads → Features · loads.  The layer is the grouping a
+ *  reader already has in their head; the tail is the name they use. */
+function split(pkg: string): { layer: string; name: string } {
+  const parts = pkg.split('/');
+  if (parts.length === 1) return { layer: 'Repo-wide', name: parts[0] };
+  const LAYER: Record<string, string> = {
+    features: 'Features', capabilities: 'Capabilities', system: 'System services',
+    adapters: 'Adapters', interfaces: 'Interfaces', infra: 'Infra',
+  };
+  return { layer: LAYER[parts[0]] ?? parts[0], name: parts.slice(1).join('/') };
+}
+
+const LAYER_ORDER = ['Features', 'System services', 'Capabilities',
+                     'Adapters', 'Interfaces', 'Infra', 'Repo-wide'];
+
+/** One feature or service, answering from the last run that ran it. */
+function PackageRows({ rows, onOpen }: {
+  rows: SuitePackage[];
+  onOpen: (pkg: string) => void;
+}) {
+  const groups = new Map<string, SuitePackage[]>();
+  for (const r of rows) {
+    const { layer } = split(r.package);
+    if (!groups.has(layer)) groups.set(layer, []);
+    groups.get(layer)!.push(r);
+  }
+  const ordered = [...groups.entries()].sort(
+    (a, b) => (LAYER_ORDER.indexOf(a[0]) + 99) % 100 - (LAYER_ORDER.indexOf(b[0]) + 99) % 100,
+  );
+
+  return (
+    <div className="mt-5 space-y-6">
+      {ordered.map(([layer, items]) => (
+        <div key={layer}>
+          <h2 className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+            {layer} <span className="text-slate-600">· {items.length}</span>
+          </h2>
+          <table className="w-full text-sm">
+            <thead className="text-slate-500 border-b border-slate-800">
+              <tr>
+                <th className="text-left px-3 py-1.5 font-normal">Name</th>
+                <th className="text-left px-3 py-1.5 font-normal">Verdict</th>
+                <th className="text-left px-3 py-1.5 font-normal">Last run</th>
+                <th className="text-left px-3 py-1.5 font-normal">Who</th>
+                <th className="text-left px-3 py-1.5 font-normal">Commit</th>
+                <th className="text-right px-3 py-1.5 font-normal">Passed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.sort((a, b) => a.package.localeCompare(b.package)).map((r) => (
+                <tr key={r.package}
+                    onClick={() => onOpen(r.package)}
+                    className="border-b border-slate-900 cursor-pointer hover:bg-slate-900/60">
+                  <td className="px-3 py-2 text-slate-200">{split(r.package).name}</td>
+                  <td className="px-3 py-2">
+                    {r.failed > 0
+                      ? <span className="text-danger font-medium">{r.failed} failed</span>
+                      : <span className="text-ok">passed</span>}
+                  </td>
+                  <td className="px-3 py-2 text-slate-400">{when(r.finished_at)}</td>
+                  <td className="px-3 py-2 text-slate-400">
+                    {r.actor || '—'}
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-slate-500">
+                      {r.source}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs text-slate-400">
+                    {r.git_sha || '—'}
+                    {r.dirty ? <span className="ml-1.5 text-warn">dirty</span> : null}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-400 tabular-nums">{r.passed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface PackageDetail {
+  package: string;
+  history: SuitePackage[];
+  failures: SuiteFailure[];
+}
+
 export default function SuitePage() {
+  /** Packages first: the repo's own shape is the one a reader already
+   *  holds, and "which feature is red" is the question that gets asked.
+   *  Runs stay one click away for "what happened at 07:21". */
+  const [view, setView] = useState<'packages' | 'runs'>('packages');
   const [runs, setRuns] = useState<SuiteRun[]>([]);
+  const [packages, setPackages] = useState<SuitePackage[]>([]);
   const [open, setOpen] = useState<SuiteRun | null>(null);
+  const [pkg, setPkg] = useState<PackageDetail | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
     setLoading(true);
-    apiJSON<{ items: SuiteRun[] }>('/system/suite/runs?limit=40')
-      .then((d) => { setRuns(d.items); setErr(''); })
+    Promise.all([
+      apiJSON<{ items: SuiteRun[] }>('/system/suite/runs?limit=40'),
+      apiJSON<{ items: SuitePackage[] }>('/system/suite/packages'),
+    ])
+      .then(([r, p]) => { setRuns(r.items); setPackages(p.items); setErr(''); })
       .catch((e) => setErr(e instanceof ApiError && e.status === 401
         ? 'Session expired or no operator access.'
         : e instanceof Error ? e.message : 'Failed to load'))
@@ -96,6 +206,12 @@ export default function SuitePage() {
   }, []);
 
   useEffect(load, [load]);
+
+  const openPackage = (name: string) => {
+    apiJSON<PackageDetail>(`/system/suite/packages/${name}`)
+      .then(setPkg)
+      .catch(() => { /* the row already carries the verdict */ });
+  };
 
   const openRun = (id: number) => {
     apiJSON<SuiteRun>(`/system/suite/runs/${id}`)
@@ -121,6 +237,26 @@ export default function SuitePage() {
         </div>
       )}
 
+      {(packages.length > 0 || runs.length > 0) && (
+        <div className="mt-4 flex gap-1 text-sm">
+          {(['packages', 'runs'] as const).map((v) => (
+            <button key={v} onClick={() => setView(v)}
+                    className={`px-3 py-1 rounded border ${
+                      view === v
+                        ? 'border-accent/50 bg-accent/10 text-accent'
+                        : 'border-slate-800 text-slate-400 hover:text-slate-200'}`}>
+              {v === 'packages'
+                ? `Features & services (${packages.length})`
+                : `Runs (${runs.length})`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'packages' && packages.length > 0 && (
+        <PackageRows rows={packages} onOpen={openPackage} />
+      )}
+
       {!loading && !err && runs.length === 0 && (
         <div className="mt-6 border border-slate-800 rounded p-6 text-sm text-slate-400">
           <p className="text-slate-300 font-medium">No runs reported yet.</p>
@@ -134,7 +270,7 @@ export default function SuitePage() {
         </div>
       )}
 
-      {runs.length > 0 && (
+      {view === 'runs' && runs.length > 0 && (
         <table className="mt-5 w-full text-sm">
           <thead className="text-slate-400 border-b border-slate-800">
             <tr>
@@ -185,6 +321,72 @@ export default function SuitePage() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {pkg && (
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-8 z-50"
+             onClick={() => setPkg(null)}>
+          <div className="bg-slate-950 border border-slate-800 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-auto"
+               onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-800 flex items-start justify-between">
+              <div>
+                <h2 className="text-slate-100 font-medium font-mono text-sm">{pkg.package}</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  {pkg.history.length} run{pkg.history.length === 1 ? '' : 's'} on record
+                </p>
+              </div>
+              <button onClick={() => setPkg(null)}
+                      className="text-slate-500 hover:text-slate-300 px-2">×</button>
+            </div>
+
+            {pkg.failures.length > 0 && (
+              <div className="p-5 space-y-3 border-b border-slate-800">
+                <h3 className="text-xs uppercase tracking-wide text-slate-500">
+                  Failing in the newest run that ran it
+                </h3>
+                {pkg.failures.map((f) => (
+                  <div key={f.nodeid} className="border border-slate-800 rounded p-3">
+                    <div className="font-mono text-xs text-slate-200 break-all">{f.nodeid}</div>
+                    <div className="text-xs text-danger mt-1.5">{f.message || '—'}</div>
+                    {f.last_green_sha && (
+                      <div className="text-xs text-slate-500 mt-2">
+                        went red between{' '}
+                        <span className="font-mono text-slate-400">{f.last_green_sha}</span>
+                        {' '}and{' '}
+                        <span className="font-mono text-slate-400">{f.first_seen_sha}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="p-5">
+              <h3 className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+                Runs that exercised it
+              </h3>
+              <table className="w-full text-sm">
+                <tbody>
+                  {pkg.history.map((h) => (
+                    <tr key={h.run_id} className="border-b border-slate-900">
+                      <td className="py-1.5 pr-3 text-slate-400">{when(h.finished_at)}</td>
+                      <td className="py-1.5 pr-3">
+                        {h.failed > 0
+                          ? <span className="text-danger">{h.failed} failed</span>
+                          : <span className="text-ok">passed</span>}
+                      </td>
+                      <td className="py-1.5 pr-3 text-slate-500">{h.actor}</td>
+                      <td className="py-1.5 pr-3 font-mono text-xs text-slate-500">
+                        {h.git_sha}{h.dirty ? <span className="ml-1 text-warn">dirty</span> : null}
+                      </td>
+                      <td className="py-1.5 text-right text-slate-500 tabular-nums">{h.passed}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {open && (

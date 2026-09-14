@@ -1819,6 +1819,13 @@ class SuiteFailureIn(BaseModel):
     message: str = Field(default="", max_length=2000)
 
 
+class SuitePackageIn(BaseModel):
+    package: str = Field(max_length=300)
+    passed: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    skipped: int = Field(default=0, ge=0)
+
+
 class SuiteRunIn(BaseModel):
     """One finished pytest run, as its reporter saw it.
 
@@ -1845,6 +1852,7 @@ class SuiteRunIn(BaseModel):
     # is what a leaked token can write per request, so it is sized for
     # the honest case and the reporter says when it truncated.
     failures: list[SuiteFailureIn] = Field(default_factory=list, max_length=500)
+    packages: list[SuitePackageIn] = Field(default_factory=list, max_length=200)
 
 
 @router.post("/suite/runs")
@@ -1876,6 +1884,7 @@ async def suite_ingest_run(
         scope=body.scope, passed=body.passed, failed=body.failed,
         skipped=body.skipped, errors=body.errors, duration_s=body.duration_s,
         failures=[f.model_dump() for f in body.failures],
+        packages=[p.model_dump() for p in body.packages],
     )
     logger.info("suite board: run %s recorded (%s, %s passed / %s failed%s)",
                 run_id, body.source, body.passed, body.failed,
@@ -1909,6 +1918,38 @@ async def suite_get_run(
         raise HTTPException(status_code=404, detail="Run not found")
     from adapters.storage.suite_runs import summarise
     return {**run, **summarise(run)}
+
+
+@router.get("/suite/packages")
+async def suite_packages(
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Every feature and service, each answering from the last run that
+    actually exercised it.
+
+    Not from the last run: a scoped run that never touched
+    ``features/loads`` says nothing about it, and carrying that silence
+    forward as a verdict would be the board lying in the direction that
+    matters. Each row names the run it is speaking from, so a reader can
+    see how stale the answer is.
+    """
+    rows = await platform_db.suite_packages_latest()
+    return {"items": rows, "count": len(rows)}
+
+
+@router.get("/suite/packages/{package:path}")
+async def suite_package_detail(
+    package: str,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """One package: its recent runs, and what is failing in the newest
+    one that exercised it."""
+    history = await platform_db.suite_package_history(package)
+    failures = (await platform_db.suite_package_failures(package, history[0]["run_id"])
+                if history else [])
+    return {"package": package, "history": history, "failures": failures}
 
 
 @router.get("/suite/failures")
@@ -2597,6 +2638,129 @@ async def system_revoke_plan_offer(
     except Exception:
         logger.exception("platform audit write failed for plan offer revoke %s/%s", tier, account_id)
     logger.info("system: plan %s offer to acct=%s revoked by %s", tier, account_id, actor)
+    return {"ok": True}
+
+
+class DiscountBody(BaseModel):
+    account_id: int = Field(..., gt=0)
+    kind: str = Field(..., pattern="^(amount|percent)$")
+    #: cents off each bill, for kind=amount
+    amount_off_cents: int = Field(default=0, ge=0, le=10_000_000)
+    #: 1..100, for kind=percent
+    percent_off: int = Field(default=0, ge=0, le=100)
+    #: how many bills it covers; 0 = until revoked
+    months: int = Field(default=0, ge=0, le=60)
+    reason: str = Field(default="", max_length=200)
+
+
+@router.get("/accounts/{account_id}/discount")
+async def system_account_discount(
+    account_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """The account's live price break and what came before it, plus what
+    the provider says the next bill comes to.
+
+    The preview is the operator's answer to "what will they actually be
+    charged" — Stripe's own arithmetic rather than ours, and only here,
+    never on a customer request path.
+    """
+    live = await platform_db.live_account_discount(account_id)
+    history = await platform_db.account_discount_history(account_id)
+    preview = None
+    from capabilities.platform.billing import get_provider
+    provider = get_provider()
+    if hasattr(provider, "preview_discounted_invoice"):
+        try:
+            preview = await provider.preview_discounted_invoice(account_id, platform_db)
+        except Exception:
+            logger.exception("discount preview failed for account %s", account_id)
+    return {"discount": live, "history": history, "next_invoice": preview}
+
+
+@router.post("/accounts/{account_id}/discount", status_code=201)
+async def system_grant_discount(
+    account_id: int,
+    body: DiscountBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Give one account a price break for a bounded time.
+
+    The row is written first and the provider is asked second, so a
+    grant that Stripe refuses leaves a record of what was attempted
+    rather than silence.  A provider failure rolls the row back to
+    ``revoked`` — a pending grant nobody can see is worse than none.
+    """
+    if body.account_id != account_id:
+        raise HTTPException(status_code=400, detail="The body's account does not match the URL's.")
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    sub = await platform_db.get_subscription(account_id) or {}
+    if sub.get("is_comped"):
+        raise HTTPException(
+            status_code=409,
+            detail="This account is comped — it already pays nothing. Revoke the comp first "
+                   "if it should pay a reduced amount instead.")
+    actor = f"operator:{user.get('sub') or user.get('telegram_id')}"
+    try:
+        row = await platform_db.create_account_discount(
+            account_id, kind=body.kind, amount_off_cents=body.amount_off_cents,
+            percent_off=body.percent_off, months=body.months,
+            reason=body.reason.strip(), granted_by=actor)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    from capabilities.platform.billing import get_provider
+    try:
+        written = await get_provider().apply_discount(account_id, platform_db, row)
+    except Exception as e:
+        logger.exception("discount %s: the provider refused for account %s", row.get("id"), account_id)
+        await platform_db.mark_account_discount(int(row["id"]), status="revoked")
+        raise HTTPException(status_code=502, detail=f"The billing provider refused the discount: {e}")
+    await platform_db.mark_account_discount(int(row["id"]), **written)
+    try:
+        await platform_db.add_platform_audit(
+            "discount_granted", account_id=account_id, actor=actor,
+            details=json.dumps({"kind": body.kind, "amount_off_cents": body.amount_off_cents,
+                                "percent_off": body.percent_off, "months": body.months,
+                                "reason": body.reason.strip()}),
+        )
+    except Exception:
+        logger.exception("platform audit write failed for discount on %s", account_id)
+    logger.info("system: discount granted acct=%s by %s (%s)", account_id, actor, written.get("status"))
+    return {"discount": await platform_db.live_account_discount(account_id)}
+
+
+@router.delete("/accounts/{account_id}/discount")
+async def system_revoke_discount(
+    account_id: int,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Take the price break off.  Bills already issued keep it — this
+    changes what the NEXT one comes to."""
+    row = await platform_db.live_account_discount(account_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="This account has no discount to revoke.")
+    from capabilities.platform.billing import get_provider
+    try:
+        await get_provider().remove_discount(account_id, platform_db, row)
+    except Exception:
+        # Stripe may have ended it already; the row must still close, or
+        # the operator cannot grant a replacement.
+        logger.exception("discount %s: the provider could not remove it", row.get("id"))
+    await platform_db.mark_account_discount(int(row["id"]), status="revoked")
+    actor = f"operator:{user.get('sub') or user.get('telegram_id')}"
+    try:
+        await platform_db.add_platform_audit(
+            "discount_revoked", account_id=account_id, actor=actor,
+            details=json.dumps({"discount_id": row.get("id")}),
+        )
+    except Exception:
+        logger.exception("platform audit write failed for discount revoke on %s", account_id)
+    logger.info("system: discount revoked acct=%s by %s", account_id, actor)
     return {"ok": True}
 
 
