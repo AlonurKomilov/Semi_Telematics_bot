@@ -27,8 +27,8 @@ import { Freshness, Tip } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
 import { statusTone, toneText } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import { DUTY_LABELS, clockText, useHours } from './useHours';
-import type { DriverHours } from './useHours';
+import { DUTY_LABELS, clockText, countLowOnDrive, useHours } from './useHours';
+import type { DriverHours, HoursResponse } from './useHours';
 
 /**
  * One clock cell.
@@ -67,11 +67,14 @@ const COLUMNS: AnyColumn[] = [
           <span className={r.linked ? '' : 'text-muted-foreground'}>
             {String(v || '—')}
           </span>
+          {/* A status about OUR RECORD of the driver, not about the
+              driver — so it keeps the badge family and takes the
+              outline weight, where duty status takes the fill. */}
           {!r.linked && (
             <Tip label="The ELD reports this driver, but nobody has linked them to a member of your team yet. Link them on the driver's Integrations tab.">
-              <span className="text-2xs uppercase tracking-wider text-muted-foreground/70 cursor-help">
+              <Badge tone="neutral" subtle className="cursor-help">
                 unlinked
-              </span>
+              </Badge>
             </Tip>
           )}
         </div>
@@ -122,6 +125,41 @@ const COLUMNS: AnyColumn[] = [
   },
 ];
 
+/**
+ * What the header says beyond the title.
+ *
+ * Two facts, both read from the rows rather than asserted: how many
+ * drivers are close to stopping, and how many the caller's own vehicle
+ * access removed.  The second is the one a surface usually leaves out —
+ * showing three of ten and saying nothing lets the reader conclude
+ * they are seeing everything.
+ */
+function HeaderMeta({ data }: { data: HoursResponse }) {
+  const low = countLowOnDrive(data.drivers);
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-xs">
+      {low > 0 && (
+        <span className={toneText('warn')}>
+          {low} {low === 1 ? 'driver has' : 'drivers have'} under 1h drive
+          time left
+        </span>
+      )}
+      {data.stale_count > 0 && (
+        <span className={toneText('warn')}>
+          {data.stale_count} of {data.count} readings older than{' '}
+          {data.stale_after_minutes} min
+        </span>
+      )}
+      {data.hidden_by_scope > 0 && (
+        <span className="text-muted-foreground">
+          Showing {data.count} of {data.count + data.hidden_by_scope} drivers —
+          limited to your vehicle access
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function HoursPage() {
   const { data, isLoading, isError, refetch } = useHours();
 
@@ -136,14 +174,7 @@ export default function HoursPage() {
         title="Hours of Service"
         icon={Clock}
         description="Duty status and remaining drive, shift and cycle time for every driver, mirrored from the connected electronic logging device. The ELD is the system of record — these readings are read-only, and each one shows how old it is."
-        meta={
-          data?.connected && data.stale_count > 0 ? (
-            <span className={`${toneText('warn')} text-xs`}>
-              {data.stale_count} of {data.count} readings older than{' '}
-              {data.stale_after_minutes} min
-            </span>
-          ) : undefined
-        }
+        meta={data?.connected ? <HeaderMeta data={data} /> : undefined}
       />
 
       {isLoading && <CardSkeleton />}
@@ -189,6 +220,13 @@ export default function HoursPage() {
             columns={COLUMNS}
             data={rows}
             searchKey={['driver', 'vehicle']}
+            // Most drive time first.  The rows arrive newest-reading
+            // first, which answers a question nobody asked; this page
+            // exists for "who can take this load and for how long".
+            defaultSorting={[{ id: 'drive_remaining', desc: true }]}
+            // A dispatcher's own views — "my night shift", "running
+            // low" — saved per user, right-click to manage.
+            savedTabs
           />
           <p className="text-xs text-muted-foreground max-w-prose">
             {data.record_of}

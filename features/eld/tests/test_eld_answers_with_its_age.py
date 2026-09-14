@@ -256,3 +256,51 @@ def test_the_service_says_it_once_so_no_surface_has_to_remember():
     out = project(_row())
     assert "as_of" in out
     assert "source" in out
+
+
+# ── Saying when the view was narrowed ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_the_answer_says_how_many_the_scope_removed():
+    """Between "all" and "none" a scoped surface used to under-report
+    in silence.  The empty state names the constraint when NOTHING
+    survives; this is what lets a surface say it in between."""
+    from capabilities.permissions.vehicle_scope import (
+        VehicleIdentity, VehicleScope,
+    )
+    db = _DB([
+        _row(truck_num="231"),
+        _row(provider_driver_id="p2", user_id=8, truck_num="104",
+             display_name="Sam Lee",
+             vehicles=[{"name": "104", "registry_id": 99}]),
+        _row(provider_driver_id="p3", user_id=9, truck_num="118",
+             display_name="Ada Cole",
+             vehicles=[{"name": "118", "registry_id": 77}]),
+    ])
+    scope = VehicleScope.of(
+        VehicleIdentity.make(registry_id=42, external_id=None, name="231"))
+
+    out = await get_hours(db, 1, vehicle_scope=scope)
+    assert out["count"] == 1
+    assert out["hidden_by_scope"] == 2
+
+
+@pytest.mark.asyncio
+async def test_an_unrestricted_caller_hides_nothing():
+    out = await get_hours(_DB([_row()]), 1)
+    assert out["hidden_by_scope"] == 0
+
+
+@pytest.mark.asyncio
+async def test_asking_about_one_driver_does_not_read_as_hiding_the_rest():
+    """The count is taken AFTER the user_id filter.  Otherwise a
+    per-driver read would announce "nine hidden from you", which is
+    both false and alarming."""
+    db = _DB([
+        _row(user_id=7),
+        _row(provider_driver_id="p2", user_id=8, truck_num="104",
+             vehicles=[{"name": "104", "registry_id": 99}]),
+    ])
+    out = await get_hours(db, 1, user_id=7)
+    assert out["count"] == 1
+    assert out["hidden_by_scope"] == 0

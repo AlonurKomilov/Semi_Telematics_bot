@@ -124,13 +124,27 @@ async def get_hours(
     ever = await db.count_driver_hos_live(account_id)
     rows = await db.get_driver_hos_live(account_id, user_id=user_id)
 
+    before_scope = len(rows)
     if vehicle_scope is not None:
         rows = [r for r in rows if _scope_admits(vehicle_scope, r)]
+    hidden_by_scope = before_scope - len(rows)
 
     drivers = [project(r) for r in rows]
     return {
         "connected": ever > 0,
         "count": len(drivers),
+        # How many drivers the caller's own vehicle access removed.
+        #
+        # A surface that shows three of ten drivers and says nothing is
+        # under-reporting silently, which on a compliance page is the
+        # same failure class as answering zero — the reader concludes
+        # they are looking at the whole picture.  The empty state
+        # already names the constraint when NOTHING survives; this is
+        # what lets a surface say it in between.
+        #
+        # Counted after the user_id filter, so asking about one driver
+        # never reads as "nine hidden from you".
+        "hidden_by_scope": hidden_by_scope,
         "drivers": drivers,
         "stale_count": sum(1 for d in drivers if d["stale"]),
         "stale_after_minutes": STALE_AFTER_MINUTES,

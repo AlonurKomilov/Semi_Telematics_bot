@@ -12,34 +12,30 @@
  */
 import { Link } from 'react-router-dom';
 import { Clock, Plug } from '../../lib/icons';
-import { CardSkeleton, EmptyState, ErrorState } from '../../components/shell';
-import { Freshness, Tip } from '../../components/tooltip';
+import { CardSkeleton, EmptyState, ErrorState, KpiCard } from '../../components/shell';
+import { Freshness } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
 import { statusTone, toneText } from '../../lib/status';
 import { DUTY_LABELS, clockText, useHours } from './useHours';
 import type { Clock as ClockValue, DriverHours } from './useHours';
 
+/**
+ * One clock, on the shell's own figure primitive.
+ *
+ * The `hint` slot carries the "not reported" explanation VISIBLY
+ * rather than behind a hover: on a compliance surface, the difference
+ * between "we do not know" and "no hours left" is the answer, and an
+ * answer that requires hovering is one a dispatcher can miss.
+ */
 function ClockTile({ label, clock }: { label: string; clock: ClockValue | null }) {
   const out = clock !== null && clock.seconds <= 0;
   return (
-    <div className="bg-muted/40 rounded-lg px-3 py-2">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      {clock === null ? (
-        <Tip label="The ELD did not report this clock — this is not zero hours remaining">
-          <span className="text-lg font-semibold text-muted-foreground/50 cursor-help tabular-nums">
-            —
-          </span>
-        </Tip>
-      ) : (
-        <div
-          className={`text-lg font-semibold tabular-nums ${out ? toneText('danger') : ''}`}
-        >
-          {clockText(clock)}
-        </div>
-      )}
-    </div>
+    <KpiCard
+      label={label}
+      value={clock === null ? '—' : clockText(clock)}
+      hint={clock === null ? 'not reported by the ELD' : undefined}
+      tone={out ? 'critical' : 'default'}
+    />
   );
 }
 

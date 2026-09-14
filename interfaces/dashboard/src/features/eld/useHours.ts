@@ -45,6 +45,11 @@ export interface HoursResponse {
    *  the data is missing. */
   connected: boolean;
   count: number;
+  /** How many drivers the caller's own vehicle access removed.  A
+   *  surface showing three of ten and saying nothing is under-reporting
+   *  in silence, which on a compliance page is the same failure class
+   *  as answering zero. */
+  hidden_by_scope: number;
   drivers: DriverHours[];
   stale_count: number;
   stale_after_minutes: number;
@@ -69,6 +74,18 @@ export function useHours(userId?: number | null, enabled = true) {
     enabled,
     refetchInterval: 60_000,
   });
+}
+
+/** Under an hour of drive time left.  One hour is not a regulatory
+ *  threshold — we do not know the ruleset — it is the span in which a
+ *  dispatcher can still act, which is the only claim being made. */
+export const LOW_DRIVE_SECONDS = 3600;
+
+export function countLowOnDrive(drivers: DriverHours[]): number {
+  return drivers.filter(
+    (d) => d.drive_remaining !== null
+      && d.drive_remaining.seconds < LOW_DRIVE_SECONDS,
+  ).length;
 }
 
 /** `11h 30m` — or an em dash when the ELD did not report this clock. */
