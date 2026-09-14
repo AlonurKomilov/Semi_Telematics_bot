@@ -21,8 +21,8 @@ Routes (mounted under the same /vehicles prefix as the parent feature):
     the move, so there is no pre-move address for them to answer on.
 
     Every one also answers on its pre-move ``/vehicles/…`` address, as a
-    deprecated alias; ``tests/test_inventory_url_move.py`` proves the two
-    stay identical.
+    deprecated alias; ``features/inventory/tests/test_url_move.py`` proves
+    the two stay identical.
 
 Gates: VIEW rides normal vehicle access; WRITE rides can_manage_vehicles
 (the registry-admin permission — inventory is part of "manage vehicles").
