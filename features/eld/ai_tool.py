@@ -15,7 +15,7 @@ supports computing a violation.
 from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
-from capabilities.ai.tools.scope import filter_to_scope
+from capabilities.ai.tools.scope import scope_from_args
 from features.eld.service import get_hours
 
 
@@ -87,7 +87,12 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
     name_q = (tool_args.get("driver_name") or "").strip().lower()
     status_q = (tool_args.get("status_filter") or "").strip().lower()
 
-    answer = await get_hours(db, account_id)
+    # Scope goes IN, so the service applies the one identity ladder both
+    # surfaces share.  It used to filter the projected rows afterwards on
+    # the truck NAME, which cannot split two companies' same-numbered
+    # trucks — a scoped caller was shown the twin company's driver.
+    answer = await get_hours(
+        db, account_id, vehicle_scope=scope_from_args(tool_args))
 
     if not answer["connected"]:
         # The distinction this whole feature was built around.  Nothing
@@ -109,12 +114,8 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
             ),
         }
 
-    # The caller's own trucks, by the driver's assigned vehicle — the
-    # same rung every other scope-aware tool uses.
-    rows = filter_to_scope(answer["drivers"], tool_args, key="vehicle")
-
     filtered = [
-        r for r in rows
+        r for r in answer["drivers"]
         if (not name_q or name_q in (r.get("driver") or "").lower())
         and (not status_q or (r.get("duty_status") or "").lower() == status_q)
     ]

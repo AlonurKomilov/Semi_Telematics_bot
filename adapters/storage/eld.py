@@ -191,6 +191,38 @@ class EldMixin(_MixinBase):
         sql += " ORDER BY h.source_ts DESC, h.provider_driver_id"
 
         cur = await self._db.execute(sql, params)
+
+        # Each driver's ASSIGNED trucks, with their registry identity.
+        #
+        # A bare unit number cannot decide scope: numbers are reused
+        # across the companies inside one account, so "103" names two
+        # trucks and a caller scoped to one of them would be shown the
+        # other company's driver.  The registry id is what splits the
+        # twins, and it lives on the assignment rather than on this
+        # table — scope follows who is ASSIGNED to a truck, which
+        # changes, not who the provider says is sitting in one now.
+        #
+        # One query for the account rather than one per driver.
+        assignments: dict[int, list[dict]] = {}
+        try:
+            acur = await self._db.execute(
+                "SELECT user_id, truck_num, registry_id FROM driver_trucks "
+                "WHERE account_id = ? ORDER BY user_id, is_primary DESC",
+                (account_id,),
+            )
+            for a in await acur.fetchall():
+                uid = a[0]
+                if uid is None:
+                    continue
+                assignments.setdefault(int(uid), []).append({
+                    "name": str(a[1] or ""),
+                    "registry_id": int(a[2]) if a[2] is not None else None,
+                })
+        except Exception:
+            logger.exception(
+                "eld: assignment lookup failed acct=%d", account_id)
+            assignments = {}
+
         out: list[dict] = []
         for r in await cur.fetchall():
             row = dict(zip((
@@ -206,6 +238,17 @@ class EldMixin(_MixinBase):
             )
             row["truck_num"] = row.get("truck_num") or ""
             row["linked"] = row.get("user_id") is not None
+            # What a scope decides on.  A linked driver with no junction
+            # row falls back to their legacy single ``users.truck_num``
+            # — name-only, which is all that column ever carried.  An
+            # UNLINKED driver gets ``[]``: the provider knows them, we
+            # cannot yet say whose truck they are on, and a scoped
+            # caller must not be shown a driver they cannot place.
+            uid = row.get("user_id")
+            vehicles = list(assignments.get(int(uid), [])) if uid else []
+            if not vehicles and uid and row["truck_num"]:
+                vehicles = [{"name": row["truck_num"], "registry_id": None}]
+            row["vehicles"] = vehicles
             out.append(row)
         return out
 

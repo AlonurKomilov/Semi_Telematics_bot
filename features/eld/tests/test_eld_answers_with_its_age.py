@@ -42,6 +42,9 @@ def _row(**kw):
         "display_name": "Jane Ruiz",
         "truck_num": "231",
         "linked": True,
+        # What the store attaches, and what scope is decided on: the
+        # driver's ASSIGNED trucks with their registry identity.
+        "vehicles": [{"name": "231", "registry_id": 42}],
     }
     base.update(kw)
     return base
@@ -91,7 +94,9 @@ async def test_connected_but_no_match_is_a_real_none():
 @pytest.mark.asyncio
 async def test_connected_is_not_derived_from_the_visible_rows():
     """Rows the caller cannot see must not make the feed look absent."""
-    out = await get_hours(_DB([_row()], ever=1), 1, vehicle_scope=[])
+    from capabilities.permissions.vehicle_scope import VehicleScope
+    out = await get_hours(
+        _DB([_row()], ever=1), 1, vehicle_scope=VehicleScope())
     assert out["connected"] is True
     assert out["drivers"] == []
 
@@ -154,12 +159,76 @@ async def test_unknown_and_out_of_hours_never_read_the_same():
 
 @pytest.mark.asyncio
 async def test_the_caller_sees_only_their_own_trucks_drivers():
-    db = _DB([_row(truck_num="231"), _row(provider_driver_id="p2",
-                                          user_id=8, truck_num="104",
-                                          display_name="Sam Lee")])
+    db = _DB([
+        _row(truck_num="231"),
+        _row(provider_driver_id="p2", user_id=8, truck_num="104",
+             display_name="Sam Lee",
+             vehicles=[{"name": "104", "registry_id": 99}]),
+    ])
+    res = await get_driver_hos_status(
+        {"_scope_vehicles": ["231"],
+         "_scope_identities": [[42, "sam_42", "231"]]},
+        None, account_id=1, db=db)
+    assert [d["name"] for d in res["drivers"]] == ["Jane Ruiz"]
+
+
+@pytest.mark.asyncio
+async def test_the_twin_companys_driver_is_not_shown():
+    """The bug this scope exists for.
+
+    Two companies inside one account both run a truck numbered "103".
+    A caller pinned to ONE of them — registry id 42 — must not be shown
+    the other company's driver, whose truck answers to the same number.
+    Name equality cannot tell them apart, and duty status is the last
+    place to be approximate about whose driver you are looking at.
+    """
+    db = _DB([
+        _row(provider_driver_id="a1", user_id=7, truck_num="103",
+             display_name="Ours",
+             vehicles=[{"name": "103", "registry_id": 42}]),
+        _row(provider_driver_id="b1", user_id=8, truck_num="103",
+             display_name="Theirs",
+             vehicles=[{"name": "103", "registry_id": 99}]),
+    ])
+    res = await get_driver_hos_status(
+        {"_scope_vehicles": ["103"],
+         "_scope_identities": [[42, "sam_42", "103"]]},
+        None, account_id=1, db=db)
+
+    assert [d["name"] for d in res["drivers"]] == ["Ours"], (
+        "the twin company's driver walked in through the name rung"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_assignment_with_no_registry_id_still_matches():
+    """An assignment the registry has never resolved stays name-only,
+    and rung 3 still honours it — otherwise the fix would blind every
+    account whose junction rows predate the registry backfill."""
+    db = _DB([_row(display_name="Legacy Jane",
+                   vehicles=[{"name": "231", "registry_id": None}])])
     res = await get_driver_hos_status(
         {"_scope_vehicles": ["231"]}, None, account_id=1, db=db)
-    assert [d["name"] for d in res["drivers"]] == ["Jane Ruiz"]
+    assert [d["name"] for d in res["drivers"]] == ["Legacy Jane"]
+
+
+@pytest.mark.asyncio
+async def test_a_driver_on_no_truck_is_hidden_from_a_scoped_caller():
+    """Unlinked, or simply between trucks.  There is nothing to place
+    them on, and admitting them would hand a company-restricted
+    dispatcher a person they cannot account for."""
+    db = _DB([_row(user_id=None, linked=False, truck_num="",
+                   display_name="Unplaced", vehicles=[])])
+    scoped = await get_driver_hos_status(
+        {"_scope_vehicles": ["231"],
+         "_scope_identities": [[42, "sam_42", "231"]]},
+        None, account_id=1, db=db)
+    assert scoped["drivers"] == []
+
+    wide = await get_driver_hos_status({}, None, account_id=1, db=db)
+    assert [d["name"] for d in wide["drivers"]] == ["Unplaced"], (
+        "an unrestricted caller must still see them"
+    )
 
 
 @pytest.mark.asyncio

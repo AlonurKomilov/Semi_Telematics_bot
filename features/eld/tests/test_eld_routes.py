@@ -199,3 +199,75 @@ async def test_another_accounts_driver_is_not_readable(world, api):
         r = await c.get(f"/api/v1/eld/hours/{theirs.id}",
                         headers=_headers(boss, acct, "owner"))
     assert r.status_code == 404
+
+
+# ── The scoped member: the leak path the route invites ────────────
+
+@pytest.mark.asyncio
+async def test_a_scoped_member_sees_only_their_own_trucks_driver(world):
+    """A dispatcher narrowed to one truck reads /eld/hours.
+
+    Until this landed the route compared bare unit-number strings, so
+    the answer was decided by a name — and names are reused across the
+    companies inside one account.  The identity ladder decides now.
+    """
+    app, db, acct, _boss, d1, _d2 = world
+    disp = await db.create_user(
+        account_id=acct.id, telegram_id=880040, role=Role.DISPATCHER,
+        display_name="Scoped Dispatch")
+    await db.set_user_vehicle_scope(acct.id, disp.id, "assigned")
+    await db.assign_vehicle(disp.id, acct.id, "231", is_primary=True)
+    # The driver is on 231 too — give them the junction row the real
+    # roster would have, so the read does not fall to the legacy path.
+    await db.assign_vehicle(d1.id, acct.id, "231", is_primary=True)
+
+    async with await _client(app) as c:
+        r = await c.get("/api/v1/eld/hours",
+                        headers=_headers(disp, acct, "dispatcher"))
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["connected"] is True
+    assert [d["driver"] for d in body["drivers"]] == ["Jane Ruiz"], (
+        "a scoped caller saw a driver outside their assignment"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_scoped_member_cannot_reach_past_their_scope_by_id(world):
+    """The per-id route must not be the hole in the filtered list."""
+    app, db, acct, _boss, d1, d2 = world
+    disp = await db.create_user(
+        account_id=acct.id, telegram_id=880041, role=Role.DISPATCHER,
+        display_name="Scoped Dispatch 2")
+    await db.set_user_vehicle_scope(acct.id, disp.id, "assigned")
+    await db.assign_vehicle(disp.id, acct.id, "231", is_primary=True)
+    await db.assign_vehicle(d1.id, acct.id, "231", is_primary=True)
+    await db.assign_vehicle(d2.id, acct.id, "104", is_primary=True)
+
+    async with await _client(app) as c:
+        mine = await c.get(f"/api/v1/eld/hours/{d1.id}",
+                           headers=_headers(disp, acct, "dispatcher"))
+        theirs = await c.get(f"/api/v1/eld/hours/{d2.id}",
+                             headers=_headers(disp, acct, "dispatcher"))
+
+    assert mine.status_code == 200
+    assert theirs.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_member_with_no_assignment_sees_nobody(world):
+    """Fail-closed, the same rule the rest of the vehicle surfaces
+    follow: an empty assignment list is nothing, never everything."""
+    app, db, acct, _boss, _d1, _d2 = world
+    disp = await db.create_user(
+        account_id=acct.id, telegram_id=880042, role=Role.DISPATCHER,
+        display_name="Unassigned Dispatch")
+    await db.set_user_vehicle_scope(acct.id, disp.id, "assigned")
+
+    async with await _client(app) as c:
+        body = (await c.get("/api/v1/eld/hours",
+                            headers=_headers(disp, acct, "dispatcher"))).json()
+
+    assert body["connected"] is True, "the feed is still wired"
+    assert body["drivers"] == []

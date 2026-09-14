@@ -31,10 +31,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from features.eld.service import get_hours
+from capabilities.permissions.vehicle_scope import (
+    VehicleScope, build_vehicle_scope,
+)
 from interfaces.api.deps import (
     get_member_vehicle_scope,
     get_tenant_db,
-    get_user_vehicle_nums,
+    get_user_vehicle_assignments,
     require_permission,
 )
 
@@ -43,18 +46,26 @@ router = APIRouter(prefix="/eld", tags=["eld"])
 _VIEW = require_permission("can_view_eld")
 
 
-async def _vehicle_scope(user: dict) -> list[str] | None:
+async def _vehicle_scope(user: dict, tenant_db) -> VehicleScope | None:
     """The trucks this caller may see drivers for, or ``None`` for all.
 
-    ``[]`` is a real answer and is honoured as one: a member narrowed
-    to assigned vehicles who has none assigned sees nobody, the same
-    fail-closed rule the rest of the vehicle surfaces follow.  Reading
-    an empty assignment list as "unrestricted" is how a scoped member
-    would quietly get the whole account.
+    Assignments carry their registry identity, so a scope built from
+    them admits ONE truck where a human has said which — and not its
+    same-numbered twin in another company.  Names alone cannot do that,
+    and duty status is the last place to be approximate about whose
+    driver you are looking at.
+
+    An empty scope is a real answer and is honoured as one: a member
+    narrowed to assigned vehicles who has none assigned sees nobody.
+    Reading an empty assignment list as "unrestricted" is how a scoped
+    member would quietly get the whole account.
     """
     if await get_member_vehicle_scope(user) != "assigned":
         return None
-    return await get_user_vehicle_nums(user)
+    trucks = await get_user_vehicle_assignments(user)
+    if not trucks:
+        return VehicleScope()
+    return await build_vehicle_scope(tenant_db, int(user["account_id"]), trucks)
 
 
 @router.get("/hours")
@@ -65,7 +76,7 @@ async def hours(
     """Current duty clocks for every driver this caller may see."""
     return await get_hours(
         tenant_db, int(user["account_id"]),
-        vehicle_scope=await _vehicle_scope(user),
+        vehicle_scope=await _vehicle_scope(user, tenant_db),
     )
 
 
@@ -90,7 +101,7 @@ async def driver_hours(
     answer = await get_hours(
         tenant_db, int(user["account_id"]),
         user_id=user_id,
-        vehicle_scope=await _vehicle_scope(user),
+        vehicle_scope=await _vehicle_scope(user, tenant_db),
     )
     if not answer["drivers"]:
         if not answer["connected"]:

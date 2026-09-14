@@ -41,6 +41,21 @@ def _clock(seconds: Optional[int]) -> Optional[dict]:
     return {"seconds": int(seconds), "hours": round(int(seconds) / 3600, 1)}
 
 
+def _scope_admits(scope, row: dict) -> bool:
+    """Is ANY truck this driver is assigned to inside the scope?
+
+    A driver with no assignment at all — every unlinked driver, and a
+    linked one between trucks — is denied to a scoped caller.  There is
+    no truck to place them on, and admitting them would hand a
+    company-restricted dispatcher a person they cannot account for.
+    """
+    for v in row.get("vehicles") or []:
+        if scope.allows(registry_id=v.get("registry_id"),
+                        name=v.get("name") or None):
+            return True
+    return False
+
+
 def project(row: dict, *, now=None) -> dict:
     """One stored row → the shape every ELD surface reads.
 
@@ -92,19 +107,25 @@ async def get_hours(
     answer: an empty list read as "nobody is near their limit" is the
     failure this feature exists to avoid.
 
-    ``vehicle_scope`` narrows by the driver's assigned truck, the same
-    rung the rest of the AI tools use.  ``None`` means unrestricted;
-    an empty list means nothing, and is honoured as nothing.
+    ``vehicle_scope`` is a :class:`VehicleScope`, not a list of names.
+    It narrows by the driver's ASSIGNED trucks through the full identity
+    ladder, because a bare unit number cannot decide this: numbers are
+    reused across the companies inside one account, so a caller scoped
+    to one company's "103" would otherwise be shown the other
+    company's driver — live duty status, for a person outside their
+    wall.  ``None`` means unrestricted; an empty scope means nothing,
+    and is honoured as nothing.
+
+    A driver is admitted when ANY of their assigned trucks is, which is
+    the same rule ``features/drivers/ai_tool.py::_drivers_in_scope``
+    already applies to driver rows.  It lives HERE rather than in each
+    surface so the route and the AI tool cannot drift apart.
     """
     ever = await db.count_driver_hos_live(account_id)
     rows = await db.get_driver_hos_live(account_id, user_id=user_id)
 
     if vehicle_scope is not None:
-        allowed = {str(v).strip().lower() for v in vehicle_scope if str(v).strip()}
-        rows = [
-            r for r in rows
-            if (r.get("truck_num") or "").strip().lower() in allowed
-        ]
+        rows = [r for r in rows if _scope_admits(vehicle_scope, r)]
 
     drivers = [project(r) for r in rows]
     return {
