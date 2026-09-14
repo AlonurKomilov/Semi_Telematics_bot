@@ -321,6 +321,45 @@ async def test_my_vendor_entries_in_bbox(db):
 
 
 @pytest.mark.asyncio
+async def test_count_mappable_vendors_says_what_the_map_cannot_show(db):
+    """THE DENOMINATOR THE MAP WAS MISSING.
+
+    A vendor reaches the map only through an active, geocoded directory
+    entry, and that chain starts from an ADDRESS the vendor row does not
+    have to carry.  Measured on the live account 2026-09-14: 443
+    vendors, 2 with an address, 4 on the map.  The layer drew 4 and said
+    nothing, which reads as "you have four vendors".
+
+    An absent thing must not be rendered as a small one.
+    """
+    a = 71
+    # Three vendors: one mapped, one linked to an entry with no
+    # coordinates, one that is a name and nothing else — which is what
+    # 441 of the live account's 443 actually are.
+    mapped = await db.create_directory_entry(
+        "Counted Shop", address="1 Pin Way", status="active")
+    await db.set_directory_geo(mapped["id"], 39.10, -84.51)
+    v1 = await db.resolve_or_create_vendor(a, "Counted Shop Local")
+    await db.link_vendor_to_directory(a, v1["id"], mapped["id"])
+
+    ungeocoded = await db.create_directory_entry(
+        "Unpinned Shop", address="2 No Pin Way", status="active")
+    v2 = await db.resolve_or_create_vendor(a, "Unpinned Shop Local")
+    await db.link_vendor_to_directory(a, v2["id"], ungeocoded["id"])
+
+    await db.resolve_or_create_vendor(a, "Just A Name")
+
+    total, mappable = await db.count_mappable_vendors(a)
+    assert total == 3
+    assert mappable == 1, (
+        "a vendor with no coordinates was counted as mappable — the note "
+        "would then promise a pin the map cannot draw")
+
+    # An account with nothing says so without dividing by zero.
+    assert await db.count_mappable_vendors(999_71) == (0, 0)
+
+
+@pytest.mark.asyncio
 async def test_import_directory_entries(db):
     """Operator bulk import: born active + geocoded + chain-labelled,
     matching vendors adopt immediately, existing names skip."""

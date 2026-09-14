@@ -354,6 +354,34 @@ class VendorDirectoryMixin:
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def count_mappable_vendors(self, account_id: int) -> tuple[int, int]:
+        """(how many vendors this account has, how many can be on a map).
+
+        THE DIFFERENCE IS THE POINT.  A vendor reaches the map only by
+        being linked to an active, geocoded directory entry, and linking
+        starts from an ADDRESS the vendor row does not have to carry.
+        Measured on the live account 2026-09-14: 443 vendors, 2 with an
+        address, 5 linked, 4 on the map.
+
+        So the map is right and its silence is not: a layer that draws 4
+        and says nothing reads as "you have four vendors", when the true
+        sentence is "four of your 443 have a location on file".  That is
+        this codebase's omitted-vs-zero rule in a new place — an absent
+        thing must not be rendered as a small one.
+        """
+        cur = await self._db.execute(
+            "SELECT count(*) AS total, "
+            "       count(d.id) AS mappable "
+            "FROM vendors v "
+            "LEFT JOIN vendor_directory d "
+            "  ON d.id = v.global_vendor_id AND d.status = 'active' "
+            "     AND d.lat IS NOT NULL AND d.lng IS NOT NULL "
+            "WHERE v.account_id = ?",
+            (account_id,),
+        )
+        row = dict(await cur.fetchone() or {})
+        return int(row.get("total") or 0), int(row.get("mappable") or 0)
+
     async def directory_entries_in_bbox(
         self,
         south: float,

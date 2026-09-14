@@ -195,10 +195,33 @@ async def map_pois(
         # shared-key rule above applies only to platform-global layers).
         bbox_key = _round_bbox(bbox)
         cache_key = (f"my_vendors_{user['account_id']}", bbox_key)
+        tenant = await get_tenant_db(user["account_id"])
+
+        # WHAT THE MAP CANNOT SHOW, SAID OUT LOUD.
+        #
+        # A vendor reaches this layer only through an active, geocoded
+        # directory entry, and that chain starts from an address the
+        # vendor row does not have to carry.  Live account, 2026-09-14:
+        # 443 vendors, 2 with an address, 4 on the map.  The query is
+        # right; drawing 4 and saying nothing is not — it reads as "you
+        # have four vendors".
+        #
+        # NOT AN ERROR, and it must not be rendered as one: nothing is
+        # broken and nothing is retryable.  It rides the same `note`
+        # channel as "zoom in to load", which exists for exactly this —
+        # a true state of a working layer.
+        #
+        # Computed before the cache is consulted: the cache is keyed by
+        # viewport and this fact is account-wide, so a cache hit must
+        # not be a quieter answer than a miss.
+        total, mappable = await tenant.count_mappable_vendors(user["account_id"])
+        note = (f"{mappable} of {total} vendors have a location on file"
+                if total > mappable else None)
+
         cached = _poi_cache.get(cache_key)
         if cached is not None:
-            return {"type": "FeatureCollection", "features": cached}
-        tenant = await get_tenant_db(user["account_id"])
+            return {"type": "FeatureCollection", "features": cached,
+                    "note": note}
         rows = await tenant.my_vendor_entries_in_bbox(
             user["account_id"], s, w, n, e,
         )
@@ -222,7 +245,7 @@ async def map_pois(
             for r in rows
         ]
         _poi_cache[cache_key] = features
-        return {"type": "FeatureCollection", "features": features}
+        return {"type": "FeatureCollection", "features": features, "note": note}
 
     if poi_type.startswith("custom_"):
         try:

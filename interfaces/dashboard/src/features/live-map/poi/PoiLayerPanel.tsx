@@ -77,7 +77,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
   const {
     enabled, toggle, loading, errors, counts,
     brandFilters, toggleBrand, presentBrands, allFeatures,
-    effectiveLayers, refreshCustomLayers, sourceAsOf,
+    effectiveLayers, refreshCustomLayers, sourceAsOf, notes,
   } = poiHook;
   const { has } = useViewPermissions();
   // POI is a sub-feature with its own view verb, so a role that sees the
@@ -386,7 +386,19 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                     months behind that is named beside them — a truck stop
                     that opened since simply is not in the data, and only
                     a date can say so. */}
-                {isOn && !isBusy && !errMsg && count === 0 && (
+                {/* SOMETHING TRUE THAT IS NOT A FAULT.
+                    "None in this view" is true of the VIEWPORT and
+                    silent about what has no viewport to be in: 439 of
+                    this account's 443 vendors have no address on file,
+                    so the layer draws 4 and reads as "you have four".
+                    Shown whether or not the view is empty, because the
+                    number it corrects is the one beside the row. */}
+                {isOn && !isBusy && !errMsg && notes[def.id] && (
+                  <p className="text-2xs text-muted-foreground leading-tight pl-7 pb-0.5">
+                    {notes[def.id]}
+                  </p>
+                )}
+                {isOn && !isBusy && !errMsg && !notes[def.id] && count === 0 && (
                   <p className="text-2xs text-muted-foreground leading-tight pl-7 pb-0.5">
                     {(allFeatures[def.id]?.length ?? 0) > 0
                       ? 'None of the chosen brands in this view'

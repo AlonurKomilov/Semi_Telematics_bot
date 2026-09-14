@@ -809,6 +809,77 @@ class TestServedFromOurTable:
 
 
 # ---------------------------------------------------------------------------
+# What the map cannot show, said out loud
+# ---------------------------------------------------------------------------
+
+class TestMyVendorsSaysWhatItCannotShow:
+    """A layer that draws 4 and says nothing reads as "you have four".
+
+    Live account, 2026-09-14: 443 vendors, 2 with an address, 5 linked,
+    4 on the map.  The query is right — a vendor reaches the map only
+    through an active, geocoded directory entry, and that chain starts
+    from an address the vendor row does not have to carry.  It is the
+    SILENCE that misleads, and it is this codebase's omitted-vs-zero
+    rule in a new place: an absent thing must not be rendered as a small
+    one.
+    """
+
+    async def _three_vendors(self, db, acct_id):
+        """One mappable, one linked but unpinned, one just a name."""
+        e = await db.create_directory_entry(
+            "Pinned Shop", address="1 Pin Way", status="active")
+        await db.set_directory_geo(e["id"], 41.85, -87.65)
+        v = await db.resolve_or_create_vendor(acct_id, "Pinned Shop Local")
+        await db.link_vendor_to_directory(acct_id, v["id"], e["id"])
+        await db.resolve_or_create_vendor(acct_id, "Just A Name")
+        await db.resolve_or_create_vendor(acct_id, "Another Name Only")
+
+    async def test_the_layer_carries_the_denominator(self, app_ctx):
+        db, acct = app_ctx["db"], app_ctx["acct_a"]
+        await self._three_vendors(db, acct.id)
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get(
+                "/api/map/pois?type=my_vendors&bbox=41.0,-88.0,42.0,-87.0",
+                headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body["features"]) == 1
+        assert body["note"] == "1 of 3 vendors have a location on file", body
+
+    async def test_a_cache_hit_is_not_a_quieter_answer(self, app_ctx):
+        """The viewport cache is keyed by bbox and this fact is
+        account-wide, so the note is computed BEFORE the cache is
+        consulted.  Otherwise the first pan tells the truth and every
+        one after it goes silent — a worse bug than the original,
+        because it looks intermittent."""
+        db, acct = app_ctx["db"], app_ctx["acct_a"]
+        await self._three_vendors(db, acct.id)
+
+        async with _client(app_ctx["app"]) as c:
+            url = "/api/map/pois?type=my_vendors&bbox=41.0,-88.0,42.0,-87.0"
+            first = await c.get(url, headers=_h(app_ctx["owner_a_token"]))
+            second = await c.get(url, headers=_h(app_ctx["owner_a_token"]))
+        assert first.json()["note"] == second.json()["note"]
+        assert second.json()["note"], "the cached answer dropped the note"
+
+    async def test_an_account_whose_vendors_are_all_mappable_says_nothing(self, app_ctx):
+        """A note with nothing to correct is noise.  Only the gap speaks."""
+        db, acct = app_ctx["db"], app_ctx["acct_b"]
+        e = await db.create_directory_entry(
+            "All Pinned", address="2 Pin Way", status="active")
+        await db.set_directory_geo(e["id"], 41.85, -87.65)
+        v = await db.resolve_or_create_vendor(acct.id, "All Pinned Local")
+        await db.link_vendor_to_directory(acct.id, v["id"], e["id"])
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get(
+                "/api/map/pois?type=my_vendors&bbox=41.0,-88.0,42.0,-87.0",
+                headers=_h(app_ctx["owner_b_token"]))
+        assert r.json()["note"] is None
+
+
+# ---------------------------------------------------------------------------
 # A source that did not answer
 # ---------------------------------------------------------------------------
 

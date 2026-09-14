@@ -37,6 +37,10 @@ export type { PoiFeature };
 interface PoisResponse {
   type: 'FeatureCollection';
   features: PoiFeature[];
+  /** Something true about this layer that is NOT a fault — "4 of 443
+   *  vendors have a location on file".  Absent on a layer with nothing
+   *  to add.  Rendered as a note, never as an error. */
+  note?: string | null;
   /** When the OpenStreetMap extract behind this layer was last updated.
    *  ABSENT on layers that do not come from OSM (the repair-shop
    *  directory, an account's own CSV) — a date from the wrong source
@@ -64,6 +68,9 @@ export interface UsePoiLayersResult {
   toggle: (id: string) => void;
   loading: Record<string, boolean>;
   errors: Record<string, string | undefined>;
+  /** True of a WORKING layer, so it is never drawn as an error:
+   *  an error row invites a retry that cannot help. */
+  notes: Record<string, string | undefined>;
   counts: Record<string, number>;
   brandFilters: Record<string, Set<string>>;
   toggleBrand: (layerId: string, value: string) => void;
@@ -466,6 +473,16 @@ export function usePoiLayers(
   );
   const [counts, setCounts] = useState<Record<string, number>>(
     () => Object.fromEntries(POI_LAYERS.map((l) => [l.id, 0])),
+  );
+  // A layer can come back FINE and still have something true to say —
+  // "4 of 443 vendors have a location on file".  Nothing is broken and
+  // nothing is retryable, so it is never an error: an error row invites
+  // a retry that cannot help and reads as a fault in the product.  The
+  // panel already has this channel; the dashboard was the surface that
+  // could only say "None in this view", which is true of the viewport
+  // and silent about the 439 that have no viewport to be in.
+  const [notes, setNotes] = useState<Record<string, string | undefined>>(
+    () => Object.fromEntries(POI_LAYERS.map((l) => [l.id, undefined])),
   );
   // How old the OSM data behind the layers is.  The public mirrors run
   // months behind — measured 2026-09-13, the two this server can reach
@@ -899,6 +916,7 @@ export function usePoiLayers(
       // Clear any previous error on success
       setErrors((prev) => ({ ...prev, [id]: undefined }));
       const data: PoisResponse = await res.json();
+      setNotes((prev) => ({ ...prev, [id]: data.note || undefined }));
       const features = data.features || [];
       // Only ever SET it: an absent field means "this layer is not OSM",
       // not "the OSM data has no date", so it must not clear what an OSM
@@ -951,6 +969,7 @@ export function usePoiLayers(
     } else {
       clearLayer(id);
       setErrors((prev) => ({ ...prev, [id]: undefined }));
+      setNotes((prev) => ({ ...prev, [id]: undefined }));
       setLoading((prev) => ({ ...prev, [id]: false }));
       // Cancel any in-flight fetches for this layer so a slow response can't
       // pollute caches or re-render markers after the user disabled the layer.
@@ -1105,7 +1124,7 @@ export function usePoiLayers(
   }, []);
 
   return {
-    enabled, toggle, loading, errors, counts,
+    enabled, toggle, loading, errors, notes, counts,
     brandFilters, toggleBrand, presentBrands, allFeatures,
     effectiveLayers, refreshCustomLayers, sourceAsOf,
   };

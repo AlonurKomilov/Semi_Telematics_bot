@@ -416,6 +416,7 @@ export function usePoiLayers(
       }
       const data = await res.json() as {
         features?: PoiFeature[]; source_as_of?: string | null;
+        note?: string | null;
       };
       const features = data.features ?? [];
       // Only ever SET it: the field is absent on layers that are not OSM
@@ -423,7 +424,10 @@ export function usePoiLayers(
       // not erase what an OSM layer already reported.
       if (data.source_as_of) setSourceAsOf(data.source_as_of);
       setErrors((prev) => ({ ...prev, [id]: undefined }));
-      setNotes((prev) => ({ ...prev, [id]: undefined }));
+      // A layer may come back fine AND have something true to say — "4
+      // of 443 vendors have a location on file".  Nothing is broken and
+      // nothing is retryable, so it is a note and never an error.
+      setNotes((prev) => ({ ...prev, [id]: data.note || undefined }));
       mem.current[id] = { ...mem.current[id], [key]: features };
       lastKey.current[id] = key;
       lsWrite(id, key, features);
