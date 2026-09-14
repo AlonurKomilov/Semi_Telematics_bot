@@ -184,6 +184,37 @@ _SKIP_NAME_RE = re.compile(
 )
 
 
+def _first_present(block, *keys):
+    """The first key this block actually carries, or None.
+
+    Samsara has renamed HOS clock fields before and will again.  A
+    missing key must surface as ``None`` — "the provider did not report
+    this clock" — never as ``0``, which downstream means the driver is
+    out of hours.  Reading several accepted spellings and giving up
+    honestly beats defaulting to the alarming answer.
+    """
+    if not isinstance(block, dict):
+        return None
+    for key in keys:
+        if key in block and block[key] is not None:
+            return block[key]
+    return None
+
+
+def _ms_to_seconds(value):
+    """Milliseconds to whole seconds, preserving None.
+
+    ``None`` in, ``None`` out: an unreported clock stays unreported
+    rather than becoming zero seconds remaining.
+    """
+    if value is None:
+        return None
+    try:
+        return int(int(value) // 1000)
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_retry_after(value: str | None, default_sec: float) -> float:
     """Parse a Samsara ``Retry-After`` header into seconds.
 
@@ -1362,6 +1393,51 @@ class SamsaraClient:
             # Internal: caller decides whether to drop zero-activity rows
             "_total_active_ms": drive_ms + idle_ms,
         }
+
+    async def get_hos_clocks(self) -> list[dict]:
+        """Current hours-of-service clocks, one entry per driver.
+
+        Returns the FLAT shape the ELD adapter maps into
+        ``HosSnapshot`` — provider driver id, raw duty status, and four
+        clocks in SECONDS.  Samsara reports durations in milliseconds;
+        converting here rather than at the feature keeps the unit
+        conversion next to the vendor that chose the unit.
+
+        Remaining-duration keys are read leniently because a key we do
+        not recognise must come back as ``None`` — "the provider did
+        not report this clock" — and never as ``0``, which downstream
+        means the driver is out of hours.  Those are opposite answers,
+        and a renamed field must not silently become the alarming one.
+        """
+        data = await self._get("/fleet/hos/clocks")
+        out: list[dict] = []
+        for entry in (data.get("data") or []):
+            driver = entry.get("driver") or {}
+            clocks = entry.get("clocks") or {}
+            duty = entry.get("currentDutyStatus") or {}
+            out.append({
+                "provider_driver_id": str(driver.get("id") or ""),
+                "driver_name": driver.get("name") or "",
+                # Raw, unmapped: the vendor's own spelling.  Turning it
+                # into our vocabulary is the provider adapter's job, not
+                # the HTTP client's.
+                "raw_duty_status": duty.get("hosStatusType") or "",
+                "last_status_change": duty.get("utcStartTime") or "",
+                "drive_seconds_today": _ms_to_seconds(
+                    _first_present(clocks.get("drive"),
+                                   "driveRemainingDurationMs",
+                                   "timeUntilBreakDurationMs")),
+                "on_duty_seconds_today": _ms_to_seconds(
+                    _first_present(clocks.get("shift"),
+                                   "shiftRemainingDurationMs")),
+                "cycle_seconds_remaining": _ms_to_seconds(
+                    _first_present(clocks.get("cycle"),
+                                   "cycleRemainingDurationMs")),
+                "shift_seconds_remaining": _ms_to_seconds(
+                    _first_present(clocks.get("shift"),
+                                   "shiftRemainingDurationMs")),
+            })
+        return out
 
     async def get_driver_efficiency(self, days: int = 7) -> list[dict]:
         """Get driver efficiency data for the specified time range.
@@ -2572,6 +2648,30 @@ class MultiCompanyClient:
         return combined
 
     # ── driver efficiency ────────────────────────────────────────
+
+    async def get_hos_clocks(
+        self, company: str | None = None,
+    ) -> list[dict]:
+        """Duty clocks across every company on the account.
+
+        NOT cached.  Every other fan-out here caches because its answer
+        describes something that changes slowly; a duty clock changes
+        by the second, and serving a cached one is how a dispatcher
+        gets told a driver has two hours left who ran out twenty
+        minutes ago.  The ingest's own cadence is the rate limit.
+        """
+        async def _fn(c):
+            return await c.get_hos_clocks()
+
+        per_co = await self._run_per_company(_fn, company=company)
+        combined: list[dict] = []
+        for code, rows in per_co.items():
+            for r in rows:
+                r["_org"] = code
+            combined.extend(rows)
+        combined.sort(key=lambda x: (x.get("_org", ""),
+                                     x.get("driver_name", "")))
+        return combined
 
     async def get_driver_efficiency(
         self, days: int = 7, company: str | None = None,

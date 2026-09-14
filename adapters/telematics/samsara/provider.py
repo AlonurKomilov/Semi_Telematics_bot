@@ -38,9 +38,42 @@ from adapters.telematics.catalog import PROVIDER_CATALOG
 from adapters.telematics.protocol import (
     Capability,
     ConnectionStatus,
+    DutyStatus,
     HosSnapshot,
     TelematicsProvider,
 )
+
+
+# Samsara's duty-status spellings → ours.  Keys are NORMALISED (lower
+# case, letters and digits only) so a rename between ``sleeperBerth``
+# and ``sleeper_berth`` costs nothing, and several accepted spellings
+# per value cost one line each.
+#
+# Anything not in this table becomes UNKNOWN, deliberately.  The
+# tempting default is OFF_DUTY — it is the commonest real value — and
+# it is the one answer we must never invent: it would turn a gap in
+# THIS table into a statement that a driver was resting.
+_DUTY_BY_VENDOR_SPELLING = {
+    "offduty":             DutyStatus.OFF_DUTY,
+    "off":                 DutyStatus.OFF_DUTY,
+    "sleeperberth":        DutyStatus.SLEEPER,
+    "sleeperbed":          DutyStatus.SLEEPER,
+    "sleeper":             DutyStatus.SLEEPER,
+    "driving":             DutyStatus.DRIVING,
+    "drive":               DutyStatus.DRIVING,
+    "onduty":              DutyStatus.ON_DUTY,
+    "on":                  DutyStatus.ON_DUTY,
+    "personalconveyance":  DutyStatus.PERSONAL_CONVEYANCE,
+    "pc":                  DutyStatus.PERSONAL_CONVEYANCE,
+    "yardmove":            DutyStatus.YARD_MOVE,
+    "ym":                  DutyStatus.YARD_MOVE,
+}
+
+
+def _duty_status(raw) -> str:
+    """One vendor spelling → one :class:`DutyStatus` value."""
+    key = "".join(ch for ch in str(raw or "").lower() if ch.isalnum())
+    return _DUTY_BY_VENDOR_SPELLING.get(key, DutyStatus.UNKNOWN)
 
 from .client import MultiCompanyClient
 
@@ -327,16 +360,41 @@ class SamsaraProvider:
         return rows
 
     async def get_driver_hos(self) -> list[HosSnapshot]:
-        """Hours-of-service clocks — not wired yet.
+        """Samsara's duty clocks, in OUR vocabulary.
 
-        The mapping from Samsara's HOS clocks into
-        :class:`HosSnapshot` lands with the ingest that consumes it,
-        so the capability and its feed appear on the integration card
-        together.  Declaring it earlier would render a toggle that
-        controls nothing, which is exactly what the catalog's own note
-        on the retired prune capability warns against.
+        This is where the vendor's spelling stops.  Everything above
+        this line sees :class:`DutyStatus` values and seconds; nothing
+        above it has ever heard of ``hosStatusType``.
+
+        ``source_ts`` is stamped at fetch time, and for this endpoint
+        that IS the observation time — ``/fleet/hos/clocks`` answers
+        "right now", not a historical window.  A provider that reports
+        its own observation time should carry that instead.
+
+        The capability is still not declared in
+        ``supported_capabilities``; the ingest that consumes this lands
+        with the declaration, so the toggle and the feed appear on the
+        integration card together.
         """
-        return []
+        from datetime import datetime, timezone
+
+        rows = await self._client.get_hos_clocks()
+        fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        return [
+            HosSnapshot(
+                provider_driver_id=str(r.get("provider_driver_id") or ""),
+                duty_status=_duty_status(r.get("raw_duty_status")),
+                drive_seconds_today=r.get("drive_seconds_today"),
+                on_duty_seconds_today=r.get("on_duty_seconds_today"),
+                cycle_seconds_remaining=r.get("cycle_seconds_remaining"),
+                shift_seconds_remaining=r.get("shift_seconds_remaining"),
+                last_status_change=str(r.get("last_status_change") or ""),
+                source_ts=fetched_at,
+                driver_name=str(r.get("driver_name") or ""),
+            )
+            for r in rows
+            if str(r.get("provider_driver_id") or "").strip()
+        ]
 
     # ── Historical ───────────────────────────────────────────────
 
