@@ -7,6 +7,7 @@ introduced after the initial multi-tenant schema was created.
 from __future__ import annotations
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -5690,16 +5691,17 @@ async def migrate_eld_hos_live(conn) -> None:
 
     Clocks are NULLABLE on purpose.  ``NULL`` means the provider did
     not report that clock; ``0`` means the driver is out of hours.
-    Defaulting them to zero would turn one into the other.
+    Defaulting them to zero would turn one into the other.  All four
+    count DOWN — the first shape carried two "today" columns holding
+    time USED, which an ELD does not report.
 
-    All four clocks count DOWN.  The first shape carried two "today"
-    columns holding time USED — which an ELD does not report, so they
-    were being filled with REMAINING time under a name that says the
-    opposite.  The rename below fixes any database that created that
-    shape; it is safe unconditionally because nothing had ever written
-    a row (the capability shipped after the table, and the accounts
-    that have it connected report no HOS).
+    THREE separate try blocks, not one.  This function re-runs every
+    boot rather than being version-tracked, so a single swallowing
+    except would let a persistent failure in any step leave the table
+    half-built behind a repeating log line, with the later steps never
+    attempted.  Each step says which one it was.
     """
+    # ── the table ──
     try:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS driver_hos_live (
@@ -5725,26 +5727,28 @@ async def migrate_eld_hos_live(conn) -> None:
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hos_live_user "
             "ON driver_hos_live(account_id, user_id)")
-        # Tenant isolation, applied HERE rather than added to migration
-        # 057's table list.  057 is version-tracked: it has already run
-        # on production, so a name appended to its list would only ever
-        # protect a database created after today.  This file re-runs
-        # every boot, which is what actually puts the policy on the
-        # table holding another company's drivers' duty clocks.
-        await conn.execute(
-            "ALTER TABLE driver_hos_live ENABLE ROW LEVEL SECURITY")
-        await conn.execute(
-            "ALTER TABLE driver_hos_live FORCE ROW LEVEL SECURITY")
-        await conn.execute(
-            "DROP POLICY IF EXISTS tenant_isolation ON driver_hos_live")
-        await conn.execute("""
-            CREATE POLICY tenant_isolation ON driver_hos_live
-            USING      (account_id::text = current_setting('app.account_id', true))
-            WITH CHECK (account_id::text = current_setting('app.account_id', true))
-        """)
-        # A database created from the first shape keeps the wrong
-        # columns, because CREATE TABLE IF NOT EXISTS is a no-op on it.
-        # ADD/DROP IF EXISTS make this idempotent in both directions.
+    except Exception:
+        # Boot must not fail for this.  Without the table the ELD
+        # surfaces say the feed is not connected, which is exactly what
+        # they say today and is the honest answer either way.
+        logger.exception("migrate_eld_hos_live: table/indexes failed")
+        return
+
+    # ── the column repair ──
+    #
+    # A database created from the first shape keeps the wrong columns,
+    # because CREATE TABLE IF NOT EXISTS is a no-op on it.  ADD/DROP
+    # IF EXISTS make this idempotent in both directions.
+    #
+    # The DROP is safe for a checkable reason: NOTHING READS those
+    # columns.  ``adapters/storage/eld.py`` is the only reader of this
+    # table and names the four new ones; grep the repo for the old
+    # names and the sole remaining hits are the unrelated
+    # ``driver_hos_status`` table.  (The earlier claim here — "no row
+    # was ever written" — was not verifiable from code and was not the
+    # reason: this is an upsert MIRROR of a live clock, refreshed every
+    # tick, so even a written row held nothing any reader consults.)
+    try:
         await conn.execute(
             "ALTER TABLE driver_hos_live "
             "ADD COLUMN IF NOT EXISTS drive_remaining_seconds INTEGER, "
@@ -5758,7 +5762,31 @@ async def migrate_eld_hos_live(conn) -> None:
             "DROP COLUMN IF EXISTS cycle_seconds_remaining, "
             "DROP COLUMN IF EXISTS shift_seconds_remaining")
     except Exception:
-        # Boot must not fail for this.  Without the table the ELD
-        # surfaces say the feed is not connected, which is exactly what
-        # they say today and is the honest answer either way.
-        logger.exception("migrate_eld_hos_live failed")
+        logger.exception("migrate_eld_hos_live: column repair failed")
+
+    # ── row-level security ──
+    #
+    # Gated by ENABLE_RLS exactly like migration 057 and its fifteen
+    # siblings, and for the same reason: FORCE RLS on a table the
+    # platform's bulk tooling does not yet set ``app.account_id`` for
+    # makes that tooling silently match zero rows (migration 076
+    # records the incident).  One table running ahead of the staged
+    # rollout is the hazard, not the protection — until the flag is on,
+    # the account_id predicate in every query is the wall, the same one
+    # every other tenant table relies on today.
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        return
+    try:
+        await conn.execute(
+            "ALTER TABLE driver_hos_live ENABLE ROW LEVEL SECURITY")
+        await conn.execute(
+            "ALTER TABLE driver_hos_live FORCE ROW LEVEL SECURITY")
+        await conn.execute(
+            "DROP POLICY IF EXISTS tenant_isolation ON driver_hos_live")
+        await conn.execute("""
+            CREATE POLICY tenant_isolation ON driver_hos_live
+            USING      (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK (account_id::text = current_setting('app.account_id', true))
+        """)
+    except Exception:
+        logger.exception("migrate_eld_hos_live: RLS failed")
