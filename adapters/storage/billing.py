@@ -804,7 +804,7 @@ class BillingMixin:
 
     _INVOICE_FIELDS = (
         "provider_subscription_id", "provider_customer_id",
-        "amount_due_cents", "amount_paid_cents", "currency",
+        "amount_due_cents", "amount_paid_cents", "subtotal_cents", "discount_cents", "currency",
         "status", "period_start", "period_end",
         "hosted_invoice_url", "invoice_pdf_url", "paid_at",
         "receipt_emailed_at",
@@ -964,6 +964,7 @@ class BillingMixin:
         active_vehicles: int | None = None,
         inactive_vehicles: int = 0,
         inactive_sample: list[dict] | None = None,
+        discount_row: dict | None = None,
     ) -> dict:
         """Project a subscription row into the dashboard's billing summary.
 
@@ -1014,7 +1015,25 @@ class BillingMixin:
                 "amount_cents": -subtotal,
             })
         discount = subtotal if is_comped else 0
-        amount_due = 0 if is_comped else subtotal
+        # A granted promotion, when the account is not already comped.
+        # Computed from the row and clamped the way Stripe clamps, so
+        # the page shows the number the card will actually be charged
+        # by (adapters/storage/account_discounts.py).
+        promo_label = ""
+        promo_until = ""
+        if not is_comped and discount_row and subtotal > 0:
+            from .account_discounts import describe, effective_off
+            off = effective_off(discount_row, subtotal)
+            if off > 0:
+                promo_label = describe(discount_row)
+                promo_until = str(discount_row.get("ends_at") or "")
+                reason = str(discount_row.get("reason") or "").strip()
+                line_items.append({
+                    "label": f"Promotion — {reason}" if reason else "Promotion",
+                    "amount_cents": -off,
+                })
+                discount = off
+        amount_due = 0 if is_comped else max(0, subtotal - discount)
         return {
             "tier":                 tier,
             "status":               sub["status"],
@@ -1028,6 +1047,10 @@ class BillingMixin:
             "extra_vehicles":       extra,
             "subtotal_cents":       subtotal,
             "discount_cents":       discount,
+            # what the promotion is called on the customer's own bill,
+            # and when it stops — '' when there is none
+            "promotion_label":      promo_label,
+            "promotion_until":      promo_until,
             "amount_due_cents":     amount_due,
             "line_items":           line_items,
             "is_comped":            is_comped,
@@ -1063,10 +1086,14 @@ class BillingMixin:
         sample = await self.list_unbilled_vehicles(
             account_id, limit=inactive_sample_limit,
         )
+        # the granted promotion, so the page's total is the one
+        # the card will be charged by
+        discount_row = await self.live_account_discount(account_id)
         return self.build_summary(
             sub,
             provider=provider,
             active_vehicles=active,
             inactive_vehicles=inactive,
             inactive_sample=sample,
+            discount_row=discount_row,
         )

@@ -328,6 +328,52 @@ async def _expiring_reminder_already_sent(
 # ── Daily billable-quantity sync ──────────────────────────────────
 
 
+async def run_discount_reconcile(_app=None) -> dict:
+    """Daily: make each live discount row say what Stripe holds.
+
+    Stripe ends a repeating coupon on its own clock — three months from
+    the moment it was applied, not three of our calendar months — so a
+    row left saying ``active`` after that tells the operator something
+    untrue, and the customer's page shows a promotion that is no longer
+    coming off the bill.  A row the provider no longer knows is closed.
+
+    One account's failure never blocks the rest, and nothing here is
+    granted or removed: this only reconciles what is already true.
+    """
+    from capabilities.platform.billing import get_provider
+
+    platform_db = _platform_router().platform
+    provider = get_provider()
+    if not hasattr(provider, "discount_state"):
+        return {"checked": 0, "ended": 0, "failed": 0}
+    try:
+        rows = await platform_db.discounts_to_reconcile()
+    except Exception:
+        logger.exception("run_discount_reconcile: could not list discounts")
+        return {"checked": 0, "ended": 0, "failed": 0}
+    ended = failed = 0
+    for row in rows:
+        account_id = int(row["account_id"])
+        try:
+            state = await provider.discount_state(account_id, platform_db, row)
+        except Exception:
+            failed += 1
+            logger.exception("run_discount_reconcile: account %s — continuing", account_id)
+            continue
+        if state is None:
+            # pending grants have nothing at the provider yet and are
+            # not "ended"; only one the provider HELD and lost is
+            if str(row.get("stripe_discount_id") or ""):
+                await platform_db.mark_account_discount(int(row["id"]), status="ended")
+                ended += 1
+                logger.info("discount %s for account %s ended at the provider", row["id"], account_id)
+            continue
+        if state.get("ends_at") and state["ends_at"] != row.get("ends_at"):
+            await platform_db.mark_account_discount(int(row["id"]), ends_at=state["ends_at"])
+    logger.info("discount reconcile: %d checked, %d ended, %d failed", len(rows), ended, failed)
+    return {"checked": len(rows), "ended": ended, "failed": failed}
+
+
 async def run_billing_quantity_sync(_app=None) -> dict:
     """Daily: reconcile the provider's extras quantity with the registry.
 

@@ -230,6 +230,11 @@ class StripeBillingProvider:
         # real checkout answered 500.  The fakes accepted it, which is
         # why it shipped.  An account with no extras yet sends no extras
         # line at all, and the sync opens one when it first needs it.
+        # A discount granted before this account ever subscribed rides
+        # the session, and becomes a subscription discount on payment.
+        from capabilities.platform.billing import discounts as _discounts
+        pending = await db.live_account_discount(account_id)
+        session_discounts = _discounts.checkout_discounts(pending)
         extras_price_id = _plan_extras_price(plan)
         line_items: list[dict] = [{"price": base_price_id, "quantity": 1}]
         if extras_price_id:
@@ -254,6 +259,9 @@ class StripeBillingProvider:
                 success_url=success_url,
                 cancel_url=cancel_url,
                 metadata={"account_id": str(account_id), "tier": tier},
+                # only when there is one: Stripe refuses an empty list,
+                # and refuses `discounts` beside `allow_promotion_codes`
+                **({"discounts": session_discounts} if session_discounts else {}),
             )
         except stripe.error.StripeError as e:
             # A refusal from Stripe is not an internal error, and the
@@ -679,6 +687,59 @@ class StripeBillingProvider:
             tier=tier, label=label, cents=cents, before=before,
         )
 
+    async def apply_discount(self, account_id: int, db, discount: dict) -> dict:
+        """Put a granted discount onto the account's Stripe subscription.
+
+        When there is no live subscription the coupon is made anyway and
+        the row stays ``pending``: the next Checkout Session carries it,
+        and it becomes a subscription discount the moment the customer
+        pays.  Returns what to write back.
+        """
+        from capabilities.platform.billing import discounts as _d
+        stripe = _stripe()
+        sub = await db.get_subscription(account_id) or {}
+        sub_id = sub.get("provider_subscription_id") or ""
+        live = sub_id and (sub.get("status") or "") in LIVE_STATUSES
+        if not live:
+            coupon_id = await _off_loop(_d.ensure_coupon, stripe, discount)
+            return {"status": "pending", "stripe_coupon_id": coupon_id}
+        out = await _off_loop(_d.apply_to_subscription, stripe,
+                              subscription_id=sub_id, discount=discount)
+        return {"status": "active", "stripe_coupon_id": out["coupon_id"],
+                "stripe_discount_id": out["discount_id"],
+                "starts_at": out["starts_at"], "ends_at": out["ends_at"]}
+
+    async def remove_discount(self, account_id: int, db, discount: dict) -> bool:
+        from capabilities.platform.billing import discounts as _d
+        sub = await db.get_subscription(account_id) or {}
+        sub_id = sub.get("provider_subscription_id") or ""
+        if not sub_id or not discount.get("stripe_discount_id"):
+            return True          # nothing was ever applied; the row is the whole record
+        return await _off_loop(_d.remove_from_subscription, _stripe(),
+                               subscription_id=sub_id,
+                               discount_id=str(discount.get("stripe_discount_id") or ""))
+
+    async def discount_state(self, account_id: int, db, discount: dict) -> dict | None:
+        """What Stripe holds for this grant now — None when it is gone,
+        which is how a row learns the coupon ran out on Stripe's clock."""
+        from capabilities.platform.billing import discounts as _d
+        sub = await db.get_subscription(account_id) or {}
+        sub_id = sub.get("provider_subscription_id") or ""
+        if not sub_id or not discount.get("stripe_discount_id"):
+            return None
+        return await _off_loop(_d.read_back, _stripe(), subscription_id=sub_id,
+                               discount_id=str(discount.get("stripe_discount_id") or ""))
+
+    async def preview_discounted_invoice(self, account_id: int, db) -> dict | None:
+        """Subtotal, discount and total of the next bill, from Stripe —
+        what the console shows an operator before they confirm."""
+        from capabilities.platform.billing import discounts as _d
+        sub = await db.get_subscription(account_id) or {}
+        sub_id = sub.get("provider_subscription_id") or ""
+        if not sub_id:
+            return None
+        return await _off_loop(_d.preview_next_invoice, _stripe(), sub_id)
+
     async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
         from capabilities.platform.billing import rollout as _rollout
         return await _off_loop(
@@ -1063,6 +1124,13 @@ class StripeBillingProvider:
             "provider_subscription_id": _field(invoice, "subscription", "") or "",
             "provider_customer_id":     _field(invoice, "customer", "") or "",
             "amount_due_cents":         int(_field(invoice, "amount_due", 0) or 0),
+            # Stripe's own numbers: what the bill came to before any
+            # discount, and what came off it.  The receipt and the
+            # history print the line from these rather than recompute
+            # a total the customer never saw.
+            "subtotal_cents":           int(_field(invoice, "subtotal", 0) or 0),
+            "discount_cents":           sum(int(_field(row, "amount", 0) or 0)
+                                            for row in (_field(invoice, "total_discount_amounts", []) or [])),
             "amount_paid_cents":        int(_field(invoice, "amount_paid", 0) or 0),
             "currency":                 (_field(invoice, "currency") or "usd").lower(),
             "status":                   _field(invoice, "status", "") or "",

@@ -65,6 +65,9 @@ interface BillingSummary {
   // New cost breakdown
   subtotal_cents: number;
   discount_cents: number;
+  /** '' when there is none — a granted price break, in the customer's words */
+  promotion_label: string;
+  promotion_until: string;
   amount_due_cents: number;
   line_items: LineItem[];
   // Comp account fields
@@ -307,6 +310,26 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
             <span>Subtotal (covered by 4truck)</span>
             <span>{usd(summary.subtotal_cents)}</span>
           </div>
+        )}
+        {/* A granted price break: the customer sees what came off, not
+            only the smaller number — otherwise the gift is invisible
+            and the bill just looks like a different price. */}
+        {!summary.is_comped && summary.discount_cents > 0 && (
+          <>
+            <div className="flex justify-between text-xs text-muted-foreground border-t border-border/50 pt-1.5 mt-1.5">
+              <span>Amount</span>
+              <span>{usd(summary.subtotal_cents)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-primary">
+                {summary.promotion_label || 'Promotion'}
+                {summary.promotion_until && (
+                  <span className="text-muted-foreground"> · until {summary.promotion_until.slice(0, 10)}</span>
+                )}
+              </span>
+              <span className="text-primary">-{usd(summary.discount_cents)}</span>
+            </div>
+          </>
         )}
         <div className="flex justify-between font-semibold border-t border-border pt-2 mt-1">
           <span className="text-foreground">Total Due</span>

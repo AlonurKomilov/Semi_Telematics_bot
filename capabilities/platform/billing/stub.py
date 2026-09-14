@@ -81,6 +81,20 @@ class StubBillingProvider:
         """No Stripe here: the row keeps whatever id it has; nothing is created."""
         return {"skipped": "stub"}
 
+    async def apply_discount(self, account_id: int, db, discount: dict) -> dict:
+        """No Stripe: the grant is recorded and takes effect on the local
+        summary, which is all a stub deployment bills by anyway."""
+        return {"status": "active"}
+
+    async def remove_discount(self, account_id: int, db, discount: dict) -> bool:
+        return True
+
+    async def discount_state(self, account_id: int, db, discount: dict) -> dict | None:
+        return None
+
+    async def preview_discounted_invoice(self, account_id: int, db) -> dict | None:
+        return None
+
     async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
         return {"skipped": "stub"}
 

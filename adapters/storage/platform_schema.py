@@ -943,6 +943,11 @@ async def create_tables(conn) -> None:
             provider_customer_id      TEXT    NOT NULL DEFAULT '',
             amount_due_cents          INTEGER NOT NULL DEFAULT 0,
             amount_paid_cents         INTEGER NOT NULL DEFAULT 0,
+            -- what the bill was before any discount, and what came off
+            -- it (Stripe's own numbers, from the invoice payload), so
+            -- history and the receipt print the line rather than guess
+            subtotal_cents            INTEGER NOT NULL DEFAULT 0,
+            discount_cents            INTEGER NOT NULL DEFAULT 0,
             currency                  TEXT    NOT NULL DEFAULT 'usd',
             status                    TEXT    NOT NULL DEFAULT '',
             -- 'paid', 'open', 'uncollectible', 'void' — mirror of Stripe.
@@ -960,6 +965,41 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_billing_invoices_account
             ON billing_invoices(account_id, created_at DESC);
+
+
+        -- A price break for ONE account, for a bounded time: "$100 off
+        -- for 3 months", "20% off until March".  The money is Stripe's
+        -- to compute, so each grant is a Stripe Coupon applied to the
+        -- account's SUBSCRIPTION (never the Customer — that bleeds onto
+        -- every future subscription and Stripe silently prefers the
+        -- subscription's anyway).  This row is the operator's record of
+        -- it: who, how much, why, and what Stripe answered.
+        --
+        -- ``ends_at`` is Stripe's ``discount.end``, not our arithmetic:
+        -- ``duration_in_months`` runs on the calendar from the moment it
+        -- is applied, so a grant made mid-cycle covers two renewals or
+        -- four depending on where the anchor falls.
+        CREATE TABLE IF NOT EXISTS account_discounts (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id         INTEGER NOT NULL REFERENCES accounts(id),
+            kind               TEXT    NOT NULL,       -- 'amount' | 'percent'
+            amount_off_cents   INTEGER NOT NULL DEFAULT 0,
+            percent_off        INTEGER NOT NULL DEFAULT 0,
+            months             INTEGER NOT NULL DEFAULT 0,  -- 0 = forever
+            reason             TEXT    NOT NULL DEFAULT '',
+            granted_by         TEXT    NOT NULL DEFAULT '',
+            -- pending: made here, waiting for the checkout that carries it
+            -- active: Stripe is applying it   ended/revoked: it is over
+            status             TEXT    NOT NULL DEFAULT 'pending',
+            stripe_coupon_id   TEXT    NOT NULL DEFAULT '',
+            stripe_discount_id TEXT    NOT NULL DEFAULT '',
+            starts_at          TEXT,
+            ends_at            TEXT,
+            created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_account_discounts_account
+            ON account_discounts(account_id, created_at DESC);
 
         CREATE TABLE IF NOT EXISTS error_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,

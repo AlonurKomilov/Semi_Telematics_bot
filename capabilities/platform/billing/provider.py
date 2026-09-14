@@ -125,6 +125,27 @@ class BillingProvider(Protocol):
         "archived"}``.  Stub: ``{"skipped": "stub"}`` and nothing touched."""
         ...
 
+    async def apply_discount(self, account_id: int, db, discount: dict) -> dict:
+        """Put a granted price break onto the account at the provider.
+        Stripe: a Coupon on the subscription, or held for the next
+        checkout when there is none.  Returns the fields to write back
+        (``status``, the Stripe ids, and Stripe's own start/end)."""
+        ...
+
+    async def remove_discount(self, account_id: int, db, discount: dict) -> bool:
+        """Take it off.  True when there is nothing left applying."""
+        ...
+
+    async def discount_state(self, account_id: int, db, discount: dict) -> dict | None:
+        """What the provider holds for this grant now, or None when it
+        is gone — the daily sweep's question."""
+        ...
+
+    async def preview_discounted_invoice(self, account_id: int, db) -> dict | None:
+        """Subtotal, discount and total of the next bill, from the
+        provider.  Never on a customer request path."""
+        ...
+
     async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
         """The per-extra-truck twin of ``create_plan_price``: a Price on
         the plan's Product for *cents* per truck above the included

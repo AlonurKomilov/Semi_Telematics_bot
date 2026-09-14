@@ -86,6 +86,7 @@ _JOB_META = {
     "billing_snapshot_monthly":       ("Platform billing", "Record monthly billing-usage snapshots"),
     "billing_comp_expiry_sweep":      ("Platform billing", "Expire lapsed comp accounts + send reminders"),
     "billing_quantity_sync":          ("Platform billing", "Push each account's billable vehicle count to the payment provider"),
+    "discount_reconcile":             ("Platform billing", "Make each live discount row say what Stripe holds — a repeating coupon ends on Stripe's clock"),
     # ── Reporting ──
     "scheduled_reports_send":         ("Reporting", "Send due scheduled reports"),
     # ── Integrations ──
@@ -412,6 +413,17 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         run_billing_quantity_sync, "cron",
         hour=3, minute=30, args=[app], id="billing_quantity_sync",
         max_instances=1, coalesce=True,
+    )
+
+    # The discounts a grant put on Stripe end on Stripe's clock, not
+    # ours: a repeating coupon runs N calendar months from the moment it
+    # was applied.  A row left saying "active" after that shows a
+    # customer a promotion that is no longer coming off their bill.
+    from capabilities.platform.billing.jobs import run_discount_reconcile
+    scheduler.add_job(
+        run_discount_reconcile, "cron",
+        hour=3, minute=45, args=[app], id="discount_reconcile",
+        replace_existing=True, misfire_grace_time=3600,
     )
 
     # ── nightly Auto Coaching evaluation ─────────────────

@@ -5,6 +5,7 @@ import { useParams, Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import { usd, KindBadge, SecurityBadge } from './Accounts';
 import AlertRoutingCard from '../components/AlertRoutingCard';
+import { DiscountCard } from '../components/DiscountCard';
 import type {
   AccountDetail, CompHistoryRow,
   SyncQuantityResult, RefreshVehiclesResult, BillingEmailResult,
@@ -228,6 +229,9 @@ export default function AccountDetailPage() {
         {/* What this customer costs — request metering from the
             capacity module (per-account daily counts). */}
         <ResourceUsageCard accountId={accountId} />
+
+        {/* A price break short of a comp: the money stays Stripe's to compute */}
+        <DiscountCard accountId={accountId} isComped={isComped} />
 
         {/* Comp control + history */}
         <Card title="Complimentary access"

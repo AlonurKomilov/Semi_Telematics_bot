@@ -107,9 +107,14 @@ def _money(cents: int, currency: str) -> str:
 
 
 def compose(*, account_name: str, number: str, amount_cents: int, currency: str,
-            period: str, hosted_url: str, support: str) -> tuple[str, str]:
+            period: str, hosted_url: str, support: str,
+            subtotal_cents: int = 0, discount_cents: int = 0) -> tuple[str, str]:
     """Subject and body.  Plain words, in the order a person reads them:
-    what was paid, for what, where the rest lives."""
+    what was paid, for what, where the rest lives.
+
+    A discounted bill shows its arithmetic — a customer who was given
+    $100 off should see the $100, not only the smaller number, or the
+    gift is invisible and the receipt looks like a price change."""
     money = _money(amount_cents, currency)
     subject = f"Your 4truck receipt — {money}" + (f" (invoice {number})" if number else "")
     lines = [
@@ -122,6 +127,11 @@ def compose(*, account_name: str, number: str, amount_cents: int, currency: str,
         lines.append(f"Invoice: {number}")
     if period:
         lines.append(f"Billing period: {period}")
+    if discount_cents > 0 and subtotal_cents > 0:
+        lines += ["",
+                  f"  Amount      {_money(subtotal_cents, currency)}",
+                  f"  Promotion  -{_money(discount_cents, currency)}",
+                  f"  Total       {money}"]
     lines += ["", "The invoice is attached as a PDF."]
     if hosted_url:
         lines += ["", "You can also open it online — the same invoice, with the payment on it:", f"  {hosted_url}"]
@@ -151,7 +161,9 @@ def send(*, to: str, account_name: str, invoice: dict, support: str = "") -> boo
     subject, body = compose(
         account_name=account_name, number=number, amount_cents=amount,
         currency=str(invoice.get("currency") or "usd"), period=period,
-        hosted_url=str(invoice.get("hosted_invoice_url") or ""), support=contact)
+        hosted_url=str(invoice.get("hosted_invoice_url") or ""), support=contact,
+        subtotal_cents=int(invoice.get("subtotal_cents") or 0),
+        discount_cents=int(invoice.get("discount_cents") or 0))
     pdf = fetch_pdf(str(invoice.get("invoice_pdf_url") or ""))
     attachments = [(f"4truck-invoice-{number or 'latest'}.pdf", pdf, "application/pdf")] if pdf else None
     if not pdf:
