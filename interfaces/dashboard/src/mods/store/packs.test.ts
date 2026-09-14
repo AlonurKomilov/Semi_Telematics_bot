@@ -142,3 +142,44 @@ describe('a pack brings items and only CHOOSES the system\'s values', () => {
     }
   });
 });
+
+/**
+ * An item named after a pack belongs to that pack.
+ *
+ * `CLASSIC` is derived: it ships every item no themed pack claims. That
+ * is the right default and it has one failure mode — a themed pack that
+ * forgets an axis leaves an item WEARING ITS NAME sitting in the base
+ * pack, where installing the pack does not bring it and removing the
+ * pack does not take it away.
+ *
+ * It is not hypothetical. Night Haul shipped a wallpaper, a cue set, a
+ * keyboard and a motion all called Night Haul, then gained an
+ * interaction cue set of the same name that stayed in Classic — so
+ * installing the pack would have given somebody its typing sound and
+ * not its clicking one, on the same shelf page, with nothing to
+ * explain the difference.
+ *
+ * A pack is still free to prepare an axis without shipping one; what it
+ * may not do is leave its own namesake behind.
+ */
+describe('a themed pack keeps its namesakes', () => {
+  const themed = PACKS.filter((p) => !p.base);
+
+  it('finds packs to check', () => {
+    expect(themed.length).toBeGreaterThan(2);
+  });
+
+  it('and no item wearing a pack name sits in the base pack', () => {
+    const base = PACKS.find((p) => p.base);
+    expect(base, 'no base pack — this checks nothing').toBeTruthy();
+    const names = new Set(themed.map((p) => p.id));
+    const stranded = Object.entries(base!.items).flatMap(
+      ([axis, ids]) => ids.filter((id) => names.has(id)).map((id) => `${axis}/${id}`));
+    expect(
+      stranded,
+      'this item wears a themed pack\'s name but ships with the base pack — '
+        + 'installing that pack will not bring it and removing it will not take it '
+        + 'away. Add the axis to the pack\'s `items`.',
+    ).toEqual([]);
+  });
+});

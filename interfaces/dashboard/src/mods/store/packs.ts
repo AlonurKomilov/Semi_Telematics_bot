@@ -64,7 +64,7 @@ const THEMED: readonly Pack[] = [
   { id: 'night-haul', label: 'Night Haul', publisher: PUBLISHER,
     description: 'For the end of a long shift — low light, low sound, nothing in a hurry',
     items: { wallpaper: ['night-haul'], sound: ['night-haul'], keys: ['night-haul'],
-      motion: ['night-haul'], mods: ['night-haul'] } },
+      acts: ['night-haul'], motion: ['night-haul'], mods: ['night-haul'] } },
   /** The daylight half of the pair — its own horizon and its own air. */
   { id: 'long-haul', label: 'Long Haul', publisher: PUBLISHER,
     description: 'For the middle of a long day — the horizon, moving air, and nothing kept waiting',
