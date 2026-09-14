@@ -78,7 +78,10 @@ BUDGET: dict[str, int] = {
     "capabilities/data_lifecycle": 1, "capabilities/formatting": 1,
     "capabilities/integrations": 1, "capabilities/jobs": 1,
     "capabilities/localization": 1, "capabilities/permissions": 2,
-    "capabilities/platform": 4, "capabilities/reporting": 1,
+    "capabilities/platform": 1,
+    # the machinery watchdog moved to the system layer with its three
+    # silent handlers — debt that moved, not debt that grew
+    "system/watchdog.py": 3, "capabilities/reporting": 1,
     "capabilities/source": 1, "conftest.py": 1,
     "features/applications": 19, "features/carrier_directory": 1,
     "features/drivers": 1, "features/geofencing": 1,
