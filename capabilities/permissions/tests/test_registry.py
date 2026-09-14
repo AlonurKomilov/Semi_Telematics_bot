@@ -34,6 +34,10 @@ MASK = {
     "can_view_geofence": {"dispatch", "fleet"}, "can_manage_geofence": {"dispatch", "fleet"},
     "can_view_cameras": {"fleet", "safety"},
     "can_view_parking": {"dispatch", "fleet", "safety"},
+    # Three departments asking three questions of one dataset: who can
+    # take a load and for how long (dispatch), who is running toward
+    # fatigue (safety), who is available (fleet).
+    "can_view_eld": {"dispatch", "fleet", "safety"},
     "can_view_events": {"hr", "safety"}, "can_view_scorecards": {"hr", "safety"},
     "can_manage_coaching": {"hr", "safety"}, "can_view_coaching": {"hr", "safety"},
     "can_manage_driver_docs": {"fleet", "hr", "safety"}, "can_view_driver_docs": {"fleet", "hr", "safety"},

@@ -1,9 +1,14 @@
-"""Driver AI tools — roster list and hours-of-service status.
+"""Driver AI tools — the roster and per-driver efficiency.
 
-``get_driver_hos_status`` carries each driver's assigned truck, so it filters
-to the caller's Vehicle-Access scope (by ``truck_num``).  ``get_drivers_list``
-has no vehicle dimension on the roster record, so it is not scope-filtered and
-remains blocked for scoped users by the gate.
+Hours of service used to live here too.  It moved to
+``features/eld/ai_tool.py`` when the ELD feature landed, keeping its
+tool id: a driver is who the hours belong to, but an ELD is where they
+come from, and the answer now needs a service that knows how old the
+reading is.
+
+``get_drivers_list`` has no vehicle dimension on the roster record, so
+it is not scope-filtered and remains blocked for scoped users by the
+gate.
 """
 
 from __future__ import annotations
@@ -46,130 +51,6 @@ async def get_drivers_list(tool_args: dict, samsara_client,
                 "phone": d.get("phone", ""),
             }
             for d in active[:50]
-        ],
-    }
-
-
-def _fmt_seconds(secs: int | None) -> str:
-    """Format ``11h 30m`` style — readable in chat, parseable for the AI."""
-    if secs is None or secs < 0:
-        return "unknown"
-    h, rem = divmod(int(secs), 3600)
-    m = rem // 60
-    if h and m:
-        return f"{h}h {m}m"
-    if h:
-        return f"{h}h"
-    return f"{m}m"
-
-
-@register_tool({
-    "name": "get_driver_hos_status",
-    "description": (
-        "Get hours-of-service status for one driver (by name) or for "
-        "every driver on the account.  Returns duty status (driving / "
-        "on_duty / off_duty / sleeper), drive hours used today, on-duty "
-        "hours used today, cycle hours remaining (typically 70-hour "
-        "cycle), shift hours remaining, when the status last changed, "
-        "and the assigned truck.  Use for questions like 'how many "
-        "hours does John have left?', 'who's out of hours?', 'is the "
-        "truck 102 driver still on shift?'."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "driver_name": {
-                "type": "string",
-                "description": (
-                    "Optional case-insensitive substring match against "
-                    "driver display name.  Omit for the full account roster."
-                ),
-            },
-            "status_filter": {
-                "type": "string",
-                "description": (
-                    "Optional: 'driving', 'on_duty', 'off_duty', "
-                    "'sleeper' — restrict to drivers in that state."
-                ),
-            },
-        },
-        "required": [],
-    },
-})
-async def get_driver_hos_status(tool_args: dict, samsara_client,
-                                account_id: int | None = None, db=None) -> dict:
-    if not db or account_id is None:
-        return {"error": "HOS data not available in this context"}
-
-    name_q = (tool_args.get("driver_name") or "").strip().lower()
-    status_q = (tool_args.get("status_filter") or "").strip().lower()
-
-    rows = await db.get_driver_hos_status(account_id)
-    # Scope to the caller's vehicles (by the driver's assigned truck).
-    rows = filter_to_scope(rows, tool_args, key="truck_num")
-
-    filtered: list[dict] = []
-    for r in rows:
-        if name_q and name_q not in (r.get("display_name") or "").lower():
-            continue
-        if status_q and (r.get("duty_status") or "").lower() != status_q:
-            continue
-        filtered.append(r)
-
-    if not filtered:
-        # "No drivers match" and "nothing has ever written this table"
-        # are different answers, and only one of them is safe to say out
-        # loud.  There is NO producer for driver_hos_status anywhere in
-        # the repo — no Samsara HOS client method, no scheduler job — so
-        # on every account this tool can only return an empty list,
-        # while the system prompt advertises it as the hours-of-service
-        # answer.  An empty list reads to the model as "nobody is near
-        # their limit", which on a compliance question is the worst
-        # direction to be wrong in.
-        #
-        # The note above described a sync that does not exist.  Until
-        # the ingest is built, say the source is not connected and hand
-        # the model somewhere real to send the person.
-        if not rows:
-            return {
-                "count": 0,
-                "drivers": [],
-                "hos_unavailable": True,
-                "note": (
-                    "Hours-of-service data is not connected for this "
-                    "account — nothing has been recorded, so this is "
-                    "NOT a statement that every driver has hours "
-                    "remaining. Do not answer HOS or compliance "
-                    "questions from this result. Check the ELD "
-                    "provider directly."
-                ),
-            }
-        return {
-            "count": 0,
-            "drivers": [],
-            "note": (
-                "No driver matches that filter. HOS data exists for "
-                "this account, so this is a real 'none match'."
-            ),
-        }
-
-    return {
-        "count": len(filtered),
-        "name_filter": name_q or None,
-        "status_filter": status_q or None,
-        "drivers": [
-            {
-                "name": r.get("display_name") or "?",
-                "truck": r.get("truck_num") or "",
-                "duty_status": r.get("duty_status") or "unknown",
-                "drive_today": _fmt_seconds(r.get("drive_seconds_today")),
-                "on_duty_today": _fmt_seconds(r.get("on_duty_seconds_today")),
-                "cycle_remaining": _fmt_seconds(r.get("cycle_seconds_remaining")),
-                "shift_remaining": _fmt_seconds(r.get("shift_seconds_remaining")),
-                "last_status_change": r.get("last_status_change") or "",
-                "updated_at": r.get("updated_at") or "",
-            }
-            for r in filtered[:50]
         ],
     }
 

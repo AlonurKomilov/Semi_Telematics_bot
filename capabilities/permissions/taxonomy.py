@@ -101,6 +101,10 @@ TAXONOMY: dict[str, Verdict] = {
     # names are already grammatical, so nothing renames and no alias is
     # owed.
     "can_view_inventory": Verdict(V, "can_view_inventory"),
+    # ELD: born under the verb rule, so there is nothing to rename and
+    # no alias is owed.  A lone VIEW verb — a customer edits nothing
+    # here, because the certified device is the record and we mirror it.
+    "can_view_eld":      Verdict(V, "can_view_eld"),
 
     # ── wide/assigned pairs: _all → verb, _vehicle → dies into
     #    (view verb + Team Management scope=assigned) ────────────────

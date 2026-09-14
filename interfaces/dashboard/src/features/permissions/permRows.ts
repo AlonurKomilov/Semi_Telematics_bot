@@ -206,6 +206,11 @@ export const PERM_GROUPS: PermGroup[] = [
       // one without the other.
       { key: 'can_view_inventory', kind: 'feature', label: 'Inventory', description: "What is aboard each vehicle — dashcam, fuel card, toll transponder, ELD — and who touched it" },
       { key: 'can_manage_inventory', kind: 'action', label: 'Manage', indented: true, description: 'Add, edit, verify, transfer and remove items' },
+      // Hours of service — its own feature, not a row under Drivers or
+      // Vehicles: the question "who can take this load, and for how
+      // long" belongs to dispatch as much as to fleet, and the data
+      // comes from the ELD integration rather than from either page.
+      { key: 'can_view_eld', kind: 'feature', label: 'Hours of Service', description: "Duty status and remaining drive, shift and cycle time, mirrored from the connected ELD — read-only" },
       { key: 'can_view_geofence', kind: 'feature', label: 'Geofences' },
       { key: 'can_manage_geofence', kind: 'action', label: 'Manage', indented: true, description: 'Create & delete zones' },
       { key: 'can_view_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },

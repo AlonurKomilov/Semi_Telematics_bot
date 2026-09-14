@@ -112,6 +112,19 @@ class FeatureSet:
     can_view_inventory: bool = False     # the items in a truck + their trail
     can_manage_inventory: bool = False   # add / edit / verify / transfer / remove
 
+    # ELD — hours of service, mirrored from whichever electronic logging
+    # device the account connected.  A VIEW verb with no manage twin on
+    # purpose: there is nothing here a customer edits.  The certified
+    # device is the system of record, we hold a read-only reflection,
+    # and the only configuration is the integration's own toggle.
+    #
+    # Not granted to HR or accounting: hours of service is an ops and
+    # fatigue question, not a personnel-file one (the same split the
+    # Drivers page already makes).  Not granted to DRIVER either — a
+    # driver reading their OWN hours is a real feature and needs an
+    # own-scope grant, which is its own change, not a wide flag.
+    can_view_eld: bool = False           # duty status + drive/shift/cycle clocks
+
     # Alerts — a SERVICE granted per role (owner, 2026-09-06): the inbox
     # channel.  What it shows follows the role's feature grants
     # (relevance.py); its WIDTH is Team Management's (unit_width).
@@ -538,6 +551,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
         can_view_efficiency=True, can_view_health=True,
         can_view_vehicles=True,
+        can_view_eld=True,
         can_view_inventory=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
@@ -580,6 +594,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
         can_view_efficiency=True, can_view_health=True,
         can_view_vehicles=True,
+        can_view_eld=True,
         can_view_inventory=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
@@ -620,6 +635,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_faults=True, can_view_fuel=True, can_view_cameras=True,
         can_view_efficiency=True, can_view_health=True,
         can_view_vehicles=True,
+        can_view_eld=True,
         can_view_inventory=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
@@ -659,6 +675,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_faults=True, can_view_fuel=False, can_view_cameras=True,
         can_view_efficiency=False, can_view_health=True,
         can_view_vehicles=True,
+        can_view_eld=True,
         can_view_inventory=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
@@ -689,6 +706,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_view_faults=False, can_view_fuel=True,
         can_view_efficiency=False, can_view_health=False,
         can_view_vehicles=True,
+        can_view_eld=True,
         can_view_inventory=True,
         can_view_loads=True, can_manage_loads=True,
         # Dispatchers need the geofence and safety-event features (granted
@@ -1808,7 +1826,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "read_attachment":          None,                                        # the caller's own upload
     "get_parked_vehicles":        ["can_view_parking"],                            # the parking feature's own verb, as the REST board uses
     "get_undriven_vehicles":      ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — not driver (account-wide)
-    "get_driver_hos_status":    ["can_view_vehicles"],                           # owner/admin/dispatcher/fleet/safety — HR concern, not driver-facing
+    "get_driver_hos_status":    ["can_view_eld"],                                # owner/admin/dispatcher/fleet/safety — the ELD feature's own verb
     "get_alert_history":        ["can_view_alerts"],         # owner/admin/fleet/safety/driver(own)
     "get_recent_work_orders":   ["can_manage_maintenance", "can_view_maintenance"],  # owner/admin/fleet/safety/driver(own)
     # Gated on the MAINTENANCE manage verb, which only owner/admin/

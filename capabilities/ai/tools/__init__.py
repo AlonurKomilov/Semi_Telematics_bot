@@ -49,6 +49,7 @@ from features.maintenance import ai_tool as maintenance                      # n
 from features.geofencing import ai_tool as geofencing                        # noqa: F401
 from features.cameras import ai_tool as camera                      # noqa: F401
 from features.drivers import ai_tool as drivers                              # noqa: F401
+from features.eld import ai_tool as eld                                      # noqa: F401
 from features.knowledge import ai_tool as knowledge                          # noqa: F401
 from features.parking import ai_tool as parking                              # noqa: F401
 from capabilities.alerting import ai_tool as alerts                          # noqa: F401

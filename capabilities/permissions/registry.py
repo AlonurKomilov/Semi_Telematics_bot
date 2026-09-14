@@ -150,6 +150,18 @@ ENTRIES: tuple[Entry, ...] = (
             "and its own nav entry.  It REFERENCES the vehicle registry "
             "(a unit number resolves to a truck) the way Work Orders "
             "does; that is a reference, not a parent"),
+    _e("eld", tier="shared", modules=["fleet", "dispatch", "safety"],
+       opens=["can_view_eld"],
+       flags=["can_view_eld"],
+       note="features/eld/ — hours of service mirrored from whichever ELD "
+            "the account connected.  Three departments, three different "
+            "questions of the same data: Dispatch asks who can take a load "
+            "and for how long, Safety asks who is running toward fatigue, "
+            "Fleet asks who is available.  Deliberately NOT hr or "
+            "accounting: duty hours are an ops question, not a "
+            "personnel-file one.  VIEW only — the certified device is the "
+            "system of record and the only setting is the integration's "
+            "own toggle"),
     _e("vehicle_documents", tier="shared", modules=["fleet", "account"], opens=["can_view_vehicle_docs"],
        flags=["can_view_vehicle_docs", "can_manage_vehicle_docs"], parent="vehicles"),
     _e("geofences", tier="shared", modules=["fleet", "dispatch"], opens=["can_view_geofence"],
