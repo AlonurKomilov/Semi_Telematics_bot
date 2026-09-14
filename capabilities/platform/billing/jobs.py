@@ -363,6 +363,10 @@ async def run_billing_quantity_sync(_app=None) -> dict:
         logger.exception("run_billing_quantity_sync: list_accounts failed")
         return {"patched": 0, "noop": 0, "skipped": 0, "failed": 0, "total": 0}
     patched = noop = skipped = failed = 0
+    # A jump the guard held is money not billed until a person releases
+    # it — it used to live in a WARNING line and a metric, and nobody
+    # reads either at 03:30.  Named here, told below.
+    held: list[dict] = []
     for acc in accounts:
         try:
             result = await provider.sync_billing_quantity(acc.id, platform_db)
@@ -383,12 +387,42 @@ async def run_billing_quantity_sync(_app=None) -> dict:
             failed += 1
         else:
             skipped += 1
+            if reason == "jump_guard":
+                held.append({
+                    "account_id": acc.id, "name": getattr(acc, "name", "") or f"#{acc.id}",
+                    "before": int(result.get("before") or 0), "after": int(result.get("after") or 0),
+                })
     logger.info(
         "billing quantity sync: %d patched, %d unchanged, %d not provider-billed, "
-        "%d failed (of %d accounts)",
-        patched, noop, skipped, failed, len(accounts),
+        "%d failed, %d held (of %d accounts)",
+        patched, noop, skipped, failed, len(held), len(accounts),
     )
+    if held:
+        await _tell_operators_about_held_jumps(held)
     return {
         "patched": patched, "noop": noop, "skipped": skipped,
-        "failed": failed, "total": len(accounts),
+        "failed": failed, "total": len(accounts), "held": held,
     }
+
+
+async def _tell_operators_about_held_jumps(held: list[dict]) -> int:
+    """One Telegram message a day, naming every account whose extras
+    count the guard would not raise on its own, with the two numbers
+    and where the button is.  Best-effort: the job's own return value
+    carries the same list, so a bot that is down loses nothing."""
+    from capabilities.platform.billing.notifications import tell_operators
+    lines = [f"• {h['name']} (#{h['account_id']}): {h['before']} → {h['after']} extra trucks"
+             for h in held]
+    text = (
+        "<b>⏸ Billing: extras held by the jump guard</b>\n\n"
+        + "\n".join(lines)
+        + "\n\nEach rose by more than the guard allows unattended, so Stripe still bills the "
+        "old count. Open the account in the console and press <b>Sync quantity</b> to release it."
+    )
+    try:
+        return await tell_operators(text)
+    except Exception:
+        # the held list is in the job's result and the log; a bot that
+        # cannot send must not turn the sync itself into a failure
+        logger.exception("run_billing_quantity_sync: could not tell the operators about %d held jump(s)", len(held))
+        return 0

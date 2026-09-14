@@ -204,6 +204,37 @@ def _portal_link(account_id: int) -> str:
     return "/billing"
 
 
+# ── The operators ───────────────────────────────────────────────
+
+
+async def tell_operators(text: str) -> int:
+    """Telegram, to whoever holds SYSTEM_OWNER_IDS, on the SYSTEM bot —
+    for a platform-wide fact no single account's admins should hear
+    (a held billing jump, a job that needs a human).  Returns how many
+    operators were reached; zero is logged with the text, never raised:
+    the fact is already recorded where the caller keeps it."""
+    from capabilities.permissions import roles
+    ids = getattr(roles, "SYSTEM_OWNER_IDS", set()) or set()
+    bot_app = None
+    try:
+        from infra.bot_registry import get_system_app
+        bot_app = get_system_app()
+    except Exception:
+        logger.exception("tell_operators: no bot registry")
+    if bot_app is None or not ids:
+        logger.warning("no operator to tell: %s", text)
+        return 0
+    sent = 0
+    for tg_id in sorted(ids):
+        try:
+            await bot_app.bot.send_message(
+                chat_id=tg_id, text=text, parse_mode="HTML", disable_web_page_preview=True)
+            sent += 1
+        except Exception as e:
+            logger.warning("tell_operators: %s failed: %s", tg_id, e)
+    return sent
+
+
 # ── Payment events ──────────────────────────────────────────────
 
 

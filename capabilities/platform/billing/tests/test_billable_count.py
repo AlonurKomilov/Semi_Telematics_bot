@@ -288,6 +288,8 @@ class _Provider:
         out = self._outcomes[account_id]
         if isinstance(out, Exception):
             raise out
+        if isinstance(out, dict):                  # a full status, e.g. a held jump with its numbers
+            return {"account_id": account_id, **out}
         return {"skipped": out, "account_id": account_id}
 
 
@@ -313,11 +315,60 @@ async def test_daily_job_visits_every_account_and_one_failure_blocks_nobody(monk
 
     result = await run_billing_quantity_sync()
     assert result == {
-        "patched": 2, "noop": 1, "skipped": 1, "failed": 2, "total": 6,
+        "patched": 2, "noop": 1, "skipped": 1, "failed": 2, "total": 6, "held": [],
     }
     assert [c[0] for c in provider.calls] == [1, 2, 3, 4, 5, 6]
     assert all(force is False for _, force in provider.calls), (
         "the unattended job must never lift the jump guard")
+
+
+@pytest.mark.asyncio
+async def test_a_held_jump_is_named_to_the_operators_not_just_logged(monkeypatch):
+    """The guard holds a large rise for a human — and until now told no
+    human: a WARNING at 03:30 and a metric.  A customer who doubled
+    their fleet kept paying for the old count until someone happened to
+    press Sync quantity.  The daily job now names every held account,
+    with both numbers, to the operators on Telegram."""
+    import infra.platform as _ip
+    import capabilities.platform.billing as billing_pkg
+    from capabilities.platform.billing import notifications
+    from capabilities.platform.billing.jobs import run_billing_quantity_sync
+
+    class _Named(_Acct):
+        def __init__(self, id, name): super().__init__(id); self.name = name
+
+    class _Platform2(_Platform):
+        async def list_accounts(self, active_only=True):
+            return [_Named(1, "Steady Co"), _Named(2, "Doubled Co"), _Named(3, "Grew Co")]
+
+    provider = _Provider({
+        1: "noop",
+        2: {"skipped": "jump_guard", "before": 40, "after": 120},
+        3: {"skipped": "jump_guard", "before": 10, "after": 41},
+    })
+    told: list[str] = []
+    async def _capture(text): told.append(text); return 1
+    monkeypatch.setattr(notifications, "tell_operators", _capture)
+
+    class _Router:
+        platform = _Platform2([])
+    monkeypatch.setattr(_ip, "get_router", lambda: _Router())
+    monkeypatch.setattr(billing_pkg, "get_provider", lambda: provider)
+
+    result = await run_billing_quantity_sync()
+    assert result["held"] == [
+        {"account_id": 2, "name": "Doubled Co", "before": 40, "after": 120},
+        {"account_id": 3, "name": "Grew Co", "before": 10, "after": 41},
+    ]
+    assert result["skipped"] == 2, "held jumps are still counted as skipped, as before"
+    assert len(told) == 1, "one message a day, every held account in it"
+    assert "Doubled Co (#2): 40 → 120" in told[0] and "Grew Co (#3): 10 → 41" in told[0]
+    assert "Sync quantity" in told[0], "the message says where the button is"
+    # nothing held → nobody is woken
+    told.clear()
+    provider2 = _Provider({1: "noop", 2: None, 3: "not_stripe"})
+    monkeypatch.setattr(billing_pkg, "get_provider", lambda: provider2)
+    assert (await run_billing_quantity_sync())["held"] == [] and told == []
 
 
 def test_the_job_is_on_the_scheduler_and_in_the_console_catalog():
