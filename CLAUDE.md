@@ -132,6 +132,13 @@ rule 5 made it a checkable fact.
    refused — the reason is the point). Anything else is a single
    package's test and the guard names the directory it belongs in.
 
+**Security tests** — the route gate guard measures the CODE (every
+route carries a gate; `/system/*` requires the system owner), and a
+package writes its own `tests/test_security.py` only for behaviour the
+guard cannot see. `pytest -m security` runs the lot. Why it is shaped
+that way, and the two shrinking exception lists:
+[tests/CLAUDE.md](tests/CLAUDE.md) §"Security tests".
+
 **How the machinery works** — the database fixtures, what isolation
 every test gets for free, what `--dist loadfile` does and does not
 promise, and the traps that have already cost a day:

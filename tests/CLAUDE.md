@@ -28,6 +28,39 @@ Filing a guard under the consumer puts it where the rule is not.
 If a file is genuinely two things, it is two files —
 `test_source_ts.py` was split 6/9 for exactly this reason.
 
+## Security tests
+
+Two instruments, deliberately different in kind.
+
+**The route gate guard** —
+`interfaces/api/tests/test_every_route_is_gated.py` — reads the
+dependency tree FastAPI built for all 832 mounted routes and asks three
+questions: is anything unauthenticated, does every `/system/*` route
+require the system owner, does every tenant route carry a permission
+gate rather than only proving somebody is signed in. It measures the
+CODE, which is the point: a guard that asks "does this package have a
+security test?" is satisfied by writing a test, and the cheapest test
+that satisfies it is a vacuous one. Two lists carry the exceptions —
+`PUBLIC` (63, each with why it must be reachable by anyone) and
+`AUTH_ONLY` (103, of which 90 are unreviewed) — and both only shrink;
+a paired test fails when an entry outlives its reason.
+
+**A package's own `tests/test_security.py`** — written only when the
+package has a behavioural property the gate cannot express: its own row
+filtering, a scope join, an ownership check inside the handler. Not one
+per package as ceremony. Row-level security is enabled on ONE table of
+forty-one, so filtering rows by account is discipline rather than
+structure, and discipline is what a test is for.
+
+Mark either with `@pytest.mark.security` (or module-level
+`pytestmark`), so `pytest -m security` runs the platform's whole
+security surface. `--strict-markers` is on: a typo is an error, not a
+test that silently leaves the selection forever. Shared setup —
+`api_client`, `bearer`, `two_accounts` — lives in `tests/_security.py`;
+it holds fixtures only, and will hold assertion helpers when three
+packages have written the same assertion by hand and shown what its
+shape actually is.
+
 ## The database: one template, copied per test
 
 `pg_db` gives every test **its own database**, made with `CREATE
