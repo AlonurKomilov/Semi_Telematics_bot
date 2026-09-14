@@ -53,10 +53,17 @@ _HOME = re.compile(
 #: deleted with the alias layer after one extension release.
 #: 2026-09-04 (later): the eighteen 1:1 renames joined the watched set
 #: after their 156 in-repo readers moved to the canonical names.
+#: 2026-09-14: `can_view_location` (the live-map field's own previous
+#: name, cae597b8) joined the set when its alias landed — the bridge
+#: that had been missing for rows stored under it.  connect.ts already
+#: named it on purpose: LIVE_MAP_SCOPE is the extension's accept-both
+#: list, pinned literal by connect.test.ts, gone when no token carrying
+#: the old name can still be alive.  Entry added: connect.ts 1.
 BASELINE: dict[str, int] = json.loads('''
 {
   "conftest.py": 1,
-  "interfaces/api/auth.py": 2
+  "interfaces/api/auth.py": 2,
+  "interfaces/browser_extension/src/connect.ts": 1
 }
 ''')
 

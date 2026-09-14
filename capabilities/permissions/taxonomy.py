@@ -63,6 +63,11 @@ class Fate(str, Enum):
     SCOPE_SPLIT = "scope_split"
     CONFIG = "config"
     PERSON_SPLIT = "person_split"
+    #: a canonical FIELD's own previous name — not a verb row (the verb
+    #: row for its target already exists) and not a pair half: an alias
+    #: and nothing else, so stored rows and tokens written under the
+    #: old name keep meaning what they meant
+    RENAMED = "renamed"
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,15 @@ TAXONOMY: dict[str, Verdict] = {
         V, "can_view_live_map",
         "the pair's _all half despite the odd historic name"),
     "can_location_vehicle":  Verdict(S, "can_view_live_map"),
+    # The flag's OWN previous name (cae597b8 renamed the field).  Rows
+    # stored under it — an owner's `false`, above all — fell through
+    # the resolver's unknown-key filter and the role resolved to its
+    # seed, which grants the map: the revocation was silently undone.
+    # This alias folds the stored key onto the field before the filter;
+    # the sweep (platform + tenant migrations) rewrites the rows.
+    "can_view_location":     Verdict(
+        Fate.RENAMED, "can_view_live_map",
+        "the field's previous name — an alias, not a second verb row"),
     # The manage verb beside it, added on the owner's call so the pair
     # exists before something needs it.  It governs NOTHING today, and
     # the owner knows: the basemap engine is account-wide config

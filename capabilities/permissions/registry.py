@@ -133,7 +133,7 @@ ENTRIES: tuple[Entry, ...] = (
             "stations, rest areas, the repair-shop directory and an "
             "account's own layers.  A sub-feature of Live Map rather than a "
             "page: it has no route, it is drawn ON the map.  It became one "
-            "because seeing the overlays used to ride can_view_location, so "
+            "because seeing the overlays used to ride the live-map grant, so "
             "an owner could not withhold them without withholding the map"),
     _e("vehicles", tier="shared", modules=["core"], opens=["can_view_vehicles"],
        flags=["can_view_vehicles", "can_manage_vehicles",

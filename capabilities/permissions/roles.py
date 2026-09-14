@@ -326,6 +326,7 @@ LEGACY_TO_CANONICAL: dict[str, str] = {
     "can_vehicle_all": "can_view_vehicles",
     "can_vehicle_docs": "can_view_vehicle_docs",
     "can_vehicle_vehicle": "can_view_vehicles",
+    "can_view_location": "can_view_live_map",
     "can_work_orders_all": "can_manage_work_orders",
     "can_work_orders_vehicle": "can_view_work_orders"
 }
