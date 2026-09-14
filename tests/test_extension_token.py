@@ -538,7 +538,18 @@ def test_the_panels_data_path_is_the_dashboards_gates_not_its_own():
     assert src.count('require_permission("can_view_live_map")') >= 2
     # Both apply Team Management's company scope and the unit scope.
     assert "filter_by_allowed_companies(" in src
-    assert "filter_by_assigned_trucks(" in src and "member_unit_scope(user, \"location\")" in src
+    # The NOUN is not spelled here on purpose.  It used to be — the old
+    # feature name, written into the assertion — and when the feature was
+    # renamed this line went on demanding a noun that no longer existed:
+    # red for a day, insisting on the exact string whose absence had just
+    # broken the live map in production.
+    #
+    # What this guard owns is that the call IS MADE.  Whether its noun
+    # exists belongs to tests/test_scope_nouns_exist.py, and spelling it
+    # in both places only bought a second way to get a rename wrong.
+    # (Naming it even in THIS comment sets that guard off, correctly: a
+    # dead noun in prose is stale documentation.)
+    assert "filter_by_assigned_trucks(" in src and "member_unit_scope(user," in src
 
 
 def test_the_inventory_endpoint_is_gated_on_the_inventory_grant():

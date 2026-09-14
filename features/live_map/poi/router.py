@@ -44,6 +44,68 @@ router = APIRouter(prefix="/map", tags=["map"])
 _BRAND_SEARCH_CAP = 1000
 
 
+@router.get("/poi-versions")
+async def poi_versions(
+    user: dict = Depends(require_permission("can_view_poi")),
+):
+    """When each built-in layer was last imported — the whole reply is a
+    few hundred bytes, and it is what lets a client skip a download.
+
+    A client holding a layer asks this first: same version, and it draws
+    from its own copy without another byte crossing the wire.  Different
+    version, and it fetches the layer WHOLE from /map/poi-set.
+
+    NULL means the layer has never imported cleanly.  The client must
+    then use /map/pois, which is what it has always done — never draw an
+    empty layer off the back of a missing version.
+    """
+    tenant = await get_tenant_db(user["account_id"])
+    runs = await tenant.poi_layer_imports()
+    return {"versions": {
+        layer: ((runs.get(layer) or {}).get("imported_at") or None)
+        for layer in POI_OVERPASS_QUERIES
+    }}
+
+
+@router.get("/poi-set")
+async def poi_set(
+    poi_type: str = Query(..., alias="type", min_length=1, max_length=50),
+    user: dict = Depends(require_permission("can_view_poi")),
+):
+    """ONE built-in layer, whole, with the version it is.
+
+    A query parameter and not a path segment because the extension's
+    scoped token matches EXTENSION_ROUTES exactly — a path parameter
+    would mean listing every layer there, and forgetting the next one.
+
+    Whole rather than by viewport because these layers do not move and
+    are small: the largest is about 5,400 points, 169 KB gzipped.  One
+    download, then every pan is local — and no third party is asked for
+    anything, ever.
+    """
+    if poi_type not in POI_OVERPASS_QUERIES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{poi_type!r} is not a built-in POI layer")
+    tenant = await get_tenant_db(user["account_id"])
+    version = await tenant.poi_layer_imported_at(poi_type)
+    if not version:
+        # NOT an empty set: this layer has never imported, so there is
+        # nothing to hand over and a client that cached [] would believe
+        # the country has no truck stops in it.  409, and the client
+        # falls back to the viewport endpoint it has always used.
+        raise HTTPException(
+            status_code=409,
+            detail=f"{poi_type} has not been imported yet — use /map/pois")
+    rows = await tenant.poi_points_all(poi_type)
+    return {
+        "layer": poi_type,
+        "version": version,
+        "type": "FeatureCollection",
+        "features": [point_to_feature(r) for r in rows],
+    }
+
+
 @router.get("/pois")
 async def map_pois(
     poi_type: str = Query(..., alias="type", min_length=1, max_length=50),

@@ -68,6 +68,27 @@ class PoiDirectoryMixin:
                 r["props"] = {}
         return rows
 
+    async def poi_points_all(self, layer: str) -> list[dict]:
+        """EVERY point of one layer — the whole-set download.
+
+        No cap, deliberately.  A limit here would silently hand a client
+        a partial layer that it would then cache and believe, which is
+        the failure this whole feature exists to stop; the set is bounded
+        by the import that wrote it, and the largest today is about five
+        thousand points (169 KB gzipped on the wire).
+        """
+        cur = await self._db.execute(
+            "SELECT osm_type, osm_id, lat, lng, name, props "
+            "FROM poi_points WHERE layer = ?", (layer,))
+        rows = [dict(r) for r in await cur.fetchall()]
+        for r in rows:
+            raw = r.pop("props", None)
+            try:
+                r["props"] = json.loads(raw) if raw else {}
+            except (TypeError, ValueError):
+                r["props"] = {}
+        return rows
+
     async def poi_layer_imports(self) -> dict[str, dict]:
         """layer → its last import, for the freshness line and the
         operator's view of whether the job is running."""

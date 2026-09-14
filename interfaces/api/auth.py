@@ -239,7 +239,12 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     #                        Measured, not assumed — with the header
     #                        200, without it "Requests from referer
     #                        <empty> are blocked".
+    #   /map/poi-versions    when each built-in layer last imported
+    #   /map/poi-set         one of them WHOLE, so the panel stops
+    #                        asking per viewport.  Both ride
+    #                        can_view_poi, already in the scope.
     "/map/engine", "/map/tiles/session", "/map/pois", "/map/custom-layers",
+    "/map/poi-versions", "/map/poi-set",
     "/map/config", "/map/tile", "/map/tile-copyright",
     "/extension/vehicle-link", "/extension/inventory", "/extension/inventory-fleet",
     # The three write verbs the panel may perform, and only these.

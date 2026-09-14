@@ -490,6 +490,120 @@ class TestPinDrop:
 
 
 # ---------------------------------------------------------------------------
+# Handed over whole, so the client stops asking per viewport
+# ---------------------------------------------------------------------------
+
+class TestWholeLayerHandover:
+    """These layers do not move and they are small — the largest is about
+    5,400 points, 169 KB gzipped.  So a client can hold one and pan
+    locally forever, asking only "is my copy still current".
+
+    Version-and-replace rather than a delta: a delta would have to
+    describe DELETIONS, and the import sweeps with a hard DELETE, so a
+    client with a stale copy would keep a truck stop that closed.
+    Replacing the set wholesale gets that right for free.
+    """
+
+    async def _import(self, db, layer, points, stamp):
+        await db.upsert_poi_points(layer, points, stamp)
+        await db.finish_poi_import(layer, stamp, len(points), ok=True)
+
+    async def test_versions_name_what_is_holdable_and_what_is_not(self, app_ctx):
+        db = app_ctx["db"]
+        await self._import(db, "shower", [
+            {"osm_type": "node", "osm_id": 1, "lat": 41.0, "lng": -93.0,
+             "name": "One", "props": {}},
+        ], "2026-09-14T02:00:00Z")
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get("/api/map/poi-versions",
+                            headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 200, r.text
+        versions = r.json()["versions"]
+        assert versions["shower"] == "2026-09-14T02:00:00Z"
+        # NULL, not a date and not an omission: a layer with no import is
+        # a layer the client must fetch the old way.
+        assert versions["rest_area"] is None
+        # Every built-in layer is named, so a client can decide about all
+        # of them from one reply.
+        from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+        assert set(versions) == set(POI_OVERPASS_QUERIES)
+
+    async def test_a_layer_comes_over_whole_with_the_version_it_is(self, app_ctx):
+        db = app_ctx["db"]
+        await self._import(db, "truck_parking", [
+            {"osm_type": "node", "osm_id": 10, "lat": 41.0, "lng": -93.0,
+             "name": "Iowa lot", "props": {"amenity": "parking", "hgv": "yes"}},
+            {"osm_type": "node", "osm_id": 11, "lat": 34.0, "lng": -118.0,
+             "name": "California lot", "props": {}},
+        ], "2026-09-14T02:30:00Z")
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get("/api/map/poi-set?type=truck_parking",
+                            headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["version"] == "2026-09-14T02:30:00Z"
+        # WHOLE: both points, though they are two thousand miles apart —
+        # no viewport narrowed this.
+        assert len(body["features"]) == 2
+        names = {f["properties"]["name"] for f in body["features"]}
+        assert names == {"Iowa lot", "California lot"}
+
+    async def test_both_endpoints_describe_a_point_the_same_way(self, app_ctx):
+        """One wire shape, two ways in.
+
+        A client that drew one shape for a held layer and another for a
+        fetched one would have a bug nobody could see until a popup came
+        up empty — which is why point_to_feature is the only place that
+        says what a POI looks like.
+        """
+        db = app_ctx["db"]
+        await self._import(db, "weigh_station", [
+            {"osm_type": "node", "osm_id": 20, "lat": 41.5, "lng": -93.5,
+             "name": "Scale", "props": {"amenity": "weighbridge"}},
+        ], "2026-09-14T02:40:00Z")
+
+        async with _client(app_ctx["app"]) as c:
+            whole = await c.get("/api/map/poi-set?type=weigh_station",
+                                headers=_h(app_ctx["owner_a_token"]))
+            boxed = await c.get(
+                "/api/map/pois?type=weigh_station&bbox=41.0,-94.0,42.0,-93.0",
+                headers=_h(app_ctx["owner_a_token"]))
+        assert whole.status_code == 200 and boxed.status_code == 200
+        assert whole.json()["features"] == boxed.json()["features"]
+
+    async def test_a_layer_with_no_import_is_refused_not_answered_empty(self, app_ctx):
+        """The whole point.  An empty set here would be cached by the
+        client and believed — "there are no rest areas in America" — and
+        it would keep believing it until the next version changed."""
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get("/api/map/poi-set?type=rest_area",
+                            headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 409, r.text
+        assert "not been imported" in r.json()["detail"]
+
+    async def test_an_unknown_layer_is_a_404(self, app_ctx):
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get("/api/map/poi-set?type=not_a_layer",
+                            headers=_h(app_ctx["owner_a_token"]))
+        assert r.status_code == 404
+
+    async def test_a_driver_may_hold_a_layer_but_not_author_one(self, app_ctx):
+        """Both new routes ride can_view_poi, the same grant that has
+        always shown the overlays — holding a copy is still seeing."""
+        db = app_ctx["db"]
+        await self._import(db, "def_station", [
+            {"osm_type": "node", "osm_id": 30, "lat": 41.0, "lng": -93.0,
+             "name": "DEF", "props": {}},
+        ], "2026-09-14T02:50:00Z")
+        async with _client(app_ctx["app"]) as c:
+            for url in ("/api/map/poi-versions", "/api/map/poi-set?type=def_station"):
+                r = await c.get(url, headers=_h(app_ctx["driver_a_token"]))
+                assert r.status_code == 200, (url, r.text)
+
+
+# ---------------------------------------------------------------------------
 # Served from our own table
 # ---------------------------------------------------------------------------
 
