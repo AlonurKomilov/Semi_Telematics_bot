@@ -8,6 +8,12 @@ watched so far was ours, so no bill was ever wrong; the first watched
 customer would have been.
 
 These tests are that claim, stated so it cannot come back.
+
+The legacy ``is_test`` alias is not here on purpose: it belongs to the
+migration that retired it, and its guard — both directions of the write,
+security untouched by either — is
+``test_migration_account_kind.py::test_a_legacy_is_test_write_cannot_clear_a_watched_account``.
+A one-direction copy lived here once and said less than that one.
 """
 import pytest
 
@@ -68,14 +74,3 @@ async def test_neither_column_will_accept_the_other_vocabulary(seeded_db):
     # and the row is untouched by either refusal
     fresh = await db.get_account(acct.id)
     assert (fresh.kind, fresh.security) == ("real", "normal")
-
-
-@pytest.mark.asyncio
-async def test_the_legacy_is_test_flag_never_reaches_the_security_axis(seeded_db):
-    """`is_test` predates both columns and knows only one of them."""
-    db, acct = seeded_db["db"], seeded_db["account"]
-    await db.update_account(acct.id, security="monitored")
-    await db.update_account(acct.id, is_test=1)
-    fresh = await db.get_account(acct.id)
-    assert fresh.kind == "test"
-    assert fresh.security == "monitored", "a legacy writer must not clear a watch"
