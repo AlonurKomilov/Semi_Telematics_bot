@@ -1070,8 +1070,15 @@ async def _run_anthropic_agent(
             user_role=user_role, user_context=user_context,
             event_callback=event_callback,
         ):
-            tool_results.append(
-                {"tool": d["tool"], "args": d["args"], "data": d["data"]})
+            # ``blocked`` travels with the result.  The process timeline
+            # pairs steps to results by INDEX, and a refused call
+            # produces a result but no step — so without this marker the
+            # zip slides and the next tool's step wears the refusal's
+            # payload.
+            tool_results.append({
+                "tool": d["tool"], "args": d["args"], "data": d["data"],
+                "blocked": d["blocked"],
+            })
             result_blocks.append({
                 "type": "tool_result",
                 "tool_use_id": d["id"],
@@ -1637,8 +1644,15 @@ async def _run_openai_compat_agent(
             user_role=user_role, user_context=user_context,
             event_callback=event_callback,
         ):
-            tool_results.append(
-                {"tool": d["tool"], "args": d["args"], "data": d["data"]})
+            # ``blocked`` travels with the result.  The process timeline
+            # pairs steps to results by INDEX, and a refused call
+            # produces a result but no step — so without this marker the
+            # zip slides and the next tool's step wears the refusal's
+            # payload.
+            tool_results.append({
+                "tool": d["tool"], "args": d["args"], "data": d["data"],
+                "blocked": d["blocked"],
+            })
             messages.append({
                 "role": "tool",
                 "tool_call_id": d["id"],
@@ -2093,7 +2107,10 @@ async def ask_agent(question: str, vehicle_context: dict,
                     _blocked = result is not None
 
                     if _blocked:
-                        tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
+                        tool_results.append({
+                            "tool": tool_name, "args": tool_args,
+                            "data": result, "blocked": True,
+                        })
                         fn_response = Part.from_function_response(
                             name=tool_name,
                             response={"result": _model_view(result)},
@@ -2124,7 +2141,10 @@ async def ask_agent(question: str, vehicle_context: dict,
                         attachment_grids=(user_context or {}).get("_attachment_grids"),
                         attachment_docs=(user_context or {}).get("_attachment_docs"),
                     )
-                    tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
+                    tool_results.append({
+                        "tool": tool_name, "args": tool_args,
+                        "data": result, "blocked": False,
+                    })
 
                     fn_response = Part.from_function_response(
                         name=tool_name,
@@ -2266,14 +2286,24 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
     def _finish_process(result: dict) -> list[dict]:
         """Zip tool results into the tool steps + digest them.
 
-        ``result["tool_results"]`` appends in execution order — the
-        same order the tool events fired — so index-zipping is exact.
+        ``result["tool_results"]`` appends in execution order, so
+        index-zipping works — but only across the results that PRODUCED
+        a step.  A refused call appends a result and emits no event, so
+        zipping the raw list slid every later pairing by one and the
+        next tool's step wore the refusal's payload: a user was shown
+        "Checking fuel" with an Access-denied result attached.  The
+        dispatcher marks refusals; they are dropped here.
+
         Results are digested (truncated JSON) because full tool payloads
         can be tens of KB; the timeline needs a glance, not the data.
         """
         _close_pending(_dur_time.monotonic())  # stamp the final tool step
         tool_steps = [s for s in process if s["type"] == "tool"]
-        for step, tr in zip(tool_steps, result.get("tool_results") or []):
+        stepped = [
+            tr for tr in (result.get("tool_results") or [])
+            if not tr.get("blocked")
+        ]
+        for step, tr in zip(tool_steps, stepped):
             try:
                 digest = json.dumps(tr.get("data"), default=str)
             except (TypeError, ValueError):
