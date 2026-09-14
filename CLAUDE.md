@@ -75,6 +75,23 @@ Rules and the incident behind each: [scripts/githooks/README.md](scripts/githook
   [docs/architecture/PERSONA.md](docs/architecture/PERSONA.md)
   §"Naming: role words vs domain nouns".
 
+# The system layer — `system/`
+
+What serves 4truck the operator and nobody else lives in `system/`
+(today: `system/security/` — the ledger, the detector, the holds, the
+nightly watch). It sits ABOVE the customer layers because it watches
+and, when it must, holds them: `system/` may import `capabilities`,
+`adapters` and `infra`; **none of those may import `system`** —
+`tests/test_layer_boundaries.py` enforces the direction and lists the
+seams still pointing upward, by name, in a list that only shrinks. A
+system service is reachable only through `/system/*` behind
+`require_system_owner`; no `can_*` flag names it, no plan sells it,
+Team Management cannot see it. Not to be confused with
+`capabilities/platform/`, the DUAL-audience money domains (billing has
+the customer's own card page): a domain a customer can touch is not a
+system service. The old `capabilities/security` path is a one-release
+alias to the same module objects.
+
 # Tests live with the code they test
 
 A package owns its tests in its own `tests/` subfolder —

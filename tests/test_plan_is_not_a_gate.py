@@ -40,7 +40,7 @@ _MAY_NAME_A_PLAN = {
     "features/settings/account/config.py": "shows the account's plan on the page",
 }
 
-_ROOTS = ("capabilities", "features", "interfaces/api", "interfaces/bot", "infra")
+_ROOTS = ("capabilities", "features", "interfaces/api", "interfaces/bot", "infra", "system")
 
 
 def _python_files():

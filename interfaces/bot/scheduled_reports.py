@@ -397,7 +397,7 @@ async def send_scheduled_reports(app: Application):
                     # PDF is built, not after: generating a report for
                     # somebody who may not receive it spends minutes of
                     # worker time for nobody.
-                    from capabilities.security import quarantine
+                    from system.security import quarantine
                     if await quarantine.delivery_blocked(sub["account_id"]):
                         continue
                     result = await _generate_report_pdf(sub["account_id"], report_type)

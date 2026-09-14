@@ -132,7 +132,7 @@ def _require_registered(func):
         # hold that only covered HTTP would leave every dashboard action
         # reachable by typing it to the bot instead.
         try:
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if quarantine.enabled() and await quarantine.is_request_held(
                     user.id, user.account_id):
                 msg = "⛔ " + quarantine.MESSAGE

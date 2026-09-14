@@ -13,7 +13,7 @@ import inspect
 
 import pytest
 
-from capabilities.security import recorder
+from system.security import recorder
 
 
 @pytest.fixture(autouse=True)

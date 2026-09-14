@@ -251,3 +251,71 @@ def test_every_raw_vehicles_read_declares_its_stance_on_retired_rows():
           "sweep-vs-operator distinction matters), or write "
           "`# archived-ok: <why this one must see retired trucks>` above it."
     )
+
+
+# ── system-layer seams that still point upward, by name, and why ─────
+#
+# Each of these reaches into ``system`` from below.  They predate the
+# layer and are listed so the rule can land without a red build; every
+# entry is a seam to invert — read the standing from the column the
+# customer layer already owns, or take a closure the system layer hands
+# down at startup — and the second test here refuses to let an entry
+# outlive its seam.  This list only shrinks.
+#
+# One seam this guard cannot see: ``capabilities/data_lifecycle/retention``
+# names ``system.security.retention`` as a STRING contributor and imports
+# it lazily by name.  It is upward all the same; the inversion (the
+# system layer registering its contributor at startup) is owed, and a
+# guard on that registry's contents will say so when it lands.
+GRANDFATHERED_SYSTEM_IMPORTERS = {
+    "adapters/storage/applications.py":
+        "the recruiter-link resolver asks whether the account is held",
+    "adapters/storage/carrier_directory.py":
+        "the carrier-intake resolver asks whether the account is held",
+    "capabilities/notifications/service.py":
+        "delivery drops held recipients and reroutes them to the owner",
+    "features/applications/router.py":
+        "the public status check asks whether the account is held",
+}
+
+
+def _files_importing_system():
+    """Every non-test file below the system layer that imports it.
+
+    The alias package ``capabilities/security/`` is skipped: importing
+    the new path is its entire job."""
+    hits = {}
+    for root in ("features", "capabilities", "adapters", "infra"):
+        files = scanned(sorted((REPO / root).rglob("*.py")),
+                        what=f"{root}/ python files")
+        for py in files:
+            rel = py.relative_to(REPO).as_posix()
+            if is_test_path(rel) or rel.startswith("capabilities/security/") \
+                    or "node_modules" in rel:
+                continue
+            if any(m == "system" or m.startswith("system.") for m in _imports_of(py)):
+                hits[rel] = True
+    return hits
+
+
+def test_nothing_below_the_system_layer_imports_it_except_the_listed_seams():
+    hits = _files_importing_system()
+    new = sorted(set(hits) - set(GRANDFATHERED_SYSTEM_IMPORTERS))
+    assert not new, (
+        "these files reach UP into system/ from below:\n  "
+        + "\n  ".join(new)
+        + "\nThe system layer watches the customer layers; they must not "
+          "know it exists. Read the standing from the column your layer "
+          "already owns, or take a closure system registers at startup."
+    )
+
+
+def test_a_grandfathered_seam_that_no_longer_imports_system_is_removed():
+    """The list only shrinks: an inverted seam must leave it, or the
+    exemption outlives the reason and shelters the next mistake."""
+    hits = _files_importing_system()
+    stale = sorted(set(GRANDFATHERED_SYSTEM_IMPORTERS) - set(hits))
+    assert not stale, (
+        "no longer import system/ — remove from GRANDFATHERED_SYSTEM_IMPORTERS:\n  "
+        + "\n  ".join(stale)
+    )

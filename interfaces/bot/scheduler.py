@@ -331,7 +331,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # open.  06:00 UTC = the operator's morning; the message lands
     # before the day starts rather than during it.  It never promotes
     # anyone — that stays a person's click.
-    from capabilities.security.watch import job_security_watch
+    from system.security.watch import job_security_watch
     scheduler.add_job(
         job_security_watch, "cron",
         hour=6, minute=5, args=[app], id="security_watch_nightly",

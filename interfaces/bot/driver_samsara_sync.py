@@ -107,7 +107,7 @@ async def check_driver_samsara_sync(_app: Application | None = None) -> None:
             # hold stops, and freezing it would punch a permanent hole
             # in the drivers' history of a company that may turn out
             # innocent.
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if await quarantine.delivery_blocked(acct.id):
                 return
 

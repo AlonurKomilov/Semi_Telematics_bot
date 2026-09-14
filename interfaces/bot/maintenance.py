@@ -217,7 +217,7 @@ async def check_overdue_maintenance(app: Application):
             # A held company is sent nothing — including by the
             # direct fallback below, which the notification core's own
             # gate never sees.
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if await quarantine.delivery_blocked(acct.id):
                 return
             bot_app = get_app_for_account(acct.id)
@@ -305,7 +305,7 @@ async def check_overdue_by_mileage(app: Application):
             # A held company is sent nothing — including by the
             # direct fallback below, which the notification core's own
             # gate never sees.
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if await quarantine.delivery_blocked(acct.id):
                 return
             bot_app = get_app_for_account(acct.id)
@@ -397,7 +397,7 @@ async def check_overdue_by_engine_hours(app: Application):
             # A held company is sent nothing — including by the
             # direct fallback below, which the notification core's own
             # gate never sees.
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if await quarantine.delivery_blocked(acct.id):
                 return
             bot_app = get_app_for_account(acct.id)
@@ -490,7 +490,7 @@ async def check_upcoming_maintenance_warnings(app: Application):
             # A held company is sent nothing — including by the
             # direct fallback below, which the notification core's own
             # gate never sees.
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if await quarantine.delivery_blocked(acct.id):
                 return
             bot_app = get_app_for_account(acct.id)
@@ -588,7 +588,7 @@ async def _notify_account_admins(app: Application, account_id: int, text: str,
     # A held company is sent nothing. This module reaches people by
     # calling the Telegram and email transports directly, so the
     # notification core's own gate never sees it.
-    from capabilities.security import quarantine
+    from system.security import quarantine
     if await quarantine.delivery_blocked(account_id):
         return 
 

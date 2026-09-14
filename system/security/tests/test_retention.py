@@ -10,7 +10,7 @@ def test_the_ledger_is_discovered_with_a_ninety_day_window():
     from capabilities.data_lifecycle.retention.registry import resolve
     discover()
     got = {r.target.key: r for r in resolve(scope="platform")}
-    assert "security.requests" in got, "retention.__init__ must list capabilities.security.retention"
+    assert "security.requests" in got, "retention.__init__ must list system.security.retention"
     r = got["security.requests"]
     assert r.keep_days == 90
     assert r.target.scope == "platform"
@@ -19,7 +19,7 @@ def test_the_ledger_is_discovered_with_a_ninety_day_window():
 
 @pytest.mark.asyncio
 async def test_the_prune_executor_delegates_to_storage():
-    from capabilities.security import retention
+    from system.security import retention
 
     class _DB:
         async def prune_security_requests(self, keep_days):

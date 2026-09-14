@@ -11,7 +11,7 @@ noise, and twenty-two innocents treated as suspects.
 import pytest
 
 from adapters.storage.models import ACCOUNT_SECURITY
-from capabilities.security import recorder
+from system.security import recorder
 
 
 @pytest.fixture(autouse=True)
@@ -127,7 +127,7 @@ def test_a_held_subject_is_watched_at_least_as_closely_as_a_observed_one():
     incoherent for it to record LESS than `monitored` — a subject we
     have decided to hold, going quieter in the ledger than one we are
     merely observing."""
-    from capabilities.security.recorder import should_record
+    from system.security.recorder import should_record
     for standing in ("monitored", "quarantined"):
         assert should_record(200, standing), f"{standing} must record everything"
     assert not should_record(200, "normal")

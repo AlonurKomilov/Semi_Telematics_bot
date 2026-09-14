@@ -1,6 +1,6 @@
 """Security request ledger — persistence for the security console.
 
-Writes come from ``capabilities.security.recorder`` (called by the API's
+Writes come from ``system.security.recorder`` (called by the API's
 metering middleware, best-effort); reads feed the operator console's
 Security page: an account's timeline, and the map of which endpoints
 held and which broke.  A mixin so the single ``Database`` exposes it —

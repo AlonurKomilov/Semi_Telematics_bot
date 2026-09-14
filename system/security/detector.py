@@ -1,0 +1,722 @@
+"""Who is probing us — computed from what the platform already recorded.
+
+The 2026-09-08 audit found every signal of the attack already in the
+database, read by nobody.  This module is the reader: a set of rules,
+each the shape of one thing an attacker does, run over a window, and an
+aggregator that turns their hits into a ranked list of candidate
+accounts an operator can promote to ``monitored`` with one click.
+
+Two design commitments, both from that incident:
+
+- **It only observes.**  A rule produces a candidate; a human decides.
+  A false positive costs a row in a list, never someone's access —
+  which is also why ``monitored`` (the action a candidate leads to)
+  restricts nothing.
+- **It reads the durable tables first.**  ``platform_audit_log``,
+  ``login_attempts``, ``password_reset_tokens`` and ``accounts`` held
+  the 2026-09-08 evidence and still do, so the detector can be pointed
+  at history and must surface that attack from it — the acceptance
+  test.  The request ledger (``security_requests``) began filling only
+  when the recorder shipped, so the rules that read it (operator-door
+  probing, privilege-escalation sweeps) enrich going forward rather
+  than backward; they return nothing for a window before the ledger
+  existed, which is honest, not broken.
+
+Each rule returns ``Signal``s; ``find_candidates`` groups them by the
+account they implicate (falling back to the source IP when a signal has
+no account, as the probe's ``/system/*`` attempts did) and ranks the
+result by weight.  Nothing here writes.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# ── vocabulary ────────────────────────────────────────────────────
+
+# Registered throwaway-mail providers seen in the probe, plus the
+# RFC 2606 reserved names that can only ever be tests or fakes.  A
+# short, honest list — not an attempt at a complete disposable-domain
+# feed, which belongs to a maintained dataset if we ever want one.
+SUSPECT_EMAIL_DOMAINS: frozenset[str] = frozenset({
+    "mailinator.com", "guerrillamail.com", "guerrillamailblock.com",
+    "wearehackerone.com", "sharklasers.com", "getnada.com",
+    "temp-mail.org", "tempmail.com", "tempmail.org", "temp-mail.io",
+    "10minutemail.com", "yopmail.com", "trashmail.com", "throwawaymail.com",
+    "example.com", "example.net", "example.org", "example.edu", "test.com",
+})
+# Throwaway providers sell the same idea under a dozen spellings, and a
+# list of exact hosts will always be one behind: `temp-mail.org` was in
+# the list while `tempmail.com` walked past it on 2026-09-10. Matching
+# the SHAPE catches the family — and a real carrier's domain never
+# contains "tempmail", "throwaway" or "guerrillamail".
+SUSPECT_DOMAIN_MARKS: tuple[str, ...] = (
+    "tempmail", "temp-mail", "throwaway", "guerrillamail", "mailinator",
+    "trashmail", "10minutemail", "fakemail", "disposable",
+)
+RESERVED_TLDS: tuple[str, ...] = (".test", ".example", ".invalid", ".localhost")
+
+# User agents that are not a person's browser.  A signup or login from
+# one of these is automation — not proof of malice, but a strong signal
+# beside the others.
+NON_BROWSER_UA = re.compile(
+    r"\b(curl|wget|python-requests|python-httpx|httpx|go-http-client|"
+    r"libwww|scrapy|okhttp|java|axios|node-fetch|postmanruntime)\b", re.I)
+
+# Payloads a person does not type into a company-name or vehicle field.
+INJECTION_MARKERS = re.compile(
+    r"('?\s*or\s+'?1'?\s*=\s*'?1|union\s+select|pg_sleep|sleep\s*\(|"
+    r"xp_cmdshell|;\s*drop\s+table|/etc/passwd|\.\./|<script|"
+    r"cmd\|'?/c|=cmd\||information_schema)", re.I)
+
+# Thresholds — each set at, or just under, what the 2026-09-08 probe
+# actually did, so that run trips every rule and an ordinary customer
+# trips none.
+T_SIGNUPS_PER_IP = 3        # probe: 33 from one IP in 47 min
+T_LOCKOUTS_PER_IP = 10      # probe: 69 account_locked
+T_RESETS_PER_USER = 5       # probe: 53 reset tokens for one user in 16 min
+T_SYSTEM_403_PER_SRC = 3    # probe: 17 /system/* refusals
+T_ADMIN_403_PER_USER = 5    # probe: 25 admin PUT + 6 promote-owner refusals
+T_IPS_PER_EMAIL = 5         # probe: 50 IPs for one address in 14 seconds
+
+SEVERITY_RANK = {"high": 3, "med": 2, "low": 1}
+
+# What each rule means, for the person reading its name on a page.  A
+# chip that says ``signup_burst`` is a code identifier; the operator
+# needs the sentence.  Kept beside the thresholds so the two cannot
+# drift, and served as-is by /system/security/rules — the legend is
+# generated, never hand-written twice.
+RULES: dict[str, dict[str, str]] = {
+    "signup_burst": {
+        "label": "Signup burst", "severity": "high",
+        "means": f"More than {T_SIGNUPS_PER_IP} accounts created from one IP address in the window.",
+        "seen": "33 accounts in 47 minutes from one address, 2026-09-08.",
+    },
+    "disposable_email": {
+        "label": "Throwaway email", "severity": "med",
+        "means": "The account's owner signed up with a disposable-mail or reserved test domain.",
+        "seen": "guerrillamailblock, mailinator, wearehackerone, example.com.",
+    },
+    "lockout_storm": {
+        "label": "Lockout storm", "severity": "high",
+        "means": f"More than {T_LOCKOUTS_PER_IP} failed or locked logins from one IP address.",
+        "seen": "69 account_locked against two accounts.",
+    },
+    "non_browser_auth": {
+        "label": "Tool, not browser", "severity": "low",
+        "means": "Login traffic whose user agent is curl, python-requests or similar. Never opens a row on its own — only sharpens one another rule opened.",
+        "seen": "curl/8.19.0 on every login.",
+    },
+    "ip_rotation": {
+        "label": "IP rotation", "severity": "high",
+        "means": f"One email address tried from more than {T_IPS_PER_EMAIL} distinct public IPs. Private and reserved addresses are not counted — a client can write those into a header.",
+        "seen": "70 fabricated addresses for one email in 14 seconds, 2026-09-10.",
+    },
+    "reset_flood": {
+        "label": "Reset flood", "severity": "med",
+        "means": f"More than {T_RESETS_PER_USER} password-reset tokens issued for one user.",
+        "seen": "53 tokens for one user in 16 minutes.",
+    },
+    "injection_attempt": {
+        "label": "Injection payload", "severity": "high",
+        "means": "A captured error carries SQL, shell or path-traversal syntax that no one types into a company or vehicle field.",
+        "seen": "' OR '1'='1 · pg_sleep(5) · UNION SELECT · =cmd|'/C calc.",
+    },
+    "operator_probing": {
+        "label": "Operator door", "severity": "high",
+        "means": f"More than {T_SYSTEM_403_PER_SRC} refused requests to /api/system/* from one source. Ledger-only: counts from the day recording started.",
+        "seen": "17 refused /system/* attempts.",
+    },
+    "privilege_sweep": {
+        "label": "Privilege sweep", "severity": "high",
+        "means": f"More than {T_ADMIN_403_PER_USER} refused admin writes from one source. Ledger-only.",
+        "seen": "25 admin PUTs and 6 promote-owner attempts, all refused.",
+    },
+}
+
+
+@dataclass(frozen=True)
+class Signal:
+    """One rule firing about one subject."""
+    rule: str
+    severity: str                 # "high" | "med" | "low"
+    account_id: int | None
+    ip: str | None
+    count: int
+    evidence: str
+    # What this is ABOUT when it is neither an account nor an IP — an
+    # email under credential stuffing, an endpoint taking payloads.
+    # Without it such hits collapse into one nameless row that tells an
+    # operator nothing.
+    subject: str | None = None
+    # The PERSON this is about, when the rule knows one.  Two of the
+    # rules are already person-shaped — a throwaway signup address, a
+    # flood of resets at one mailbox — and until this field existed the
+    # only thing an operator could act on was the employer, which
+    # records every one of its people to observe the one.
+    user_id: int | None = None
+    email: str | None = None
+
+
+@dataclass
+class Candidate:
+    """Everything the rules noticed about one account (or IP)."""
+    account_id: int | None
+    ip: str | None
+    subject: str | None = None
+    name: str | None = None
+    kind: str | None = None            # what it is: real | test
+    security: str | None = None        # how it stands: normal | monitored | quarantined
+    signals: list[Signal] = field(default_factory=list)
+    # user_id -> standing, for the people above; filled the same way the
+    # account's own standing is, so the page can show that a person is
+    # already watched inside an account that is not.
+    people_security: dict[int, str] = field(default_factory=dict)
+
+    @property
+    def weight(self) -> int:
+        w = {"high": 5, "med": 3, "low": 1}
+        return sum(w.get(s.severity, 1) for s in self.signals)
+
+    @property
+    def severity(self) -> str:
+        """The strongest thing said about this subject."""
+        return max((s.severity for s in self.signals), key=lambda x: SEVERITY_RANK.get(x, 0), default="low")
+
+    @property
+    def people(self) -> list[tuple[int, str | None]]:
+        """The people this candidate's signals named, in first-seen order.
+
+        A candidate stays keyed on its ACCOUNT — a signup burst and a
+        throwaway address about the same account are one finding, not
+        two — but it now says WHO, so the operator can put the person
+        under observation instead of their twenty-two colleagues.
+        """
+        out: list[tuple[int, str | None]] = []
+        seen: set[int] = set()
+        for s in self.signals:
+            if s.user_id is not None and s.user_id not in seen:
+                seen.add(s.user_id)
+                out.append((s.user_id, s.email))
+        return out
+
+    @property
+    def rules(self) -> list[str]:
+        # stable, de-duplicated, in first-seen order
+        out: list[str] = []
+        for s in self.signals:
+            if s.rule not in out:
+                out.append(s.rule)
+        return out
+
+
+def _cutoff(hours: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(hours=int(hours))).isoformat()
+
+
+def _is_public_ip(value: str | None) -> bool:
+    """True only for an address a client could not have invented.
+
+    Private, loopback, link-local, multicast and the reserved
+    documentation ranges are all values a spoofed header can carry and
+    a real internet client never has.
+    """
+    if not value:
+        return False
+    try:
+        addr = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return False
+    if not addr.is_global or addr.is_private or addr.is_loopback:
+        return False
+    # 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 (RFC 5737) and
+    # 2001:db8::/32 (RFC 3849) are documentation-only.
+    doc = (ipaddress.ip_network("192.0.2.0/24"),
+           ipaddress.ip_network("198.51.100.0/24"),
+           ipaddress.ip_network("203.0.113.0/24"),
+           ipaddress.ip_network("2001:db8::/32"))
+    return not any(addr in n for n in doc if addr.version == n.version)
+
+
+def _suspect_domain(email: str | None) -> bool:
+    if not email or "@" not in email:
+        return False
+    domain = email.rsplit("@", 1)[1].strip().lower()
+    if domain in SUSPECT_EMAIL_DOMAINS or domain.endswith(RESERVED_TLDS):
+        return True
+    return any(mark in domain for mark in SUSPECT_DOMAIN_MARKS)
+
+
+# ── rules — each reads one durable source, returns Signals ────────
+
+async def rule_signup_burst(db, hours: int) -> list[Signal]:
+    """Many accounts created from one IP in the window (platform_audit_log)."""
+    cur = await db.execute(
+        "SELECT account_id, details FROM platform_audit_log "
+        "WHERE event = 'account_created' AND created_at >= ?",
+        (_cutoff(hours),))
+    rows = await cur.fetchall()
+    by_ip: dict[str, list[int]] = {}
+    for r in rows:
+        m = re.search(r"ip=([^\s]+)", r["details"] or "")
+        ip = m.group(1) if m else "?"
+        by_ip.setdefault(ip, []).append(r["account_id"])
+    out: list[Signal] = []
+    for ip, accts in by_ip.items():
+        if ip != "?" and len(accts) > T_SIGNUPS_PER_IP:
+            # one signal per account so the candidate list names them all
+            for aid in accts:
+                out.append(Signal(
+                    rule="signup_burst", severity="high", account_id=aid, ip=ip,
+                    count=len(accts),
+                    evidence=f"{len(accts)} accounts created from {ip} in {hours}h"))
+    return out
+
+
+async def rule_disposable_email(db, hours: int) -> list[Signal]:
+    """Owner signed up with a throwaway / reserved domain (accounts+users)."""
+    cur = await db.execute(
+        "SELECT a.id AS account_id, u.id AS user_id, u.email FROM accounts a "
+        "JOIN users u ON u.account_id = a.id AND u.is_primary_owner = 1 "
+        "WHERE a.created_at >= ?",
+        (_cutoff(hours),))
+    out: list[Signal] = []
+    for r in await cur.fetchall():
+        if _suspect_domain(r["email"]):
+            out.append(Signal(
+                rule="disposable_email", severity="med",
+                account_id=r["account_id"], ip=None, count=1,
+                evidence=f"owner email {r['email']}",
+                user_id=r["user_id"], email=r["email"]))
+    return out
+
+
+async def rule_lockout_storm(db, hours: int) -> list[Signal]:
+    """Repeated account_locked from one IP — brute force (login_attempts)."""
+    cur = await db.execute(
+        "SELECT ip_address, COUNT(*) AS n FROM login_attempts "
+        "WHERE failure_reason IN ('account_locked', 'lockout_triggered', 'bad_password') "
+        "AND attempted_at >= ? GROUP BY ip_address HAVING COUNT(*) > ?",
+        (_cutoff(hours), T_LOCKOUTS_PER_IP))
+    return [Signal(rule="lockout_storm", severity="high", account_id=None,
+                   ip=r["ip_address"], count=int(r["n"]),
+                   evidence=f"{r['n']} failed/locked logins from {r['ip_address']}")
+            for r in await cur.fetchall()]
+
+
+async def rule_non_browser_auth(db, hours: int) -> list[Signal]:
+    """Auth traffic from a non-browser user agent (login_attempts).
+
+    Deliberately ``low``: a curl login is true of our own smoke tests and
+    of any integration, and on 2026-09-10 it produced seventy-two
+    near-identical rows because each spoofed IP became its own subject.
+    A low signal never opens a candidate on its own — it only sharpens
+    one another rule already opened (see ``find_candidates``).
+    """
+    cur = await db.execute(
+        "SELECT ip_address, user_agent, COUNT(*) AS n FROM login_attempts "
+        "WHERE attempted_at >= ? AND user_agent IS NOT NULL "
+        "GROUP BY ip_address, user_agent",
+        (_cutoff(hours),))
+    out: list[Signal] = []
+    for r in await cur.fetchall():
+        if NON_BROWSER_UA.search(r["user_agent"] or ""):
+            out.append(Signal(
+                rule="non_browser_auth", severity="low", account_id=None,
+                ip=r["ip_address"], count=int(r["n"]),
+                evidence=f"{r['n']} auth calls as {r['user_agent'][:60]!r} from {r['ip_address']}"))
+    return out
+
+
+async def rule_ip_rotation(db, hours: int) -> list[Signal]:
+    """One email tried from many PUBLIC IPs — credential stuffing.
+
+    Counts only addresses a client cannot invent.  On 2026-09-10 one
+    address was tried from seventy distinct values in fourteen seconds
+    and every one was fabricated — fifty inside 10.20.0.0/24, twenty
+    more as 1.2.3.x — because ``X-Forwarded-For`` was still trusted as
+    the client wrote it.  A rule that counted those would have been
+    counting the attacker's own input: evade it by using five values,
+    or weaponise it by spoofing fifty against a real person's address
+    to have the platform flag its own owner.
+
+    Since the realip fix nginx sends a single true value and Cloudflare
+    supplies it, so a genuine client IP is always public; anything
+    private, loopback, link-local or reserved-for-documentation is a
+    leftover of the spoofable era or a probe still trying. Filtering
+    them is what makes the count mean machines again.
+    """
+    cur = await db.execute(
+        "SELECT email, ip_address, COUNT(*) AS n FROM login_attempts "
+        "WHERE attempted_at >= ? AND email IS NOT NULL AND ip_address IS NOT NULL "
+        "GROUP BY email, ip_address",
+        (_cutoff(hours),))
+    per_email: dict[str, tuple[set[str], int]] = {}
+    for r in await cur.fetchall():
+        if not _is_public_ip(r["ip_address"]):
+            continue
+        ips, n = per_email.get(r["email"], (set(), 0))
+        ips.add(r["ip_address"])
+        per_email[r["email"]] = (ips, n + int(r["n"]))
+    return [
+        Signal(rule="ip_rotation", severity="high", account_id=None, ip=None,
+               count=len(ips), subject=email,
+               evidence=f"tried from {len(ips)} public IPs ({n} attempts)")
+        for email, (ips, n) in per_email.items()
+        if len(ips) > T_IPS_PER_EMAIL
+    ]
+
+
+async def rule_reset_flood(db, hours: int) -> list[Signal]:
+    """Many password-reset tokens for one user (password_reset_tokens)."""
+    cur = await db.execute(
+        "SELECT u.id AS user_id, u.account_id, u.email, COUNT(*) AS n "
+        "FROM password_reset_tokens t JOIN users u ON u.id = t.user_id "
+        "WHERE t.created_at >= ? GROUP BY u.id, u.account_id, u.email "
+        "HAVING COUNT(*) > ?",
+        (_cutoff(hours), T_RESETS_PER_USER))
+    return [Signal(rule="reset_flood", severity="med", account_id=r["account_id"],
+                   ip=None, count=int(r["n"]),
+                   evidence=f"{r['n']} password-reset tokens for {r['email']}",
+                   user_id=r["user_id"], email=r["email"])
+            for r in await cur.fetchall()]
+
+
+async def rule_injection_attempt(db, hours: int) -> list[Signal]:
+    """Injection payloads in captured errors (error_log)."""
+    cur = await db.execute(
+        "SELECT account_id, job_name, error_msg, COUNT(*) AS n FROM error_log "
+        "WHERE created_at >= ? GROUP BY account_id, job_name, error_msg",
+        (_cutoff(hours),))
+    out: list[Signal] = []
+    for r in await cur.fetchall():
+        if INJECTION_MARKERS.search(r["error_msg"] or ""):
+            payload = (r["error_msg"] or "")[:70]
+            where = r["job_name"] or "unattributed"
+            out.append(Signal(
+                rule="injection_attempt", severity="high",
+                account_id=r["account_id"], ip=None, count=int(r["n"]),
+                subject=where,
+                # The endpoint is the row's subject when no account is
+                # known; repeating it in every evidence line says nothing.
+                evidence=payload if r["account_id"] is None else f"{where}: {payload}"))
+    return out
+
+
+async def rule_operator_probing(db, hours: int) -> list[Signal]:
+    """Refused hits on the operator surface (security_requests, ledger-only)."""
+    cur = await db.execute(
+        "SELECT account_id, ip, COUNT(*) AS n FROM security_requests "
+        "WHERE created_at >= ? AND status IN (401, 403) AND path LIKE '/api/system/%' "
+        "GROUP BY account_id, ip HAVING COUNT(*) > ?",
+        (_cutoff(hours), T_SYSTEM_403_PER_SRC))
+    return [Signal(rule="operator_probing", severity="high",
+                   account_id=r["account_id"], ip=r["ip"], count=int(r["n"]),
+                   evidence=f"{r['n']} refused /system/* attempts")
+            for r in await cur.fetchall()]
+
+
+async def rule_privilege_sweep(db, hours: int) -> list[Signal]:
+    """Refused admin writes — escalation attempts (security_requests, ledger-only)."""
+    cur = await db.execute(
+        "SELECT account_id, ip, COUNT(*) AS n FROM security_requests "
+        "WHERE created_at >= ? AND status = 403 AND method IN ('PUT','POST','PATCH','DELETE') "
+        "AND path LIKE '/api/admin/%' GROUP BY account_id, ip HAVING COUNT(*) > ?",
+        (_cutoff(hours), T_ADMIN_403_PER_USER))
+    return [Signal(rule="privilege_sweep", severity="high",
+                   account_id=r["account_id"], ip=r["ip"], count=int(r["n"]),
+                   evidence=f"{r['n']} refused admin writes")
+            for r in await cur.fetchall()]
+
+
+ALL_RULES = (
+    rule_signup_burst, rule_disposable_email, rule_lockout_storm,
+    rule_non_browser_auth, rule_ip_rotation, rule_reset_flood,
+    rule_injection_attempt, rule_operator_probing, rule_privilege_sweep,
+)
+
+
+def _rule_id(rule) -> str:
+    """The console id of a rule function: ``rule_signup_burst`` names
+    ``RULES["signup_burst"]``.  One derivation, checked once at import,
+    so a failed rule is reported under the same name the page already
+    labels it with — never a Python function name."""
+    return rule.__name__.removeprefix("rule_")
+
+
+for _r in ALL_RULES:
+    assert _rule_id(_r) in RULES, f"{_r.__name__} has no RULES entry"
+del _r
+
+
+@dataclass(frozen=True)
+class DetectorRun:
+    """One pass of the detector, with what it could NOT do said out loud.
+
+    A rule that fails silently is how "nothing suspicious" and "the
+    detector is broken" become the same output — the first run of this
+    module returned zero candidates because every rule was raising
+    against a mistyped handle.  So the failures travel WITH the result,
+    as a return value rather than a log line, because a caller cannot
+    forget to read a return value the way it can forget to read a log.
+    """
+    candidates: list[dict]
+    failed_rules: tuple[str, ...]        # console ids, ALL_RULES order
+    total_rules: int
+
+    @property
+    def broken(self) -> bool:
+        """Every rule failed: the empty list means broken, not clean."""
+        return bool(self.failed_rules) and len(self.failed_rules) == self.total_rules
+
+    @property
+    def partial(self) -> bool:
+        """Some rules failed: the list is real but incomplete."""
+        return bool(self.failed_rules) and not self.broken
+
+
+async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
+    """The ranked candidates only.  Callers that must tell a clean
+    result from a broken detector — the nightly watch, the console page
+    — use :func:`run_detector` and read ``failed_rules``."""
+    return (await run_detector(db, hours=hours)).candidates
+
+
+async def run_detector(db, *, hours: int = 24 * 7) -> DetectorRun:
+    """Run every rule, group hits into ranked candidates.
+
+    Grouped by account when the signal names one; otherwise by IP, so a
+    refusal storm with no valid account (the probe's /system/* attempts)
+    still surfaces as a candidate an operator can look at.  Already
+    monitored/quarantined accounts are annotated, not hidden — seeing
+    that a rule still fires on a watched account is the point.
+    """
+    # Accept either the Database or the raw handle its mixins use, so a
+    # caller can hand over ``platform_db`` without reaching into it.
+    handle = getattr(db, "_db", db)
+    signals: list[Signal] = []
+    failed: list[str] = []
+    for rule in ALL_RULES:
+        try:
+            signals.extend(await rule(handle, hours))
+        except Exception as e:  # noqa: BLE001 — one broken rule must not blind the rest
+            # ...but a rule that fails SILENTLY is how "nothing suspicious"
+            # and "the detector is broken" become the same output.  The
+            # first run of this module returned zero candidates because
+            # all eight rules were raising against a mistyped handle, and
+            # the swallow made that look like a clean result.  The log
+            # line stays (ops read it); the RETURN carries it too, so a
+            # caller cannot mistake this pass for a clean one.
+            failed.append(_rule_id(rule))
+            logger.warning("security detector: rule %s failed: %s", rule.__name__, e)
+    if failed and len(failed) == len(ALL_RULES):
+        logger.error(
+            "security detector: EVERY rule failed (%s) — the empty result "
+            "means broken, not clean", ", ".join(failed))
+
+    # A candidate is opened only by a signal that means something on its
+    # own (med or high).  Low signals attach to a subject already
+    # implicated — otherwise "someone used curl" fills the page with rows
+    # an operator has no reason to read, which is how a detector stops
+    # being read at all.
+    cands: dict[tuple, Candidate] = {}
+    def _key(sig: Signal) -> tuple:
+        if sig.account_id is not None:
+            return ("acct", sig.account_id)
+        if sig.ip:
+            return ("ip", sig.ip)
+        return ("subject", sig.subject or "unattributed")
+
+    for s in (x for x in signals if x.severity != "low"):
+        key = _key(s)
+        c = cands.get(key)
+        if c is None:
+            c = Candidate(account_id=s.account_id, ip=s.ip, subject=s.subject)
+            cands[key] = c
+        c.signals.append(s)
+    for s in (x for x in signals if x.severity == "low"):
+        key = _key(s)
+        if key in cands:
+            cands[key].signals.append(s)
+
+    # annotate the account-keyed candidates with name + current kind
+    acct_ids = [c.account_id for c in cands.values() if c.account_id is not None]
+    if acct_ids:
+        placeholders = ",".join("?" * len(acct_ids))
+        cur = await handle.execute(
+            f"SELECT id, name, kind, security FROM accounts WHERE id IN ({placeholders})",
+            acct_ids)
+        meta = {r["id"]: (r["name"], r["kind"], r["security"] or "normal")
+                for r in await cur.fetchall()}
+        for c in cands.values():
+            if c.account_id in meta:
+                c.name, c.kind, c.security = meta[c.account_id]
+
+    # The people the signals named, with the standing each currently
+    # holds.  Read separately from the account's: the case this whole
+    # field exists for is a watched person inside an account that is
+    # NOT watched, and an account's standing says nothing about theirs.
+    user_ids = sorted({s.user_id for c in cands.values()
+                       for s in c.signals if s.user_id is not None})
+    if user_ids:
+        placeholders = ",".join("?" * len(user_ids))
+        cur = await handle.execute(
+            f"SELECT id, security FROM users WHERE id IN ({placeholders})",
+            user_ids)
+        standings = {r["id"]: (r["security"] or "normal")
+                     for r in await cur.fetchall()}
+        for c in cands.values():
+            for uid, _ in c.people:
+                if uid in standings:
+                    c.people_security[uid] = standings[uid]
+
+    # An account we have already classified as ours is not a finding:
+    # the rules describe our own fixtures exactly as well as they
+    # describe a stranger, so without this the page shows the same
+    # test accounts forever and stops being read.
+    #
+    # Two things bring such a row back, and they are the same reason
+    # said of two subjects: we are WATCHING somebody here.  Seeing that
+    # a rule still fires on someone under observation is the entire
+    # point of observing them.  The account is one such subject; a
+    # PERSON inside it is the other, and the person is the case that
+    # used to be unreachable — the only way to watch them was to watch
+    # their employer, which records all twenty-three of its people.
+    #
+    # Read both off the security axis, never the kind axis: a watched
+    # customer is real + monitored, and since the two axes split,
+    # "ours" and "watched" are both true of every account watched so
+    # far.  Dropping on kind alone would have emptied the watching
+    # table.
+    def _ours_and_quiet(c: Candidate) -> bool:
+        if c.kind != "test" or (c.security or "normal") != "normal":
+            return False
+        return all(c.people_security.get(uid, "normal") == "normal"
+                   for uid, _ in c.people)
+
+    cands = {k: c for k, c in cands.items() if not _ours_and_quiet(c)}
+
+    ranked = sorted(cands.values(), key=lambda c: (c.weight, len(c.signals)), reverse=True)
+    return DetectorRun(
+        candidates=[_as_dict(c) for c in ranked],
+        failed_rules=tuple(failed),
+        total_rules=len(ALL_RULES),
+    )
+
+
+def _as_dict(c: Candidate) -> dict[str, Any]:
+    return {
+        "account_id": c.account_id,
+        "ip": c.ip,
+        "subject": c.subject,
+        "name": c.name,
+        "kind": c.kind,
+        "security": c.security or "normal",
+        # WHO, beside WHERE. An operator reading this row can put the
+        # person under observation instead of their whole company.
+        "people": [
+            {"user_id": uid, "email": email,
+             "security": c.people_security.get(uid, "normal")}
+            for uid, email in c.people
+        ],
+        "severity": c.severity,
+        "weight": c.weight,
+        "rules": c.rules,
+        "signals": [
+            {"rule": s.rule, "severity": s.severity, "count": s.count, "evidence": s.evidence}
+            for s in c.signals
+        ],
+    }
+
+
+def board(candidates: list[dict]) -> dict[str, Any]:
+    """Arrange ranked candidates the way an operator decides about them.
+
+    ``new`` is what needs a decision — subjects not already watched.  A
+    signup burst there is ONE row with its members folded inside: the
+    fact is "N accounts from one address", and N rows each saying so is
+    the same fact N times, which is how the page becomes a wall.  A
+    burst of one is not a burst and stays a plain row.
+
+    ``watching`` is what the rules still say about accounts whose
+    SECURITY standing is monitored — the reason to watch someone is to
+    see this — keyed for the watching table to join, not repeated as
+    candidates. Read off the security axis, never the kind axis: a
+    watched customer is real + monitored.
+
+    ``watching_people`` is the same list for watched PERSONS, and it is
+    separate on purpose: their employer is usually not watched, so
+    folding them into the account list would either hide them or claim
+    something about the company that is not true.  A candidate can
+    appear in both lists — as an account still awaiting a decision, and
+    as evidence about the one person in it already under observation.
+    """
+    watching = [
+        {"account_id": c["account_id"], "rules": c["rules"], "severity": c["severity"]}
+        for c in candidates if c.get("security") == "monitored"
+    ]
+    watching_people = [
+        {"user_id": person["user_id"], "email": person.get("email"),
+         "account_id": c["account_id"], "account_name": c.get("name"),
+         "account_security": c.get("security") or "normal",
+         "rules": c["rules"], "severity": c["severity"]}
+        for c in candidates
+        for person in c.get("people", [])
+        if person.get("security") == "monitored"
+    ]
+    # A watched PERSON does not move their employer's row out of `new`:
+    # the account may still be carrying a finding nobody has decided
+    # about, and watching one of its people is not that decision.
+    fresh = [c for c in candidates if c.get("security") != "monitored"]
+
+    by_ip: dict[str, list[dict]] = {}
+    rest: list[dict] = []
+    for c in fresh:
+        in_burst = c["account_id"] is not None and c["ip"] and any(
+            sig["rule"] == "signup_burst" for sig in c["signals"])
+        if in_burst:
+            by_ip.setdefault(c["ip"], []).append(c)
+        else:
+            rest.append(c)
+
+    groups: list[dict] = []
+    for ip, members in by_ip.items():
+        if len(members) == 1:
+            rest.append(members[0])
+            continue
+        rules: list[str] = []
+        for m in members:
+            for r in m["rules"]:
+                if r not in rules:
+                    rules.append(r)
+        groups.append({
+            "group": "burst",
+            "account_id": None, "ip": ip, "subject": None, "name": None,
+            "kind": None, "security": None,
+            "severity": "high",
+            "weight": max(m["weight"] for m in members),
+            "rules": rules,
+            "signals": [{
+                "rule": "signup_burst", "severity": "high", "count": len(members),
+                "evidence": f"{len(members)} accounts created from {ip}",
+            }],
+            "members": [
+                {"account_id": m["account_id"], "name": m["name"], "kind": m["kind"],
+                 "security": m.get("security"),
+                 "rules": [r for r in m["rules"] if r != "signup_burst"], "weight": m["weight"]}
+                for m in members
+            ],
+        })
+
+    new = sorted(groups + rest,
+                 key=lambda c: (SEVERITY_RANK.get(c["severity"], 0), c["weight"]),
+                 reverse=True)
+    return {"new": new, "watching": watching,
+            "watching_people": watching_people}

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from capabilities.security import detector as D
+from system.security import detector as D
 
 
 # ── the vocabulary ────────────────────────────────────────────────
@@ -549,7 +549,7 @@ async def _boom(handle, hours):
 async def test_a_failed_rule_is_named_in_the_result_by_its_console_id(seeded_db, monkeypatch):
     """The page labels rules by RULES id (/security/rules); a failed one
     must be reported under the same name, never a function name."""
-    from capabilities.security import detector as D
+    from system.security import detector as D
     broken = _boom
     broken.__name__ = "rule_signup_burst"
     monkeypatch.setattr(D, "ALL_RULES", (broken, *D.ALL_RULES[1:]))
@@ -561,7 +561,7 @@ async def test_a_failed_rule_is_named_in_the_result_by_its_console_id(seeded_db,
 
 
 async def test_every_rule_failing_is_broken_in_the_result(seeded_db, monkeypatch):
-    from capabilities.security import detector as D
+    from system.security import detector as D
     fakes = []
     for r in D.ALL_RULES:
         async def f(handle, hours, _n=r.__name__):
@@ -576,7 +576,7 @@ async def test_every_rule_failing_is_broken_in_the_result(seeded_db, monkeypatch
 
 
 async def test_find_candidates_is_the_same_list(seeded_db):
-    from capabilities.security import detector as D
+    from system.security import detector as D
     run = await D.run_detector(seeded_db["db"], hours=24)
     assert await D.find_candidates(seeded_db["db"], hours=24) == run.candidates
 
@@ -584,5 +584,5 @@ async def test_find_candidates_is_the_same_list(seeded_db):
 def test_every_rule_has_a_console_id_and_the_order_matches():
     """The guard at import is the real one; this makes it a test that
     fails in CI rather than an AssertionError at boot."""
-    from capabilities.security import detector as D
+    from system.security import detector as D
     assert [D._rule_id(r) for r in D.ALL_RULES] == list(D.RULES)

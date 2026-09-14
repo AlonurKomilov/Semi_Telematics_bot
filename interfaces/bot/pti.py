@@ -77,7 +77,7 @@ async def _send_to_telegram(account_id: int, telegram_id: int, text: str,
     # A held company is sent nothing. This module reaches people by
     # calling the Telegram and email transports directly, so the
     # notification core's own gate never sees it.
-    from capabilities.security import quarantine
+    from system.security import quarantine
     if await quarantine.delivery_blocked(account_id):
         return False
     bot_app = get_app_for_account(account_id)
@@ -133,7 +133,7 @@ async def cmd_pti(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # wall, which reads as a broken product rather than a paused
     # account.
     try:
-        from capabilities.security import quarantine
+        from system.security import quarantine
         if quarantine.enabled() and await quarantine.is_request_held(
                 user.id, user.account_id):
             await update.effective_chat.send_message(

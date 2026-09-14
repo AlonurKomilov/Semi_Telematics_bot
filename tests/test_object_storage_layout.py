@@ -43,7 +43,7 @@ ROOT = _REPO
 #
 # Scripts are excluded on purpose: the repair
 # tooling legitimately names the legacy layouts it exists to clean up.
-SOURCE_DIRS = ("features", "capabilities", "adapters", "interfaces", "infra")
+SOURCE_DIRS = ("features", "capabilities", "adapters", "interfaces", "infra", "system")
 
 # The canonical holding pen.  Any OTHER placeholder name means a second
 # pen, which is worse than one badly-named pen: files scatter across

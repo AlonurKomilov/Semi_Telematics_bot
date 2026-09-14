@@ -43,7 +43,7 @@ import re
 
 from tests._repo import REPO, is_test_path, scanned
 
-_LAYERS = ("capabilities", "features", "adapters", "infra", "interfaces")
+_LAYERS = ("capabilities", "features", "adapters", "infra", "interfaces", "system")
 
 _MUTATORS = ("clear", "append", "update", "pop", "add", "setdefault",
              "discard", "remove", "insert", "extend")

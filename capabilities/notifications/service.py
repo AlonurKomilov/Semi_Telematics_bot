@@ -299,7 +299,7 @@ async def _account_is_held(account_id: int) -> bool:
     Fails open, like every reader of this standing.
     """
     try:
-        from capabilities.security import quarantine
+        from system.security import quarantine
         if not quarantine.enabled():
             return False
         return await quarantine.is_account_held(account_id)
@@ -335,7 +335,7 @@ async def _reroute_quarantined(db, account_id: int, subs: list[dict],
     Fail-open, like every predicate in this module: a standing we cannot
     read keeps the recipient.
     """
-    from capabilities.security import quarantine
+    from system.security import quarantine
     if not quarantine.enabled():
         return subs
 

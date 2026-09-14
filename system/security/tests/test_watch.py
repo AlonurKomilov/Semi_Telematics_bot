@@ -13,14 +13,14 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-from capabilities.security import watch as W
-from capabilities.security import owner_notice as N
+from system.security import watch as W
+from system.security import owner_notice as N
 
 
 
 def _run(cands, failed=(), total=9):
     """A DetectorRun the way run_detector would hand it back."""
-    from capabilities.security.detector import DetectorRun
+    from system.security.detector import DetectorRun
     return DetectorRun(candidates=list(cands), failed_rules=tuple(failed),
                        total_rules=total)
 
@@ -29,7 +29,7 @@ def _patch_detector(monkeypatch, cands, failed=(), total=9):
     async def fake(db_, *, hours):
         assert hours == W.WINDOW_HOURS
         return _run(cands, failed, total)
-    monkeypatch.setattr("capabilities.security.detector.run_detector", fake)
+    monkeypatch.setattr("system.security.detector.run_detector", fake)
 
 
 def _cand(**over) -> dict:
@@ -175,7 +175,7 @@ async def test_a_broken_detector_still_reaches_the_operator(monkeypatch, seeded_
 
     async def boom(db_, *, hours):
         raise RuntimeError("rules table gone")
-    monkeypatch.setattr("capabilities.security.detector.run_detector", boom)
+    monkeypatch.setattr("system.security.detector.run_detector", boom)
     from capabilities.permissions import roles
     monkeypatch.setattr(roles, "SYSTEM_OWNER_IDS", {111}, raising=False)
     app = _App()
@@ -370,7 +370,7 @@ async def test_every_rule_failing_reaches_the_operator_through_the_real_detector
 
 
 def test_broken_is_read_from_the_run_not_only_from_a_raise():
-    from capabilities.security.detector import RULES
+    from system.security.detector import RULES
     text = W.compose([], failed=False, failed_rules=tuple(RULES), total_rules=len(RULES))
     assert text is not None and "could not run" in text
 

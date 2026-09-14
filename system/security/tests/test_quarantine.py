@@ -14,7 +14,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-from capabilities.security import quarantine as Q
+from system.security import quarantine as Q
 
 pytestmark = pytest.mark.asyncio
 
@@ -214,7 +214,7 @@ async def test_the_owner_is_told_by_name_and_not_told_why(seeded_db):
         account_id=acct.id, role=Role.DISPATCHER, display_name="Aziz")
 
     sent: list = []
-    import capabilities.security.quarantine as qmod
+    import system.security.quarantine as qmod
     import capabilities.notifications.service as svc
     orig = svc.notify_user
 

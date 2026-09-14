@@ -166,7 +166,7 @@ class ApplicationsMixin(_MixinBase):
         if not account_id:
             return False
         try:
-            from capabilities.security import quarantine
+            from system.security import quarantine
             if not quarantine.enabled():
                 return False
             return await quarantine.is_account_held(int(account_id))

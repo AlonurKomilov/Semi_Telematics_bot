@@ -158,7 +158,7 @@ async def test_rules_endpoint_describes_every_rule(api):
     app, _db, _acct = api
     r = await _get(app, "/api/system/security/rules")
     assert r.status_code == 200, r.text
-    from capabilities.security.detector import ALL_RULES
+    from system.security.detector import ALL_RULES
     items = r.json()["items"]
     assert {x["id"] for x in items} == {f.__name__.removeprefix("rule_") for f in ALL_RULES}
     assert all(x["label"] and x["means"] and x["severity"] in ("high", "med", "low") for x in items)

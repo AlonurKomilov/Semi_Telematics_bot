@@ -485,6 +485,12 @@ _PROCESS_CACHES = (
     ("capabilities.permissions.plans", "_QUOTAS"),
     ("capabilities.permissions.plans", "_LABELS"),
     ("capabilities.permissions.plans", "_TIER_OF"),
+    # system.security: verdicts keyed by account / user id, 60s TTL.
+    # Ids repeat per test-database copy, so a stale entry is a
+    # valid-looking hit — the ledger route test flaked on exactly this.
+    ("system.security.recorder", "_security_cache"),
+    ("system.security.quarantine", "_cache"),
+    ("system.security.quarantine", "_account_cache"),
     ("capabilities.permissions.scope", "_role_scope_cache"),
     ("adapters.storage.platform_settings", "_settings_cache"),
     ("capabilities.ai.cache", "_response_cache"),

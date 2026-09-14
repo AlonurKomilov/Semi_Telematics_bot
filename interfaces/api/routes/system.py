@@ -1173,11 +1173,11 @@ async def operator_set_account_security(
     # The recorder caches this for a minute; without the drop, a freshly
     # watched account is not recorded until the cache expires.
     try:
-        from capabilities.security.recorder import forget_security
+        from system.security.recorder import forget_security
         forget_security(account_id, kind="account")
     except Exception:
         logger.exception("security cache drop failed for account %s", account_id)
-    from capabilities.security import quarantine
+    from system.security import quarantine
     try:
         quarantine.forget_account(account_id)
     except Exception:
@@ -1238,17 +1238,17 @@ async def operator_set_user_security(
     previous = getattr(target, "security", "normal") or "normal"
     await platform_db.update_user(user_id, security=body.security)
     try:
-        from capabilities.security.recorder import forget_security
+        from system.security.recorder import forget_security
         forget_security(user_id, kind="user")
     except Exception:
         logger.exception("security cache drop failed for user %s", user_id)
     try:
-        from capabilities.security import quarantine
+        from system.security import quarantine
         quarantine.forget(user_id)
     except Exception:
         logger.exception("quarantine cache drop failed for user %s", user_id)
 
-    from capabilities.security import quarantine
+    from system.security import quarantine
     ended = 0
     told = False
     if body.security == quarantine.HELD and previous != quarantine.HELD:
@@ -1266,7 +1266,7 @@ async def operator_set_user_security(
         # fix quickly, and a platform that noticed and said nothing has
         # kept a secret from the one party with standing to act. Never
         # from the detector's hand: see owner_notice for why.
-        from capabilities.security import owner_notice
+        from system.security import owner_notice
         told = await owner_notice.tell_owner(
             platform_db, account_id=target.account_id, person=target)
 
@@ -1828,7 +1828,7 @@ async def security_candidates(
     patient probe spreads over days and only reads as one story at that
     range.
     """
-    from capabilities.security.detector import board, run_detector
+    from system.security.detector import board, run_detector
     run = await run_detector(platform_db, hours=hours)
     items = run.candidates
     arranged = board(items)
@@ -1859,7 +1859,7 @@ async def security_rules(_user: dict = Depends(require_system_owner)):
     Served from the detector's own table so the legend on the page and
     the thresholds in the code cannot drift apart.
     """
-    from capabilities.security.detector import RULES
+    from system.security.detector import RULES
     return {"items": [{"id": rid, **meta} for rid, meta in RULES.items()]}
 
 

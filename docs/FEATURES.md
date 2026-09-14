@@ -324,8 +324,13 @@ changes nothing until the operator narrows a plan.
 
 - `capabilities/<x>/` (alerting, reporting, ai, scorecards, warehouse, …) —
   **tenant-serving machinery**: exists to power the customer's features.
-- `capabilities/platform/<x>/` — **system-owner domains**: serve 4truck the
-  operator, not the customer's daily work.  Members: `billing` (today);
+- `capabilities/platform/<x>/` — **dual-audience money domains**: the
+  operator's endpoints AND a customer-facing surface (billing: the
+  customer's own card page). Members: `billing`. Operator-ONLY
+  services live one layer up, in `system/` (security today; the
+  operator-only platform packages follow): reachable only via
+  `/system/*`, no `can_*` flag, nothing below may import it —
+  `tests/test_layer_boundaries.py`.
   account-purge + operator-console services (future candidates).
 
 Boundary rules, CI-enforced by `tests/test_layer_boundaries.py`:

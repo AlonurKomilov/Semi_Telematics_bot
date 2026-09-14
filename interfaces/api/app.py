@@ -210,7 +210,7 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
             # shutdown are lost; for a ledger of this kind that is a
             # better trade than a timing tell.
             try:
-                from capabilities.security.recorder import record_request
+                from system.security.recorder import record_request
                 from interfaces.api.rate_limit import client_ip
                 task = asyncio.create_task(record_request(
                     method=request.method,
@@ -310,7 +310,7 @@ class QuarantineMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        from capabilities.security import quarantine
+        from system.security import quarantine
         if not quarantine.enabled():
             return await call_next(request)
         path = request.url.path

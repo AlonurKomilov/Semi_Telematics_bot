@@ -719,7 +719,7 @@ async def check_application_status(
     # stop — answered with the same "not found" an unknown reference
     # gets, so nobody outside learns that a review is open.
     if row is not None:
-        from capabilities.security import quarantine
+        from system.security import quarantine
         try:
             if await quarantine.delivery_blocked(row.get("account_id")):
                 row = None

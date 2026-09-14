@@ -26,7 +26,7 @@ pytestmark = pytest.mark.asyncio
 async def api(pg_db, monkeypatch):
     import infra.platform as plat
     monkeypatch.setattr(plat, "_db", pg_db, raising=False)
-    from capabilities.security import recorder
+    from system.security import recorder
     recorder.forget_security()
     from interfaces.api.app import create_api
     app = create_api()
@@ -86,7 +86,7 @@ async def test_a_monitored_account_is_not_slower_than_a_normal_one(api, monkeypa
     import time
 
     app, _db = api
-    from capabilities.security import recorder
+    from system.security import recorder
 
     async def slow_record(**_kw):
         await asyncio.sleep(0.4)
