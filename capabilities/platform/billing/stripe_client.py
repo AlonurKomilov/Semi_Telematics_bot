@@ -524,7 +524,12 @@ class StripeBillingProvider:
             logger.info("Subscription canceled: account=%s", account_id)
 
         elif event_type == "invoice.payment_succeeded":
-            await db.record_invoice(account_id, **self._invoice_fields(data))
+            row = self._invoice_fields(data)
+            await db.record_invoice(account_id, **row)
+            # Our own receipt, with the PDF attached — off until
+            # BILLING_RECEIPT_EMAIL says otherwise, so it can run beside
+            # Stripe's for a cycle before Stripe's is switched off.
+            await self._send_our_receipt(account_id, db, row, data)
             # Lift past_due once a payment lands.  We don't touch other
             # statuses (active / trialing / canceled) — a paid invoice
             # against a canceled subscription is rare but real (final
@@ -983,6 +988,27 @@ class StripeBillingProvider:
         return {}
 
     # ── Webhook helpers ──────────────────────────────────────────
+
+    @staticmethod
+    async def _send_our_receipt(account_id: int, db, row: dict, data) -> None:
+        """Best-effort, and the effort stops at the webhook's edge: the
+        invoice is already recorded, and an exception here would make
+        Stripe retry the whole event and record it twice."""
+        from capabilities.platform.billing import receipt_email
+        if not receipt_email.enabled():
+            return
+        try:
+            sub = await db.get_subscription(account_id) or {}
+            acct = await db.get_account(account_id)
+            to = str(_field(data, "customer_email", "") or sub.get("billing_email") or "")
+            sent = await _off_loop(
+                receipt_email.send,
+                to=to, account_name=getattr(acct, "name", "") or "",
+                invoice=row, support=(os.getenv("SUPPORT_CONTACT") or "").strip())
+            logger.info("receipt email for invoice %s to %s: %s",
+                        row.get("provider_invoice_id"), to or "(nobody)", "sent" if sent else "not sent")
+        except Exception:
+            logger.exception("receipt email: the send path raised for account %s", account_id)
 
     @staticmethod
     async def _resolve_account_id(data, db) -> int | None:

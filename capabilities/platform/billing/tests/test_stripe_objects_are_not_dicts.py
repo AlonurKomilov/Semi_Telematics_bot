@@ -185,3 +185,108 @@ def test_an_invoice_payload_projects_from_a_real_object():
     assert out["provider_subscription_id"] == "sub_1" and out["provider_customer_id"] == "cus_1"
     assert out["period_start"].startswith("20") and out["paid_at"].startswith("20")
     assert out["hosted_invoice_url"] == "https://stripe/i"
+
+
+@pytest.mark.asyncio
+async def test_a_paid_invoice_sends_our_receipt_and_a_failure_never_reaches_stripe(db, monkeypatch):
+    """The webhook records the invoice, then sends our receipt.  The
+    order matters: an exception in the send would make Stripe retry the
+    whole event and the invoice would be recorded twice."""
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_x")
+    monkeypatch.setenv("BILLING_RECEIPT_EMAIL", "1")
+    acct = await db.create_account("Receipt Co")
+    await db.get_or_create_subscription(acct.id)
+    await db.update_subscription(acct.id, provider="stripe", provider_customer_id="cus_1",
+                                 billing_email="fallback@co.example")
+
+    event = SO(id="evt_2", type="invoice.payment_succeeded", data={"object": SO(
+        id="in_9", customer="cus_1", subscription="", customer_email="adam@co.example",
+        amount_due=76098, amount_paid=76098, currency="usd", status="paid",
+        hosted_invoice_url="https://stripe/i/9", invoice_pdf="https://stripe/i/9.pdf",
+        period_start=1800000000, period_end=1802592000,
+        status_transitions=SO(paid_at=1800000001), lines={"data": []},
+        metadata=SO(account_id=str(acct.id)))})
+
+    class _S:
+        class Webhook:
+            @staticmethod
+            def construct_event(p, s, k): return event
+        class error:  # noqa: N801
+            class SignatureVerificationError(Exception): ...
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: _S)
+
+    seen: list[dict] = []
+    from capabilities.platform.billing import receipt_email as R
+    monkeypatch.setattr(R, "fetch_pdf", lambda url: b"%PDF-1.7 x")
+    import capabilities.email.smtp as smtp
+    monkeypatch.setattr(smtp, "send_email_detailed", lambda **kw: seen.append(kw) or True)
+
+    out = await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
+    assert out["handled"] is True
+    assert [i["provider_invoice_id"] for i in await db.get_invoices(acct.id)] == ["in_9"]
+    assert len(seen) == 1 and seen[0]["to"] == "adam@co.example", "Stripe's own address wins over ours"
+    assert seen[0]["attachments"][0][0] == "4truck-invoice-in_9.pdf"
+
+    # a mailer that explodes must not take the webhook with it
+    seen.clear()
+    def _boom(**kw):
+        raise RuntimeError("relay down")
+    monkeypatch.setattr(smtp, "send_email_detailed", _boom)
+    event2 = SO(id="evt_3", type="invoice.payment_succeeded", data={"object": SO(
+        id="in_10", customer="cus_1", subscription="", customer_email="adam@co.example",
+        amount_due=100, amount_paid=100, currency="usd", status="paid",
+        hosted_invoice_url="", invoice_pdf="", period_start=1800000000, period_end=1802592000,
+        status_transitions=SO(paid_at=1800000001), lines={"data": []},
+        metadata=SO(account_id=str(acct.id)))})
+    class _S2(_S):
+        class Webhook:
+            @staticmethod
+            def construct_event(p, s, k): return event2
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: _S2)
+    out2 = await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
+    assert out2["handled"] is True, "the webhook answered Stripe anyway"
+    assert len(await db.get_invoices(acct.id)) == 2
+
+    # The inner layer above absorbs a mailer that refuses.  This is the
+    # OUTER one's own reason: a read the send path needs — the account's
+    # name for the greeting — failing before any mail is attempted.
+    # Without the wrapper the webhook raises, Stripe retries the event,
+    # and the invoice is recorded a second time.
+    async def _dead_read(_account_id):
+        raise RuntimeError("platform db gone")
+    real_get_account = db.get_account
+    db.get_account = _dead_read
+    monkeypatch.setattr(smtp, "send_email_detailed", lambda **kw: seen.append(kw) or True)
+    seen.clear()
+    event_db = SO(id="evt_5", type="invoice.payment_succeeded", data={"object": SO(
+        id="in_12", customer="cus_1", subscription="", customer_email="adam@co.example",
+        amount_due=100, amount_paid=100, currency="usd", status="paid",
+        hosted_invoice_url="", invoice_pdf="", period_start=1800000000, period_end=1802592000,
+        status_transitions=SO(paid_at=1800000001), lines={"data": []},
+        metadata=SO(account_id=str(acct.id)))})
+    class _S4(_S):
+        class Webhook:
+            @staticmethod
+            def construct_event(p, s, k): return event_db
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: _S4)
+    out3 = await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
+    assert out3["handled"] is True, "a broken read in the receipt path must not reach Stripe"
+    assert len(await db.get_invoices(acct.id)) == 3 and seen == []
+    db.get_account = real_get_account
+
+    # and with the switch off, nothing is sent at all
+    monkeypatch.delenv("BILLING_RECEIPT_EMAIL")
+    monkeypatch.setattr(smtp, "send_email_detailed", lambda **kw: seen.append(kw) or True)
+    event3 = SO(id="evt_4", type="invoice.payment_succeeded", data={"object": SO(
+        id="in_11", customer="cus_1", subscription="", customer_email="adam@co.example",
+        amount_due=100, amount_paid=100, currency="usd", status="paid",
+        hosted_invoice_url="", invoice_pdf="", period_start=1800000000, period_end=1802592000,
+        status_transitions=SO(paid_at=1800000001), lines={"data": []},
+        metadata=SO(account_id=str(acct.id)))})
+    class _S3(_S):
+        class Webhook:
+            @staticmethod
+            def construct_event(p, s, k): return event3
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: _S3)
+    await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
+    assert seen == []

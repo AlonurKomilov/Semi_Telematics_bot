@@ -179,6 +179,35 @@ own: `make restart` reads `.env` and only `.env`. Its two uses:
   its own hosts. Without a staging server, a real test after go-live is
   section 4b's step 6: a real card, then a refund.
 
+## 4f. The receipt a paying customer gets
+
+Two senders are possible and only one should end up on. Stripe's own
+receipt is a dashboard switch (**Settings → Customer emails →
+Successful payments**) — no code, Stripe's infrastructure, a link to a
+hosted page. Ours is `BILLING_RECEIPT_EMAIL=1`: the same moment, from
+4truck, with the invoice PDF attached so whoever files it never leaves
+their inbox.
+
+One PDF and not two, and that is Stripe's shape rather than a choice:
+`invoice.invoice_pdf` is the only document the API hands out. The
+second PDF in a Stripe-sent receipt is generated inside Stripe's own
+templates; what an API consumer can reach beyond the invoice is
+`charge.receipt_url`, an HTML page. So ours attaches the PDF and links
+the hosted page.
+
+The order that does not leave a paying customer with nothing:
+
+1. Stripe's on, ours off — go live this way. A receipt is guaranteed.
+2. Turn ours on too, for one billing cycle. Read what arrives: the
+   words, the attachment, and above all whether it lands in the inbox
+   rather than spam (a young sending domain is the real risk here).
+3. Only then turn Stripe's off.
+
+Ours never raises: the invoice is recorded before the send, a PDF that
+will not download is sent as a link instead, and a mailer that refuses
+is logged. A webhook that raised would make Stripe retry the event and
+the invoice would be recorded twice.
+
 ## 5. Known limits, decided
 
 - A subscription made before per-plan extras Prices stays on the
