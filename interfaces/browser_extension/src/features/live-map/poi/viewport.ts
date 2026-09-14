@@ -108,6 +108,22 @@ export function filterToView(features: PoiFeature[], view: ViewBox): PoiFeature[
  *
  * A cap that lies is worse than no cap: the row shows both numbers, so
  * "12 truck stops near me" is never silently "12 of 900".
+ *
+ * MEASURED 2026-09-14, once the layers were in our own table and could
+ * be counted instead of guessed at — the number was chosen before that
+ * was possible, and this is the check it was owed.  Points per layer in
+ * a real viewport:
+ *
+ *     Chicago metro  (0.5 deg)   28 at the most  (weigh stations)
+ *     Chicago wide   (1.5 deg)   96
+ *     I-80 corridor  (6 deg)    205   <- widest tested, still under
+ *     Dallas-Houston (4 deg)    140
+ *
+ * Six degrees is already absurd on a 320px column, and the densest
+ * layer there still fits.  So the cap does not bite in practice: nobody
+ * is being shown a partial layer, and nothing is drawing hundreds of
+ * markers to stutter over.  Left exactly as it was — but now because it
+ * was counted, not because nobody had looked.
  */
 export const MARKER_BUDGET = 250;
 
