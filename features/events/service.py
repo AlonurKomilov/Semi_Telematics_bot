@@ -10,11 +10,26 @@ async def get_events(
     account_id: int,
     days: int = 7,
     company: str | None = None,
+    vehicle_id: str | None = None,
 ) -> list[dict]:
     """Fetch safety events (hard brakes, speeding, etc.).
 
     Warehouse-first: reads ``safety_event_log`` when WAREHOUSE_READS_ENABLED=1,
     falls back to live Samsara otherwise (or on cold-start empty warehouse).
+
+    ``vehicle_id`` is the truck's PROVIDER id, and it narrows the
+    warehouse read rather than deciding membership: a caller asking
+    about one truck was reading the whole account's window — every
+    truck's events for up to 30 days, each row decoding its own 2 KB
+    raw blob — to keep one truck's.  Rows that carry NO provider id
+    come back too, because only the caller's identity ladder can judge
+    those, by unit name.  The narrowing is therefore a superset of any
+    one truck's rows, never a filter the caller can rely on: callers
+    must still apply their own.
+
+    It has no effect on the live-Samsara fallback, which has no
+    per-vehicle endpoint here — that path stays account-wide and the
+    caller's own filter does the work, as it always did.
     """
     await prepare_companies(account_id)
     client = await get_client(account_id)
@@ -25,6 +40,8 @@ async def get_events(
     from features.vehicles.warehouse import readers as _wh
     rows = await _wh.get_safety_events(
         account_id, days=days, samsara_fallback=_live,
+        vehicle_id=vehicle_id or None,
+        include_unidentified=bool(vehicle_id),
     )
     # Warehouse rows wrap the original payload under ``raw``; unwrap so
     # downstream consumers see the same shape as the live API.

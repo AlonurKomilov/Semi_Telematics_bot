@@ -306,6 +306,7 @@ async def get_safety_events(
     driver_id: str | None = None,
     samsara_fallback=None,
     include_raw: bool = True,
+    include_unidentified: bool = False,
 ) -> list[dict[str, Any]]:
     """Return safety events from the warehouse, or fall back to live.
 
@@ -329,6 +330,7 @@ async def get_safety_events(
         vehicle_id=vehicle_id,
         driver_id=driver_id,
         include_raw=include_raw,
+        include_unidentified=include_unidentified,
     )
     # Deliberately NO age-based fallback here: an event's age is a
     # fact about the WORLD (a quiet fleet has old events), not about

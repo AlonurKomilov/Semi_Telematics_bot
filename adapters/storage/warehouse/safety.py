@@ -143,6 +143,7 @@ class SafetyWarehouseMixin(_MixinBase):
         driver_id: str | None = None,
         limit: int = 5000,
         include_raw: bool = True,
+        include_unidentified: bool = False,
     ) -> list[dict[str, Any]]:
         """Read safety events from the warehouse, ordered most-recent
         first.  ``days`` filters on ``occurred_at`` lexicographically
@@ -163,7 +164,21 @@ class SafetyWarehouseMixin(_MixinBase):
             where.append("event_type = ?")
             args.append(event_type)
         if vehicle_id:
-            where.append("vehicle_id = ?")
+            if include_unidentified:
+                # A SUPERSET of one truck's rows, for callers that
+                # decide membership with the identity ladder rather
+                # than with this column.  The ladder answers by the
+                # strongest rung BOTH sides carry: a row with a
+                # provider id is settled here, but a row WITHOUT one
+                # falls to the unit name, and that decision cannot be
+                # made in SQL.  Narrowing strictly would delete those
+                # rows before the caller ever saw them — a safety
+                # question answered "nothing" is a clean week.
+                where.append(
+                    "(vehicle_id = ? OR vehicle_id IS NULL OR vehicle_id = '')"
+                )
+            else:
+                where.append("vehicle_id = ?")
             args.append(vehicle_id)
         if vehicle_name:
             where.append("vehicle_name = ?")

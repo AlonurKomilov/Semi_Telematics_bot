@@ -37,14 +37,30 @@ def _ev(eid, vehicle_id, name):
             "g_force": 1.2}
 
 
+def _store(rows):
+    """A ``_svc_events`` stand-in that narrows the way the store does.
+
+    ``vehicle_id`` is a SUPERSET filter, not a membership test: one
+    truck's rows plus every row that carries no provider id (the ladder
+    decides those by unit name).  Mirroring it here keeps these guards
+    honest — they judge the ladder against exactly the rows production
+    now hands it.
+    """
+    async def _svc(account_id, days=7, company=None, vehicle_id=None):
+        if not vehicle_id:
+            return list(rows)
+        return [r for r in rows
+                if not r.get("vehicle_id") or r["vehicle_id"] == vehicle_id]
+    return _svc
+
+
+
 @pytest.mark.asyncio
 async def test_a_renamed_truck_keeps_its_events(monkeypatch):
     import features.events.ai_tool as mod
 
-    async def _svc(account_id, days=7):
-        return [_ev(1, "sam_42", "229 Idris Ahmed")]
-
-    monkeypatch.setattr(mod, "_svc_events", _svc, raising=False)
+    monkeypatch.setattr(
+        mod, "_svc_events", _store([_ev(1, "sam_42", "229 Idris Ahmed")]), raising=False)
     res = await get_vehicle_events(
         {"vehicle_name": "229", "days": 7}, None,
         account_id=1, db=_DB([_V(42, "sam_42", "229")]))
@@ -56,12 +72,21 @@ async def test_a_renamed_truck_keeps_its_events(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_the_twins_events_are_not_claimed(monkeypatch):
+    """The LADDER denies the twin, not the query.
+
+    The store now narrows by provider id before these rows arrive, so
+    a plain store double would split the twins for free and this guard
+    would quietly stop testing anything.  The double here hands BOTH
+    rows over — which is exactly what the live-Samsara fallback does,
+    since that path has no per-vehicle endpoint — so the denial has to
+    come from the ladder, where it belongs.
+    """
     import features.events.ai_tool as mod
 
-    async def _svc(account_id, days=7):
+    async def _account_wide(account_id, days=7, company=None, vehicle_id=None):
         return [_ev(1, "sam_42", "229"), _ev(2, "sam_99", "229")]
 
-    monkeypatch.setattr(mod, "_svc_events", _svc, raising=False)
+    monkeypatch.setattr(mod, "_svc_events", _account_wide, raising=False)
     db = _DB([_V(42, "sam_42", "229", "OSY")])
     res = await get_vehicle_events(
         {"vehicle_name": "229", "days": 7}, None, account_id=1, db=db)
@@ -76,10 +101,8 @@ async def test_an_unregistered_truck_still_matches_by_name(monkeypatch):
     path keeps the name filter the archived-vehicle contract needs."""
     import features.events.ai_tool as mod
 
-    async def _svc(account_id, days=7):
-        return [_ev(1, "sam_7", "888")]
-
-    monkeypatch.setattr(mod, "_svc_events", _svc, raising=False)
+    monkeypatch.setattr(
+        mod, "_svc_events", _store([_ev(1, "sam_7", "888")]), raising=False)
     res = await get_vehicle_events(
         {"vehicle_name": "888", "days": 7}, None, account_id=1, db=_DB([]))
     assert res["total_events"] == 1

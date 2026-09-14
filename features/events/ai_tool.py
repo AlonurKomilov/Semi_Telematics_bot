@@ -50,7 +50,14 @@ async def get_vehicle_events(tool_args: dict, samsara_client,
     if err:
         return err
     co = company_for(resolved, tool_args)
-    events = await _svc_events(account_id, days=days)
+    # Once the registry has named the truck, ask the store for its
+    # window instead of the account's.  The narrowing is a superset —
+    # rows with no provider id come back too, because the ladder below
+    # decides those by unit name — so the membership test is unchanged;
+    # only the volume is.  Unresolved (retired, unregistered, mistyped)
+    # keeps the account-wide read the name path depends on.
+    _ref = (getattr(resolved, "telematics_ref", "") or "").strip() or None
+    events = await _svc_events(account_id, days=days, vehicle_id=_ref)
     if resolved is not None:
         # Identity, not label. The registry keeps a truck's unit number
         # across a provider rename (the upsert matches on the telematics
