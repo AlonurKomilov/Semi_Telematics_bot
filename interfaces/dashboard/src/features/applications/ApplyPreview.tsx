@@ -363,12 +363,33 @@ export default function ApplyPreview() {
   // Inside the mobile iframe: render JUST the form (no toolbar).  The narrow
   // iframe is its own viewport, so the form's mobile breakpoints fire for real.
   // Its logo/banner are driven by the parent's postMessage stream (above).
-  if (inFrame) return <PublicApply preview={{ brand, logoUrl, bannerUrl }} />;
+  // SILENCED, both renders below.
+  //
+  // This is the FMCSA application — the form that asks for a social
+  // security number and a date of birth — and here it renders INSIDE the
+  // dashboard tree, which carries ModProvider. `test/keySoundSilence`
+  // states the opposite in its own docstring: "it mounts on a tree with
+  // no ModProvider, so no sound can reach it". That is true of
+  // `main.tsx`'s apply branch and it was never true of this file. The
+  // guard could not see it either — it looks for `<input>` elements
+  // whose names say SSN, and this renders a COMPONENT.
+  //
+  // `isSensitiveTarget` knows about passwords and card fields, not about
+  // an SSN, so nothing downstream would have caught it. `contents` so
+  // the marker costs no layout: it is an ancestor for `closest()` and
+  // nothing to the box model.
+  if (inFrame) return (
+    <div data-no-key-sound className="contents">
+      <PublicApply preview={{ brand, logoUrl, bannerUrl }} />
+    </div>
+  );
 
   return (
     <>
       {device === 'desktop' ? (
-        <PublicApply preview={{ brand, logoUrl: logoDisp, bannerUrl: bannerDisp }} />
+        <div data-no-key-sound className="contents">
+          <PublicApply preview={{ brand, logoUrl: logoDisp, bannerUrl: bannerDisp }} />
+        </div>
       ) : (
         <div className="flex min-h-screen justify-center bg-muted/40 py-8">
           {/* A real iframe at phone width → the form sees a phone viewport.

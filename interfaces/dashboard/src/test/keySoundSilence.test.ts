@@ -86,6 +86,69 @@ describe('a field whose name says sensitive stays silent', () => {
   });
 });
 
+/**
+ * …and the second path into it, which the guarantee above does not cover.
+ *
+ * The docstring at the top of this file says the public form "mounts on a
+ * tree with no ModProvider, so no sound can reach it", and it names the
+ * refactor it fears: folding the two mounts together. That is not what
+ * happened. `features/applications/ApplyPreview.tsx` renders
+ * `<PublicApply>` INLINE, inside the dashboard tree, so the recruiter's
+ * own preview of the FMCSA form — SSN, date of birth — sat under
+ * ModProvider with the keyboard axis live.
+ *
+ * Nothing could have caught it. The walk above looks for `<input>`
+ * elements whose NAMES say sensitive; this file renders a component, so
+ * there is no input to find. And `isSensitiveTarget` (keys.ts:95-103)
+ * knows passwords and card fields, not an SSN.
+ *
+ * So the rule is about the COMPONENT, not about its fields: every render
+ * of the public form outside its own mount is marked, or this fails.
+ */
+describe('the public form is silent wherever else it is rendered', () => {
+  const RENDER = /<PublicApply\b/g;
+  const MARK = /data-no-key-sound/g;
+
+  /**
+   * Files that render the form and are not its own mount.
+   *
+   * `main.tsx` is excluded because it IS the mount, and the block below
+   * proves the branch it renders from carries no ModProvider — a
+   * structural guarantee, which is stronger than a marker. Every other
+   * file renders into a tree that does carry one.
+   */
+  const embedders = walk(SRC)
+    .map((full) => ({ rel: relative(SRC, full), src: readFileSync(full, 'utf8') }))
+    .filter((f) => f.rel !== 'main.tsx')
+    .filter((f) => !f.rel.startsWith('features/applications/public'))
+    .filter((f) => RENDER.test(f.src) && ((RENDER.lastIndex = 0), true));
+
+  it('finds the embed this rule exists for', () => {
+    // Zero would make the assertion below green forever, and the whole
+    // point is that this embed was invisible to every other check here.
+    expect(embedders.map((f) => f.rel))
+      .toContain('features/applications/ApplyPreview.tsx');
+  });
+
+  it('and every render of it is marked silent', () => {
+    const offenders = embedders
+      .map((f) => ({
+        rel: f.rel,
+        renders: (f.src.match(RENDER) ?? []).length,
+        marks: (f.src.match(MARK) ?? []).length,
+      }))
+      .filter((f) => f.marks < f.renders)
+      .map((f) => `${f.rel}: ${f.renders} render(s), ${f.marks} mark(s)`);
+    expect(
+      offenders,
+      'the FMCSA form renders here inside ModProvider, and its SSN and '
+        + 'date-of-birth fields are unmarked — four key classes make length, word '
+        + 'boundaries and corrections audible to the room. Wrap it in '
+        + '`<div data-no-key-sound className="contents">`.',
+    ).toEqual([]);
+  });
+});
+
 describe('the public application cannot make a sound at all', () => {
   const main = readFileSync(join(SRC, 'main.tsx'), 'utf8');
 
