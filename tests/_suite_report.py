@@ -34,6 +34,40 @@ _URL_ENV = "SUITE_REPORT_URL"
 _TOKEN_ENV = "SUITE_REPORT_TOKEN"
 _SOURCE_ENV = "SUITE_REPORT_SOURCE"      # "ci" when CI sets it; else "local"
 
+#: The three keys this plugin may take from ``.env`` — and the only
+#: three. A bare ``load_dotenv()`` here would put the whole file into the
+#: test process, DATABASE_URL included, and the tests would run against
+#: production: the exact leak this platform has already had once. So the
+#: file is parsed for these names and nothing else is touched.
+_DOTENV_KEYS = (_URL_ENV, _TOKEN_ENV, _SOURCE_ENV)
+
+
+def _load_from_dotenv() -> None:
+    """Fill the three keys from ``.env`` when the shell has not.
+
+    The app reads ``.env`` at boot; a bare ``pytest`` reads nothing, so a
+    token set in that file was invisible to the reporter and the board
+    stayed empty while looking configured. A real environment variable
+    always wins, so CI keeps control.
+    """
+    try:
+        from tests._repo import REPO
+        path = REPO / ".env"
+        if not path.is_file():
+            return
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key in _DOTENV_KEYS and not os.getenv(key):
+                os.environ[key] = value.strip().strip('"').strip("'")
+    except Exception:
+        # A malformed .env is somebody else's problem; the reporter just
+        # stays inert, which is its default anyway.
+        pass
+
 #: One line per failure. Enough to recognise it on a board; short enough
 #: that nothing structured can hide inside.
 _MESSAGE_CHARS = 300
@@ -62,6 +96,7 @@ def _actor() -> str:
 
 
 def pytest_configure(config):
+    _load_from_dotenv()
     if not _enabled():
         return
     _state["started"] = datetime.now(timezone.utc).isoformat()
