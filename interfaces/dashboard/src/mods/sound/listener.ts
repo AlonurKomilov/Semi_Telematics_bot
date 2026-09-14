@@ -33,21 +33,48 @@ import type { ActName } from './acts';
 /** What counts as button-shaped. Tags and roles, never class names. */
 const PRESSABLE = 'button,[role="button"],[data-slot="button"],summary,a[href]';
 
-/**
- * Controls that will get their OWN name in a later stage.
- *
- * Silent now rather than sounding `press` and being changed underneath
- * people later. A cue somebody has learned is a cue that cannot be
- * quietly reassigned — the whole value of the vocabulary is that one
- * sound means one thing for as long as they use the product.
- */
-const DEFERRED = [
-  '[role="switch"]', '[role="tab"]', '[role="radio"]', '[role="checkbox"]',
-  '[aria-pressed]', '[role="menuitem"]', '[role="menuitemradio"]',
-  '[role="menuitemcheckbox"]', '[role="option"]',
-  '[data-slot="checkbox"]', '[data-slot="radio"]', '[data-slot="select-item"]',
-  'input[type="checkbox"]', 'input[type="radio"]',
+/** A binary state you committed. */
+const TOGGLE = [
+  '[role="switch"]', '[role="checkbox"]',
+  'input[type="checkbox"]', '[data-slot="checkbox"]',
 ].join(',');
+
+/**
+ * One of a visible set.
+ *
+ * `aria-pressed` is this product's chip signature — `panel/Chip.tsx`
+ * carries it and twenty other files reach for the same attribute — and
+ * a tab is the same question in a different shape. A radio is the
+ * native form of it.
+ *
+ * A chip-shaped control that carries NO signature classifies as a
+ * press, and that is the honest answer rather than a gap: an element
+ * that tells no assistive technology it is selected is not a chip to
+ * anything that reads the page. The sound follows the semantics, so
+ * where the semantics are missing both are wrong together and one fix
+ * repairs both.
+ */
+const CHIP = [
+  '[aria-pressed]', '[role="tab"]', '[role="radio"]',
+  'input[type="radio"]', '[data-slot="radio"]',
+].join(',');
+
+/** A choice landing out of a list that was open. */
+const MENU = [
+  '[role="menuitem"]', '[role="menuitemradio"]', '[role="menuitemcheckbox"]',
+  '[role="option"]', '[data-slot="select-item"]',
+].join(',');
+
+/**
+ * Still waiting for a name of its own.
+ *
+ * Empty now that Controls is complete. It is kept because the rule it
+ * encodes outlives its current contents: a control whose cue is coming
+ * stays SILENT rather than borrowing `press`, because a cue somebody
+ * has learned cannot be quietly reassigned. Selection and Places both
+ * arrive through here.
+ */
+const DEFERRED = ':not(*)';
 
 /** The escape hatch, for a control that must stay silent by name. */
 const MUTED = '[data-cue="none"]';
@@ -79,7 +106,7 @@ export function classifyAct(target: EventTarget | null): ActName | null {
   // collapses them even when both would sound. A guard here would be a
   // branch nothing can reach, which is worse than none: the next person
   // reads it as load-bearing.
-  const el = node.closest(`${PRESSABLE},${DEFERRED}`);
+  const el = node.closest(`${PRESSABLE},${TOGGLE},${CHIP},${MENU},${DEFERRED}`);
   if (!el) return null;
 
   // Disabled is checked on the ELEMENT, never up the tree: a disabled
@@ -91,7 +118,42 @@ export function classifyAct(target: EventTarget | null): ActName | null {
   // meaning we would have to un-teach.
   if (el.matches(DEFERRED)) return null;
 
+  // ORDER IS THE RULE. A switch is a `<button>` and a tab usually is
+  // too, so the specific shapes have to answer before the general one
+  // or everything would be a press.
+  if (el.matches(TOGGLE)) return toggleName(el);
+  if (el.matches(CHIP)) return 'chip';
+  if (el.matches(MENU)) return 'menu_pick';
+
   return 'press';
+}
+
+/**
+ * Which way a toggle went.
+ *
+ * The two kinds disagree about WHEN the state changes, and reading them
+ * the same way would get one of them backwards on every click.
+ *
+ * A native input has already flipped: activation behaviour runs before
+ * the click event is dispatched, so `checked` in the capture phase is
+ * where the person just put it.
+ *
+ * An ARIA toggle has not. `switch.tsx` writes `aria-checked` on React's
+ * next render, so the attribute here is still the OLD value — and the
+ * act is the flip, so the cue is its destination rather than its
+ * origin.
+ *
+ * Deliberately the INTENT and not the outcome. `matrixCells.tsx` writes
+ * asynchronously and the server may refuse; waiting to see whether the
+ * state really changed would silence every accepted toggle too, since
+ * the answer arrives long after the frame. What a refusal earns is the
+ * `error` cue the toast lane already raises — "you set it", then "it
+ * was refused" — which is a sentence, and one this axis exists to speak
+ * the first half of.
+ */
+function toggleName(el: Element): ActName {
+  if (el instanceof HTMLInputElement) return el.checked ? 'toggle_on' : 'toggle_off';
+  return el.getAttribute('aria-checked') === 'true' ? 'toggle_off' : 'toggle_on';
 }
 
 /**

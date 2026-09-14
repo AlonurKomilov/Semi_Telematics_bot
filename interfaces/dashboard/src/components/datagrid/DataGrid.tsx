@@ -2055,9 +2055,15 @@ export default function DataGrid({
   const someRowsSelected = bulkSelection && selectedRowIds.size > 0 && !allRowsSelected;
 
   const cbClass = 'cursor-pointer accent-primary align-middle';
+  // `data-cue="none"` on the two boxes below is TEMPORARY, unlike the
+  // row box's. They are the acts that deserve a cue — one for a set
+  // gathered, one for a set dropped — but those names are not built
+  // yet, and a toggle sound learned here would have to be un-learned
+  // the day they arrive.
   const renderSelectAll = () => (
     <input
       type="checkbox"
+      data-cue="none"
       checked={allRowsSelected}
       ref={el => { if (el) el.indeterminate = someRowsSelected; }}
       onClick={e => e.stopPropagation()}
@@ -2072,6 +2078,13 @@ export default function DataGrid({
   const renderRowBox = (rowId: string, original: Record<string, unknown>) => (
     <input
       type="checkbox"
+      // SILENT, permanently. Ticking rows is the single most repeated
+      // act in this product — a hundred to four hundred in a shift —
+      // and the tick is already on screen where the hand is looking.
+      // Sounding it would be the difference between a vocabulary and a
+      // smoke alarm. Select-all and the group box speak instead: one
+      // act, one cue, whether it takes one row or five hundred.
+      data-cue="none"
       checked={selectedRowIds.has(rowId)}
       onClick={e => e.stopPropagation()}
       onChange={e =>
@@ -2093,6 +2106,7 @@ export default function DataGrid({
     return (
       <input
         type="checkbox"
+        data-cue="none"
         checked={all}
         ref={el => { if (el) el.indeterminate = some; }}
         onClick={e => e.stopPropagation()}
