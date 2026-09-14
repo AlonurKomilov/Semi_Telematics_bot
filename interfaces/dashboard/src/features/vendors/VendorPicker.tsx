@@ -62,7 +62,7 @@ export function VendorPicker({
         className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1">
+        <ul className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto surface surface-popover text-popover-foreground border border-border rounded-md shadow-lg py-1">
           {filtered.slice(0, 30).map(v => (
             <li key={v.id}>
               <button

@@ -433,7 +433,7 @@ export default function Permissions() {
           could fix. Same grammar here: a pill that belongs to the page,
           sticky to the scroller the page already has. */}
       {totalPending > 0 && (
-        <div className="sticky bottom-2 z-30 mt-6 inline-flex max-w-fit flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-popover px-4 py-3 shadow-lg">
+        <div className="sticky bottom-2 z-30 mt-6 inline-flex max-w-fit flex-wrap items-center justify-between gap-4 rounded-lg border border-border surface surface-popover px-4 py-3 shadow-lg">
           <span className="text-sm text-muted-foreground">
             {totalPending} pending change{totalPending === 1 ? '' : 's'}
           </span>

@@ -91,10 +91,17 @@ const RULES: readonly Rule[] = [
     axis: 'material',
     what: 'a popover-coloured surface painted by hand — `.surface` is what the '
       + 'material axis reaches, and these files re-type the colour instead',
+    // 22 when the audit measured it, 2 now: twenty surfaces across
+    // eleven files moved onto `surface surface-popover`. The two left
+    // are the scroll arrows inside the Select popup, which paint the
+    // colour to OCCLUDE the list sliding under them — a translucent
+    // occluder occludes nothing. `mods/theme/material.test.ts` holds
+    // them as a named exemption with that reason.
+    //
     // OCCURRENCES, not files. The first pin here was 12 — a `grep -l`
     // count — against an assertion that counts every match. A pin read
     // from a different counter than the one that checks it is not a pin.
-    pin: 22,
+    pin: 2,
     find: /bg-popover/g,
     control: ['className="bg-popover border"', 'className="surface"'],
   },

@@ -128,7 +128,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             the chrome colour; `pr-2 pb-2` leaves an 8px frame to the right
             and below, so the chrome wraps the content on every side — top
             from the header, left from the sidebar. */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-sidebar chrome-pane pr-2 pb-2">
+        <div className="flex-1 flex flex-col overflow-hidden bg-sidebar surface surface-sidebar chrome-pane pr-2 pb-2">
           {/* Three zones: mobile-menu (left), hero (middle, flex-1), tools
               (right). The hero lives INSIDE the h-12 strip rather than in
               a row of its own, so content sits at the same Y whether or
@@ -137,7 +137,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           <header
             data-ambient-recede
             style={sizeRegion('controls')}
-            className="h-12 bg-sidebar chrome-pane text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
+            className="h-12 bg-sidebar surface surface-sidebar chrome-pane text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
           >
             <div className="flex items-center gap-3 shrink-0">
               <button

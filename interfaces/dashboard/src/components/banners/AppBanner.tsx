@@ -146,7 +146,7 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
   const pct = total > 0 ? Math.max(0, Math.min(100, (leftMs / total) * 100)) : 0;
 
   return (
-    <div className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden"
+    <div className="w-80 surface surface-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden"
       onMouseEnter={() => holdable && setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => holdable && setPaused(true)}

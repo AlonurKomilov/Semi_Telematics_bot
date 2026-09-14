@@ -4,8 +4,8 @@
  * are asserted against the stylesheet itself.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { assembledCss, engineCss } from '../../test/stylesheet';
 
 const SRC = join(__dirname, '..', '..');
@@ -178,5 +178,59 @@ describe('glass does not switch the shader off', () => {
   it('and the scan can fail', () => {
     expect('0 1px 2px rgb(0 0 0 / 6%)').not.toMatch(/var\(--light-/);
     expect('0 calc(1px * var(--light-lift, 1)) 2px').toMatch(/var\(--light-/);
+  });
+});
+
+describe('the axis reaches every surface that is one', () => {
+  /**
+   * `.surface` is the class the material axis paints through — nothing
+   * else is reached. A surface that writes `bg-popover` by hand keeps
+   * its colour and loses the axis: pick glass, and it stays solid while
+   * every dialog and card around it goes translucent.
+   *
+   * Twenty sites did exactly that, across eleven files, which is most of
+   * what "material only covers a fifth of the product" meant.
+   */
+  const OCCLUDERS: Record<string, string> = {
+    'components/ui/select.tsx':
+      'the scroll arrows inside an already-surfaced popup. They paint the '
+      + 'popover colour to OCCLUDE the list scrolling under them — the same '
+      + 'reason glass.css keeps an escape hatch for sticky and pinned '
+      + 'elements. A translucent occluder occludes nothing.',
+  };
+
+  const tsxFiles = (dir: string, out: string[] = []): string[] => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) {
+        if (name !== 'node_modules') tsxFiles(full, out);
+      } else if (name.endsWith('.tsx') && !name.includes('.test.')) out.push(full);
+    }
+    return out;
+  };
+
+  it('nothing paints the popover colour outside the axis', () => {
+    const SRC = join(__dirname, '..', '..');
+    const offenders: string[] = [];
+    let exempt = 0;
+    for (const full of tsxFiles(SRC)) {
+      const rel = relative(SRC, full).split(sep).join('/');
+      const src = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of src.matchAll(/className=(?:"([^"]*)"|\{([\s\S]{0,600}?)\}\s*(?:\n|\/?>|[a-zA-Z-]+=))/g)) {
+        const body = m[2] ?? '';
+        const c = m[1] ?? [...body.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)]
+          .map((s) => s[1] ?? s[2] ?? s[3] ?? '').join(' ');
+        if (!/\bbg-popover(?![/\w-])/.test(c)) continue;
+        if (OCCLUDERS[rel]) { exempt += 1; continue; }
+        if (/\bsurface\b/.test(c)) continue;
+        offenders.push(`${rel}:${src.slice(0, m.index ?? 0).split('\n').length}`);
+      }
+    }
+    expect(exempt, 'the occluder exemption names a file that no longer paints it')
+      .toBeGreaterThan(0);
+    expect(offenders,
+      'a surface paints the popover colour and never joins the material axis — '
+      + 'use `surface surface-popover` instead of `bg-popover`')
+      .toEqual([]);
   });
 });

@@ -119,7 +119,7 @@ export default function Sidebar({ forceExpanded = false }: {
       // scroller unable to help because the overflow is the ROOT's. In the
       // mobile drawer the sheet panel is `inset-y-0 h-full`, so this
       // resolves there too.
-      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar chrome-pane text-sidebar-foreground flex flex-col shrink-0 h-full`}
+      className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar surface surface-sidebar chrome-pane text-sidebar-foreground flex flex-col shrink-0 h-full`}
     >
       {/* Logo row + collapse toggle.  Expanded: one h-12 row carries the
           brand text, persona selector, and collapse button — plenty of

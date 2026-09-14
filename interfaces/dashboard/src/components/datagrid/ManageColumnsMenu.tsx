@@ -96,7 +96,7 @@ export default function ManageColumnsMenu({
           sideOffset={6}
           className="z-50 outline-none"
         >
-          <PopoverPrimitive.Popup className="w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
+          <PopoverPrimitive.Popup className="w-56 surface surface-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
               <Columns3 className="text-muted-foreground size-3.5" />
               <span className="text-xs font-medium text-foreground">Columns</span>

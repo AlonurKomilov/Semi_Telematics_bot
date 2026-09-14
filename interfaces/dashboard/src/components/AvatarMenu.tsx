@@ -66,7 +66,7 @@ export function AvatarMenu() {
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-56 bg-popover border border-border rounded-xl shadow-xl overflow-hidden">
+        <div className="absolute right-0 top-11 z-50 w-56 surface surface-popover border border-border rounded-xl shadow-xl overflow-hidden">
           {/* User info */}
           <div className="px-4 py-3 border-b border-border">
             <p className="text-sm font-semibold text-foreground leading-tight">

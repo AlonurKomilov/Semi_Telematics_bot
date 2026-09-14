@@ -100,7 +100,7 @@ export function ModPanel() {
           // Size slider and the door to the rest of the axes with it.
           // `overscroll-contain` keeps a scroll inside it from moving
           // whatever is behind.
-          className="absolute right-0 top-10 z-50 w-56 overflow-y-auto overscroll-contain bg-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
+          className="absolute right-0 top-10 z-50 w-56 overflow-y-auto overscroll-contain surface surface-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
         >
           <ModControls compact onNavigate={() => setOpen(false)} />
         </div>

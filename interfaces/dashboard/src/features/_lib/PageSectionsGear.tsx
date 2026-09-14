@@ -72,7 +72,7 @@ export function PageSectionsGear<P extends object>({
       </Tip>
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Positioner align="end" sideOffset={6} className="z-50 outline-none">
-          <PopoverPrimitive.Popup className="w-80 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-2 outline-none">
+          <PopoverPrimitive.Popup className="w-80 surface surface-popover text-popover-foreground border border-border rounded-md shadow-lg py-2 outline-none">
             <div className="px-3 pb-2 flex items-center justify-between border-b border-border">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Page sections

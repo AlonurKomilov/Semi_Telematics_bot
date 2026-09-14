@@ -77,7 +77,7 @@ function AlertsBell(
           sideOffset={8}
           className="z-50 outline-none"
         >
-          <PopoverPrimitive.Popup className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
+          <PopoverPrimitive.Popup className="w-80 surface surface-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
             <NotificationsPanel onClose={() => setOpen(false)} canAlerts={canAlerts}
                                 canApplications={canApplications} />
           </PopoverPrimitive.Popup>
