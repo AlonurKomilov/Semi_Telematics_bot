@@ -44,6 +44,20 @@ async def api(pg_db, monkeypatch):
     return app, pg_db
 
 
+async def _settled() -> None:
+    """Wait for the ledger writes the app deliberately leaves BEHIND the
+    response (``asyncio.create_task`` in the middleware — a monitored
+    account must not be measurably slower).  Reading the ledger straight
+    after the response is a race that a loaded worker loses; the app
+    holds every in-flight write in ``_LEDGER_TASKS`` precisely so a
+    reader can wait for them instead of guessing."""
+    import asyncio
+    from interfaces.api.app import _LEDGER_TASKS
+    pending = list(_LEDGER_TASKS)
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
 async def _get(app, path, **headers):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         return await c.get(path, headers=headers)
@@ -53,6 +67,7 @@ async def test_a_refusal_lands_in_the_ledger_with_the_true_ip(api):
     app, db = api
     r = await _get(app, "/api/_ledger/refused", **{"X-Forwarded-For": "203.0.113.9"})
     assert r.status_code == 403
+    await _settled()
 
     rows = await db.list_security_requests(statuses=(403,), limit=5)
     hit = next((x for x in rows if x["path"] == "/api/_ledger/refused"), None)
@@ -68,6 +83,7 @@ async def test_an_anonymous_success_is_not_kept(api):
     app, db = api
     r = await _get(app, "/api/_ledger/fine")
     assert r.status_code == 200
+    await _settled()          # otherwise "not kept" is true before the write even ran
     rows = await db.list_security_requests(limit=50)
     assert all(x["path"] != "/api/_ledger/fine" for x in rows)
 
