@@ -29,6 +29,7 @@ from adapters.telematics.catalog import PROVIDER_CATALOG
 from adapters.telematics.protocol import (
     Capability,
     ConnectionStatus,
+    HosSnapshot,
     TelematicsProvider,
 )
 
@@ -135,6 +136,11 @@ class DatatruckProvider:
         return []
 
     async def get_vehicle_faults(self) -> list[dict[str, Any]]:
+        return []
+
+    async def get_driver_hos(self) -> list[HosSnapshot]:
+        # Datatruck is a TMS: it knows who the drivers ARE, not what
+        # their duty clocks read.  Hours of service comes from an ELD.
         return []
 
     async def get_stats_history(

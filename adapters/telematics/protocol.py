@@ -58,6 +58,7 @@ class Capability:
     VEHICLE_HEALTH          = "vehicle_health"
     VEHICLE_FAULTS          = "vehicle_faults"
     DRIVER_EFFICIENCY_DAILY = "driver_efficiency"
+    DRIVER_HOS              = "driver_hos"
     FLEET_WEATHER           = "fleet_weather"
     FLEET_EFFICIENCY        = "fleet_efficiency"
     GEOFENCE_DEFINITIONS    = "geofence_definitions"
@@ -79,6 +80,82 @@ class Capability:
     TMS_TRAILERS_SYNC       = "tms_trailers_sync"
     TMS_ORDERS_SYNC         = "tms_orders_sync"
     TMS_WORK_ORDERS_SYNC    = "tms_work_orders_sync"
+
+
+class DutyStatus:
+    """The canonical duty statuses, owned HERE and not by any vendor.
+
+    Every ELD names these differently — Samsara says ``offDuty`` and
+    ``sleeperBerth``, the FMCSA regulation says "off duty" and "sleeper
+    berth", the next provider will say something else again.  The
+    mapping is each adapter's job; this set is what the rest of the
+    system is allowed to see, so a feature never learns a vendor's
+    spelling.
+
+    ``PERSONAL_CONVEYANCE`` and ``YARD_MOVE`` are real FMCSA
+    sub-statuses of off-duty and on-duty respectively, not
+    decorations: a driver moving under personal conveyance is off
+    duty, and treating that as driving would report a violation that
+    does not exist.
+
+    ``UNKNOWN`` is the honest answer for a status we could not map,
+    and it must stay in the set: silently coercing an unrecognised
+    value to ``OFF_DUTY`` would turn a gap in our mapping into a
+    statement that a driver was resting.
+    """
+
+    OFF_DUTY            = "off_duty"
+    SLEEPER             = "sleeper"
+    DRIVING             = "driving"
+    ON_DUTY             = "on_duty"
+    PERSONAL_CONVEYANCE = "personal_conveyance"
+    YARD_MOVE           = "yard_move"
+    UNKNOWN             = "unknown"
+
+    ALL: frozenset[str] = frozenset({
+        OFF_DUTY, SLEEPER, DRIVING, ON_DUTY,
+        PERSONAL_CONVEYANCE, YARD_MOVE, UNKNOWN,
+    })
+
+
+@dataclass(frozen=True)
+class HosSnapshot:
+    """One driver's hours-of-service clocks, as one provider reports them.
+
+    A SNAPSHOT, deliberately — not a log.  The certified ELD is the
+    system of record for hours of service; we hold a read-only mirror
+    of what it currently says, so that dispatch can ask "who can take
+    this load" without opening another product.  Nothing here is
+    evidence, and nothing downstream may compute a violation from it.
+
+    ``source_ts`` is when the PROVIDER observed this, and it is kept
+    apart from our own write time on purpose.  HOS goes stale in
+    minutes: a reading we fetched thirty seconds ago can describe a
+    driver who has been driving for the last twenty, and a surface
+    that shows our write time would call that fresh.
+
+    Seconds rather than hours throughout, because the regulation's
+    limits are not all whole hours and every provider reports integer
+    seconds — converting at the edge loses precision nobody can get
+    back.  ``None`` means the provider did not report that clock, which
+    is different from zero: zero is "out of hours".
+    """
+
+    provider_driver_id: str
+    """The vendor's own id for the driver — matched to our roster
+    through the account's existing driver link, never used as an
+    identity of its own."""
+
+    duty_status: str = DutyStatus.UNKNOWN
+    drive_seconds_today: int | None = None
+    on_duty_seconds_today: int | None = None
+    cycle_seconds_remaining: int | None = None
+    shift_seconds_remaining: int | None = None
+    last_status_change: str = ""
+    source_ts: str = ""
+    driver_name: str = ""
+    """Vendor-reported name, for diagnostics when a link is missing.
+    Display always prefers OUR roster name."""
 
 
 @dataclass(frozen=True)
@@ -160,6 +237,24 @@ class TelematicsProvider(Protocol):
 
     async def get_vehicle_faults(self) -> list[dict[str, Any]]:
         """Vehicles with at least one active fault code."""
+        ...
+
+    async def get_driver_hos(self) -> list[HosSnapshot]:
+        """Every driver's current hours-of-service clocks.
+
+        Returns TYPED snapshots, not the vendor's dicts — the one
+        method on this protocol that does, because hours of service is
+        the one feed where a vendor's spelling reaching a feature would
+        be a compliance-shaped bug rather than a cosmetic one.  The
+        adapter maps duty statuses into :class:`DutyStatus` and
+        normalises every clock to seconds.
+
+        Providers without ELD access return ``[]``.  Callers must read
+        that as "this provider does not report hours", never as "every
+        driver has hours remaining" — which is why the capability, not
+        the emptiness of this list, is what decides whether we answer
+        an HOS question at all.
+        """
         ...
 
     # ── Historical ───────────────────────────────────────────────

@@ -38,6 +38,7 @@ from adapters.telematics.catalog import PROVIDER_CATALOG
 from adapters.telematics.protocol import (
     Capability,
     ConnectionStatus,
+    HosSnapshot,
     TelematicsProvider,
 )
 
@@ -324,6 +325,18 @@ class SamsaraProvider:
         callers that want all three; protocol returns just the rows."""
         rows, _total, _breakdown = await self._client.get_vehicles_with_faults()
         return rows
+
+    async def get_driver_hos(self) -> list[HosSnapshot]:
+        """Hours-of-service clocks — not wired yet.
+
+        The mapping from Samsara's HOS clocks into
+        :class:`HosSnapshot` lands with the ingest that consumes it,
+        so the capability and its feed appear on the integration card
+        together.  Declaring it earlier would render a toggle that
+        controls nothing, which is exactly what the catalog's own note
+        on the retired prune capability warns against.
+        """
+        return []
 
     # ── Historical ───────────────────────────────────────────────
 
