@@ -148,3 +148,41 @@ describe('nothing in flow sits above the shell', () => {
       .toEqual(['AppRouter', 'LiveAlertWatcher']);
   });
 });
+
+describe('nothing between the scrollport and the page swallows its height', () => {
+  // A page that fills the screen asks with `h-full`, and `height: 100%`
+  // needs every ancestor between it and the scrollport to have a
+  // definite height.  The entrance animation put a wrapper there with
+  // `animate-in fade-in-0` and nothing else — so turning entrances ON
+  // silently broke every full-height page, and turning them off fixed
+  // it, which is a shape nobody debugs.
+  //
+  // The Live Map is where it surfaced: a map beside a 98-row vehicle
+  // list took the LIST's height, so the map ran several screens deep
+  // with tiles only at the top and the shell scrolled — against the
+  // one contract this file exists to hold.
+  //
+  // A decoration may not change the box it decorates.
+  const shell = src('shells/AppShell.tsx');
+
+  it('the entrance wrapper carries the height it stands in for', () => {
+    // The whole line, not a `{...}` capture: the className is a template
+    // literal and `${entranceClasses}` closes the first brace, so a
+    // non-greedy brace match reads half of it and reports a fault that
+    // is its own.
+    const line = shell.split('\n').find((l) => l.includes('<div key={pathname}'));
+    expect(line, 'the entrance wrapper moved — re-point this guard').toBeDefined();
+    expect(line!, 'the entrance wrapper is a height: auto box in the '
+      + 'middle of the chain; every h-full page below it falls back to '
+      + 'content height whenever entrances are on').toMatch(/h-full/);
+  });
+
+  it('and both branches hand the page the same box', () => {
+    // The wrapped and unwrapped branches must be interchangeable: if
+    // one of them changes what `h-full` resolves against, a preference
+    // nobody associates with layout starts deciding layout.
+    const conditional = shell.slice(shell.indexOf('theme.entranceOn && entranceClasses'));
+    const branch = conditional.slice(0, conditional.indexOf('<Outlet />', conditional.indexOf('<Outlet />') + 1));
+    expect(branch).toMatch(/h-full/);
+  });
+});

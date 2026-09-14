@@ -234,7 +234,26 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
                   source text and a class assembled at runtime is never
                   built at all. */}
               {theme.entranceOn && entranceClasses ? (
-                <div key={pathname} className={entranceClasses}>
+                // `h-full` IS LOAD-BEARING, and it is the reason this
+                // wrapper may exist at all.
+                //
+                // A page that fills the screen asks for it with `h-full`,
+                // and `height: 100%` needs a parent with a definite
+                // height.  The scrollport above has one; this wrapper did
+                // not, so switching the entrance animation ON quietly put
+                // a `height: auto` box in the middle of the chain and
+                // every full-height page fell back to content height.
+                //
+                // The Live Map is where it showed: its two columns are a
+                // map and a 98-row vehicle list, so the row took the
+                // list's height and the map grew to match — a map several
+                // screens tall with tiles only at the top, and a page
+                // that scrolled when this shell's whole contract is that
+                // it does not.  Invisible to anyone with entrances off,
+                // which is why it lived.
+                //
+                // A decoration may not change the box it decorates.
+                <div key={pathname} className={`h-full ${entranceClasses}`}>
                   <Outlet />
                 </div>
               ) : (
