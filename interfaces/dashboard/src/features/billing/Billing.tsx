@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users } from '../../lib/icons';
+import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users, Download } from '../../lib/icons';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -658,13 +658,31 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
       },
     },
     {
+      // Both links come from Stripe and both are stored; only the hosted
+      // one was ever offered, so a customer who wanted the PDF for their
+      // bookkeeping had to open the receipt and hunt for it there.
       key: 'hosted_invoice_url', label: 'Receipt', sortable: false,
-      render: (v) => v ? (
-        <a href={String(v)} target="_blank" rel="noopener noreferrer"
-           className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap">
-          <FileText className="size-3" /> View
-        </a>
-      ) : <span className="text-muted-foreground text-xs">—</span>,
+      render: (_v, row) => {
+        const hosted = String(row.hosted_invoice_url || '');
+        const pdf = String(row.invoice_pdf_url || '');
+        if (!hosted && !pdf) return <span className="text-muted-foreground text-xs">—</span>;
+        return (
+          <span className="inline-flex items-center gap-3">
+            {hosted && (
+              <a href={hosted} target="_blank" rel="noopener noreferrer"
+                 className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap">
+                <FileText className="size-3" /> View
+              </a>
+            )}
+            {pdf && (
+              <a href={pdf} target="_blank" rel="noopener noreferrer"
+                 className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap">
+                <Download className="size-3" /> PDF
+              </a>
+            )}
+          </span>
+        );
+      },
     },
   ];
   if (items.length === 0) {

@@ -116,6 +116,52 @@ def _check_extras_price(stripe, mode: str) -> dict:
                   "per-plan extras prices; the rollout moves them")
 
 
+def _check_invoices(stripe, mode: str) -> dict:
+    """What a billed customer actually receives.
+
+    Two things are readable and one is not, and the note says which.
+    The Stripe account's support email is what a receipt tells the
+    customer to reply to — without it the receipt is anonymous.  A
+    recorded invoice must carry the two links the Billing page offers,
+    the hosted receipt and the PDF, or those buttons are dead.  The
+    receipt EMAIL itself is a dashboard switch the API does not expose
+    (``settings.invoices`` carries tax ids and nothing about mail), so
+    the note names it as the one thing to confirm by hand, once.
+    """
+    from capabilities.platform.billing.stripe_client import _field
+    label = "Invoices and receipts"
+    try:
+        acct = stripe.Account.retrieve()
+    except Exception as exc:
+        return _check("invoices", label, _UNKNOWN,
+                      f"Could not read the account ({type(exc).__name__}).")
+    support = str(_field(_field(acct, "business_profile", {}) or {}, "support_email", "") or "").strip()
+    if not support:
+        return _check("invoices", label, _PROBLEM,
+                      "The Stripe account has no support email, so every receipt reaches the "
+                      "customer with nobody to reply to. Stripe → Settings → Business details.")
+    try:
+        recent = _field(stripe.Invoice.list(limit=1), "data", []) or []
+    except Exception as exc:
+        return _check("invoices", label, _UNKNOWN,
+                      f"Could not list invoices ({type(exc).__name__}).")
+    manual = ("Stripe's own receipt email is a dashboard switch the API cannot read — "
+              "confirm Settings → Customer emails → Successful payments once.")
+    if not recent:
+        return _check("invoices", label, _OK,
+                      f"No invoice in {mode} mode yet — the first is written when a subscription "
+                      f"bills. {manual}")
+    inv = recent[0]
+    missing = [name for name, key in (("receipt link", "hosted_invoice_url"), ("PDF", "invoice_pdf"))
+               if not str(_field(inv, key, "") or "").strip()]
+    if missing:
+        return _check("invoices", label, _PROBLEM,
+                      f"The latest invoice carries no {' and no '.join(missing)} — "
+                      "the Billing page's download buttons would be dead.")
+    return _check("invoices", label, _OK,
+                  f"The latest invoice carries a receipt link and a PDF; replies go to {support}. {manual}")
+
+
 def _check_webhook(stripe) -> dict:
     label = "Webhook endpoint"
     secret = bool((os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip())
@@ -280,6 +326,7 @@ def _run_checks(plans: list[dict]) -> list[dict]:
                    "STRIPE_SECRET_KEY is empty — the API cannot reach Stripe."),
             _check("extras_price", "Per-extra-truck price", _UNKNOWN, "Needs a key to check."),
             _check("webhook", "Webhook endpoint", _UNKNOWN, "Needs a key to check."),
+            _check("invoices", "Invoices and receipts", _UNKNOWN, "Needs a key to check."),
             _check_return_url(),
             _check_plan_prices(plans, mode),
         ]
@@ -293,6 +340,7 @@ def _run_checks(plans: list[dict]) -> list[dict]:
         _check_account(stripe, mode),
         _check_extras_price(stripe, mode),
         _check_webhook(stripe),
+        _check_invoices(stripe, mode),
         _check_return_url(),
         _check_plan_prices(plans, mode, stripe),
     ]

@@ -274,3 +274,60 @@ async def test_a_broken_check_never_breaks_the_page(monkeypatch):
     monkeypatch.setattr(setup_check, "_run_checks", lambda _p: (_ for _ in ()).throw(RuntimeError("boom")))
     out = await setup_check.check_stripe_setup([], provider="stripe")
     assert out["ok"] is False and out["checks"][0]["state"] == "unknown"
+
+
+# ── what a billed customer receives ───────────────────────────────
+
+def _acct(support_email=None):
+    class _A:
+        business_profile = {"support_email": support_email}
+    return _A()
+
+
+def _inv(hosted="https://stripe/i", pdf="https://stripe/p"):
+    class _I:
+        hosted_invoice_url = hosted
+        invoice_pdf = pdf
+    return _I()
+
+
+def test_a_receipt_with_nobody_to_reply_to_is_a_problem(stripe_env):
+    """Stripe puts the account's support email on every receipt.  This
+    live account had none, so each receipt would reach a customer
+    anonymous."""
+    class _S:
+        Account = type("A", (), {"retrieve": staticmethod(lambda: _acct(None))})
+    check = setup_check._check_invoices(_S, "live")
+    assert check["state"] == "problem"
+    assert "support email" in check["note"] and "Business details" in check["note"]
+
+
+def test_the_note_names_the_one_switch_the_api_cannot_read(stripe_env):
+    """``settings.invoices`` carries tax ids and nothing about mail, so
+    whether Stripe emails a receipt at all is only knowable by looking.
+    The note has to say that rather than imply it was checked."""
+    class _S:
+        Account = type("A", (), {"retrieve": staticmethod(lambda: _acct("help@4truck.us"))})
+        Invoice = type("I", (), {"list": staticmethod(lambda limit=1: {"data": []})})
+    check = setup_check._check_invoices(_S, "live")
+    assert check["state"] == "ok"
+    assert "Customer emails" in check["note"] and "cannot read" in check["note"]
+
+
+def test_an_invoice_without_its_links_would_leave_dead_buttons(stripe_env):
+    """The Billing page offers both, from the row the webhook stored."""
+    class _S:
+        Account = type("A", (), {"retrieve": staticmethod(lambda: _acct("help@4truck.us"))})
+        Invoice = type("I", (), {"list": staticmethod(lambda limit=1: {"data": [_inv(pdf="")]})})
+    check = setup_check._check_invoices(_S, "live")
+    assert check["state"] == "problem" and "PDF" in check["note"]
+
+    class _Ok:
+        Account = type("A", (), {"retrieve": staticmethod(lambda: _acct("help@4truck.us"))})
+        Invoice = type("I", (), {"list": staticmethod(lambda limit=1: {"data": [_inv()]})})
+    good = setup_check._check_invoices(_Ok, "live")
+    assert good["state"] == "ok" and "help@4truck.us" in good["note"]
+    # and the page really does offer both, or the note promises what it cannot
+    page = (REPO / "interfaces" / "dashboard" / "src" / "features" / "billing" / "Billing.tsx").read_text()
+    assert "invoice_pdf_url" in page and "hosted_invoice_url" in page
+    assert page.count("target=\"_blank\" rel=\"noopener noreferrer\"") >= 2
