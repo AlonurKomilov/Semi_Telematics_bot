@@ -38,6 +38,12 @@ export { ModPanel } from './panel/ModPanel';
 export { ModControls } from './panel/ModControls';
 export { default as Modifications } from './Modifications';
 export { MODS_HREF, MODS_PAGE_HREF } from './href';
+// The shell raises this one; every other act cue is classified from a
+// click and needs nothing exported. It comes through the barrel rather
+// than by path because `AppShell` already imports the barrel — and the
+// ring the sound lanes avoid runs the other way, from `lib/toast` back
+// into the panel this file exports.
+export { usePageCue } from './sound/route';
 export { MODS_PERMISSION } from './access';
 export { pageWallpaperFor } from './wallpaper';
 export { ModsLock, lockedModsKeys, useCanMods } from './ModsLock';

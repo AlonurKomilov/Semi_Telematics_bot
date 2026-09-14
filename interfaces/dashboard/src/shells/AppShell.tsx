@@ -32,7 +32,10 @@ import { DocumentLock } from './DocumentLock';
 import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
-import { entranceById, ModPanel, useMods, surfaceFor, ModsLock, useCanMods, pageWallpaperFor } from '../mods';
+import {
+  entranceById, ModPanel, useMods, surfaceFor, ModsLock, useCanMods,
+  pageWallpaperFor, usePageCue,
+} from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
@@ -50,6 +53,11 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
   // and `ModsLock` below puts its stored look back to the defaults.
   const canMods = useCanMods();
   const { pathname } = useLocation();
+  // HERE because this is the one component that stays mounted across
+  // every route change — it renders the <Outlet/> the pages appear in,
+  // so a hook inside a page would hear its own arrival and nothing
+  // else. The gates are read at play time, in `cue.ts`.
+  usePageCue();
   const dockedContentClass = useDockedContentClass();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
