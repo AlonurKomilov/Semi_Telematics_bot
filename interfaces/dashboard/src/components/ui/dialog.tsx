@@ -7,9 +7,14 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 import { sizeRegion } from '@/lib/sizeRegion';
+// By PATH, not through `@/mods`. That barrel exports the whole mods
+// panel, and this primitive has 40 call sites — every page that shows a
+// dialog would take the panel's module graph with it for one hook.
+// `mods/index.test.ts` carries the exception with this reason.
+import { useSurfaceCue } from '@/mods/sound/surface';
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  return <DialogPrimitive.Root data-slot="dialog" {...useSurfaceCue(props)} />
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {

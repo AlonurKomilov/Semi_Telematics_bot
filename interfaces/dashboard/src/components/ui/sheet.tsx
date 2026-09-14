@@ -6,9 +6,11 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 import { sizeRegion } from '@/lib/sizeRegion';
+// By path, for the reason `dialog.tsx` gives.
+import { useSurfaceCue } from '@/mods/sound/surface';
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+  return <SheetPrimitive.Root data-slot="sheet" {...useSurfaceCue(props)} />
 }
 
 function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {

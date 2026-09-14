@@ -69,6 +69,15 @@ const ALLOWED_DEEP = [
   // Its guard reads the packs' index for the ids it checks the files
   // against, and would inherit the same ring through the barrel.
   'test/iconLane.test.ts',
+  // The two surface roots. A dialog is opened by code as often as by a
+  // click and closed by Escape or a backdrop press, so it cannot be
+  // classified from an event — it is raised from the wrapper every
+  // Dialog and Sheet already goes through. By path because the barrel
+  // exports the mods PANEL, and these two primitives have 46 call sites
+  // between them: every page showing a dialog would take that module
+  // graph with it to reach one hook.
+  'components/ui/dialog.tsx',
+  'components/ui/sheet.tsx',
   // The fourth sound lane, and the same reason as the three above: the
   // barrel does not export the cue player at ALL — it exports
   // `ModPanel` — so there is no barrel path to this function, and a
