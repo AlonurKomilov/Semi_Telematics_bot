@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { PANEL_SECTIONS as MOD_SECTIONS } from './taxonomy';
 import { TAXONOMY } from './taxonomy';
 import { join } from 'node:path';
-import { MOD_THEME_FIELDS, VALUE_FIELDS, MOD_MOTIONS, type ValueField,
+import { MOD_THEME_FIELDS, VALUE_FIELDS, MOD_MOTIONS, MOD_FIELD_KIND, type ValueField,
   MOD_ICONS,
   MOD_FIELD_SECTION, modFootprint,
   PACK_TOKENS, modMatchesAxes, type ModAxes,
@@ -40,6 +40,7 @@ import { THEME_PACKS, packById } from './store/items/theme';
 import { SIZE_MAX } from '../preferences/registry';
 import { CORNERS } from './store/items/corners';
 import { MOTION_PACKS } from './store/items/motion';
+import { AMBIENCE_PACKS } from './store/items/ambience';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
 
@@ -284,6 +285,26 @@ describe('mods are combinations, not new colours', () => {
     }
   });
 
+  it('never turns background sound ON', () => {
+    // The bed is the one thing a look must not decide: a cue is a third
+    // of a second and a bed fills a room somebody else may be in.
+    // Structural, like the mode below — a field that does not exist
+    // cannot be set by somebody reading the list and not the reason.
+    for (const m of MODS)
+      expect(Object.keys(m), `mod "${m.id}" turns the bed on`)
+        .not.toContain('ambienceOn');
+    expect(Object.keys(MOD_FIELD_KIND), 'the contract grew a switch for it')
+      .not.toContain('ambienceOn');
+  });
+
+  it('wears a bed that exists', () => {
+    for (const m of MODS) {
+      if (m.ambience === undefined) continue;
+      expect(AMBIENCE_PACKS.map((a) => a.id), `mod "${m.id}" wears bed "${m.ambience}"`)
+        .toContain(m.ambience);
+    }
+  });
+
   it('never sets the mode', () => {
     // Dark or light is about the room, not the look. Asserted structurally
     // so it cannot be added back by someone who reads the field list and
@@ -404,9 +425,15 @@ describe('installed is not the same question as matching', () => {
     // it wrong on the first run: Cab says nothing about material, so
     // editing material is not editing Cab — it is answering a question
     // Cab left open. Only what a mod declares can be departed from.
-    const OTHER: Record<string, unknown> = {
-      accent: 'blue', radius: 'sharp', size: 1,
-      material: 'glass', motion: 'snappy', icons: 'hairline', sound: 'chime',
+    // Two candidates per axis, and the one that is picked is whichever
+    // the mod is NOT wearing. A single fixed value looked fine until a
+    // look shipped that already wore it — Long Haul is `motion: snappy`
+    // and the departure WAS snappy, so "edit the axis" edited nothing
+    // and the assertion passed by not being a change at all.
+    const OTHERS: Record<string, readonly unknown[]> = {
+      accent: ['blue', 'green'], radius: ['sharp', 'pill'], size: [1, 1.25],
+      material: ['glass', 'solid'], motion: ['snappy', 'calm'],
+      icons: ['hairline', 'bold'], sound: ['chime', 'blip'],
     };
     for (const m of MODS) {
       const base = {
@@ -417,7 +444,8 @@ describe('installed is not the same question as matching', () => {
       expect(modMatchesAxes(m, base), `${m.id} does not match its own axes`).toBe(true);
       for (const k of ['accent', 'radius', 'size', 'material', 'motion', 'icons', 'sound'] as const) {
         if (m[k as keyof typeof m] === undefined) continue;
-        const other = k === 'accent' && m.accent === 'blue' ? 'green' : OTHER[k];
+        const other = OTHERS[k].find((v) => v !== m[k as keyof typeof m]);
+        expect(other, `${m.id}: no departure left for ${k}`).toBeDefined();
         expect(modMatchesAxes(m, { ...base, [k]: other }),
           `${m.id}: editing ${k} should stop the match`).toBe(false);
       }

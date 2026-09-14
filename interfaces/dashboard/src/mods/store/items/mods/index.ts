@@ -21,8 +21,10 @@ import type { Mod } from '../../../catalogue';
 import { cab } from './cab';
 import { wall } from './wall';
 import { nightHaul } from './night-haul';
+import { longHaul } from './long-haul';
+import { desk } from './desk';
 
-export const MODS: readonly Mod[] = [cab, wall, nightHaul];
+export const MODS: readonly Mod[] = [cab, wall, nightHaul, longHaul, desk];
 
 export const modById = (id: string): Mod | undefined =>
   MODS.find((m) => m.id === id);

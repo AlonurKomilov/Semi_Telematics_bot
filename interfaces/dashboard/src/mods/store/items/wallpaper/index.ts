@@ -22,6 +22,8 @@ export const WALLPAPERS: readonly Wallpaper[] = [
   // Night Haul's own. Named for its pack on every shelf it reaches, the
   // way a pack's items are: the wallpaper picker says "Night Haul", and
   // so do the sound and keyboard pickers.
+  { id: 'long-haul', label: 'Long Haul', kind: 'still',
+    description: 'The horizon — a wide band of light where the road meets the sky' },
   { id: 'night-haul', label: 'Night Haul', kind: 'still',
     description: 'The road under headlights — light low and wide, nothing above the horizon' },
 ];

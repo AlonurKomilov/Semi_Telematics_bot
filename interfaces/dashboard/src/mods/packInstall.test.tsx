@@ -88,7 +88,10 @@ describe('an item whose pack is gone is not offered', () => {
 
   it('the row itself goes when nothing is left on it', () => {
     // Every pack that ships a preset — the row has nothing to draw.
-    removed.current = ['cab', 'wall', 'night-haul'];
+    // Listed rather than derived on purpose: a pack that starts shipping
+    // one should make this red, so somebody says whether the row is
+    // still supposed to empty.
+    removed.current = ['cab', 'wall', 'night-haul', 'long-haul', 'desk'];
     render(<ModControls />);
     expect(screen.queryByText('Presets'), 'an empty heading is left behind').toBeNull();
   });

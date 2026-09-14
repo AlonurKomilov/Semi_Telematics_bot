@@ -10,8 +10,10 @@
 import type { AmbiencePack } from '../../../sound/bed';
 import { road } from './road';
 import { rain } from './rain';
+import { wind } from './wind';
+import { room } from './room';
 
-export const AMBIENCE_PACKS: readonly AmbiencePack[] = [road, rain];
+export const AMBIENCE_PACKS: readonly AmbiencePack[] = [road, rain, wind, room];
 
 export const AMBIENCE_IDS = AMBIENCE_PACKS.map((a) => a.id);
 export const ambienceById = (id: string): AmbiencePack | undefined =>

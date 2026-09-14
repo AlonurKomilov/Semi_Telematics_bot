@@ -18,6 +18,7 @@ export function useApplyMod(): (m: Mod) => void {
   const { theme, setTheme, size, setSize } = useMods();
   const { value: soundPack, setValue: setSoundPack } = usePreference('mods.sound.pack');
   const { value: keyPack, setValue: setKeyPack } = usePreference('mods.sound.keyboard.pack');
+  const { value: bed, setValue: setBed } = usePreference('mods.sound.background.pack');
 
   return (m: Mod) => {
     // Snapshot BEFORE the write. Installing a mod overwrites accent,
@@ -37,6 +38,7 @@ export function useApplyMod(): (m: Mod) => void {
     const previousSize = size.global;
     const previousSound = soundPack;
     const previousKeys = keyPack;
+    const previousBed = bed;
     setTheme({
       // Stored, so it survives an axis being edited afterwards. Clicking
       // an already-installed mod therefore RESTORES it — the useful
@@ -60,6 +62,11 @@ export function useApplyMod(): (m: Mod) => void {
     // Its own preference, like the cue set beside it — a pack that
     // ships a keyboard wears it here or nowhere.
     if (m.keys !== undefined) setKeyPack(m.keys);
+    // Which bed, never whether: a look that could start the sound would
+    // be making a decision for whoever else is in the room.
+    if (m.ambience !== undefined) setBed(m.ambience);
+    // Which bed, never whether: a look that could start the sound would
+    // be making a decision for whoever else is in the room.
     if (m.size !== undefined) setSize({ global: m.size });
 
     undoableAction({
@@ -69,6 +76,7 @@ export function useApplyMod(): (m: Mod) => void {
         setSize({ global: previousSize });
         setSoundPack(previousSound);
         setKeyPack(previousKeys);
+        setBed(previousBed);
       },
     });
   };

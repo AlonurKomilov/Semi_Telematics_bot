@@ -16,8 +16,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-const { setTheme, setSize, setSoundPack, setKeyPack, undoableAction } = vi.hoisted(() => ({
-  setTheme: vi.fn(), setSize: vi.fn(), setSoundPack: vi.fn(), setKeyPack: vi.fn(), undoableAction: vi.fn(),
+const { setTheme, setSize, setSoundPack, setKeyPack, setBed, undoableAction } = vi.hoisted(() => ({
+  setTheme: vi.fn(), setSize: vi.fn(), setSoundPack: vi.fn(), setKeyPack: vi.fn(),
+  setBed: vi.fn(), undoableAction: vi.fn(),
 }));
 
 vi.mock('react-i18next', async (orig) => ({
@@ -39,7 +40,9 @@ vi.mock('../preferences', async (orig) => ({
   // single spy for both would pass whichever one it wrote.
   usePreference: (k: string) => (k === 'mods.sound.keyboard.pack'
     ? { value: 'soft', setValue: setKeyPack }
-    : { value: 'chime', setValue: setSoundPack }),
+    : k === 'mods.sound.background.pack'
+      ? { value: 'road', setValue: setBed }
+      : { value: 'chime', setValue: setSoundPack }),
 }));
 vi.mock('../components/banners/stagedAction', () => ({ undoableAction }));
 
@@ -58,7 +61,7 @@ const { EVERYTHING, THIN } = vi.hoisted(() => ({
     id: 'everything', label: 'Everything', why: 'carries every field a mod can',
     accent: 'green', radius: 'pill', material: 'glass', motion: 'calm',
     icons: 'bold', iconPack: 'phosphor', font: 'serif', entrance: 'fade', entranceOn: true,
-    wallpaper: 'grid', wallpaperLive: true, wallpaperPage: 'mesh', cursor: 'sharp', shader: 'studio', size: 1.25, sound: 'blip', keys: 'click',
+    wallpaper: 'grid', wallpaperLive: true, wallpaperPage: 'mesh', cursor: 'sharp', shader: 'studio', size: 1.25, sound: 'blip', keys: 'click', ambience: 'rain',
   },
   THIN: { id: 'thin', label: 'Thin', accent: 'green', why: 'carries almost nothing' },
 }));
@@ -77,7 +80,7 @@ const field = (m: unknown, f: string) => (m as Record<string, unknown>)[f];
 beforeEach(() => {
   cleanup();
   setTheme.mockClear(); setSize.mockClear();
-  setSoundPack.mockClear(); setKeyPack.mockClear(); undoableAction.mockClear();
+  setSoundPack.mockClear(); setKeyPack.mockClear(); setBed.mockClear(); undoableAction.mockClear();
 });
 
 const install = (label: string) => {
@@ -127,6 +130,8 @@ describe('a look that carries everything installs everything', () => {
     // field did not exist, so the pack promised everything ready and
     // left the keys on whatever was there.
     expect(setKeyPack).toHaveBeenCalledWith('click');
+    // Which bed, never whether — the switch is not on the contract.
+    expect(setBed).toHaveBeenCalledWith('rain');
   });
 
   it('offers a way back to everything it overwrote', () => {
@@ -136,11 +141,12 @@ describe('a look that carries everything installs everything', () => {
     install('Everything');
     expect(undoableAction, 'installing a look said nothing').toHaveBeenCalledTimes(1);
     setTheme.mockClear(); setSize.mockClear();
-    setSoundPack.mockClear(); setKeyPack.mockClear();
+    setSoundPack.mockClear(); setKeyPack.mockClear(); setBed.mockClear();
     return (undoableAction.mock.calls[0][0].undo as () => Promise<void>)().then(() => {
       expect(setSize, 'undo left the app resized').toHaveBeenCalledWith({ global: 1 });
       expect(setSoundPack, 'undo left the new cue set playing').toHaveBeenCalledWith('chime');
       expect(setKeyPack, 'undo left the new keyboard clicking').toHaveBeenCalledWith('soft');
+      expect(setBed, 'undo left the new bed playing').toHaveBeenCalledWith('road');
       expect(setTheme, 'undo wrote no theme fields back').toHaveBeenCalled();
     });
   });
@@ -157,6 +163,7 @@ describe('a look that carries little writes little', () => {
     expect(setSize, 'a look with no size resized the app').not.toHaveBeenCalled();
     expect(setSoundPack, 'a look with no sound changed the pack').not.toHaveBeenCalled();
     expect(setKeyPack, 'a look with no keyboard changed the keys').not.toHaveBeenCalled();
+    expect(setBed, 'a look with no bed changed the bed').not.toHaveBeenCalled();
   });
 });
 

@@ -163,7 +163,9 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
         // field, and this is what files it under Sounds.
         modFields: ['keys'] },
       { id: 'background', title: 'Background sound',
-        axes: [], prefs: ['mods.sound.background', 'mods.sound.background.pack'] },
+        axes: [], prefs: ['mods.sound.background', 'mods.sound.background.pack'],
+        // A look may name the bed; the switch is never its to flip.
+        modFields: ['ambience'] },
       { id: 'alerts',    title: 'Live alerts',
         axes: [], prefs: ['dispatch.soundOn'] },
     ],

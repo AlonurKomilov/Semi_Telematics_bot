@@ -211,6 +211,17 @@ export interface Mod extends ItemMeta {
    * keys on whatever was there.
    */
   readonly keys?: string;
+  /**
+   * WHICH bed plays under everything — an `AMBIENCE_PACKS` id.
+   *
+   * A pack that ships a bed can name it, and that is ALL it can do: the
+   * switch is not here and must not be. Turning background sound on is
+   * the one change nobody else in the room agreed to — a cue is a third
+   * of a second, a bed fills an office — so it stays a thing a person
+   * does for themselves. `catalogue.test.ts` asserts the absence
+   * structurally, the way it does for the mode.
+   */
+  readonly ambience?: string;
   /** The pointer set — a `CURSOR_PACKS` id. A look may carry it, and a
    *  look is the only thing that should: it is per-device by nature and
    *  replaces an operating-system setting, so nothing account-wide may
@@ -313,7 +324,7 @@ export const MOD_FIELD_APPLIER: Record<
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
   wallpaper: 'theme', wallpaperLive: 'theme', wallpaperPage: 'theme', cursor: 'theme', shader: 'theme',
   entranceOn: 'theme',
-  size: 'size', sound: 'sound', keys: 'sound',
+  size: 'size', sound: 'sound', keys: 'sound', ambience: 'sound',
 };
 
 /**
@@ -348,7 +359,7 @@ export const MOD_FIELD_APPLIER: Record<
 export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
   shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
-  sound: 'item', keys: 'item',
+  sound: 'item', keys: 'item', ambience: 'item',
   radius: 'item', motion: 'item', entrance: 'item',
   size: 'value', icons: 'value',
   entranceOn: 'value', wallpaperLive: 'value',

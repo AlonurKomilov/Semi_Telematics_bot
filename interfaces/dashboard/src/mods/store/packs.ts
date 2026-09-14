@@ -65,6 +65,14 @@ const THEMED: readonly Pack[] = [
     description: 'For the end of a long shift — low light, low sound, nothing in a hurry',
     items: { wallpaper: ['night-haul'], sound: ['night-haul'], keys: ['night-haul'],
       motion: ['night-haul'], mods: ['night-haul'] } },
+  /** The daylight half of the pair — its own horizon and its own air. */
+  { id: 'long-haul', label: 'Long Haul', publisher: PUBLISHER,
+    description: 'For the middle of a long day — the horizon, moving air, and nothing kept waiting',
+    items: { wallpaper: ['long-haul'], ambience: ['wind'], mods: ['long-haul'] } },
+  /** The one that is not a cab at all. */
+  { id: 'desk', label: 'Desk', publisher: PUBLISHER,
+    description: 'For a desk with other people at it — nothing patterned, nothing loud, nothing moving sideways',
+    items: { ambience: ['room'], mods: ['desk'] } },
 ];
 
 const key = (axis: string, id: string) => `${axis}/${id}`;

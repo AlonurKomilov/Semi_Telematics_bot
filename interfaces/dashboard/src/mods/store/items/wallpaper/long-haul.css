@@ -1,0 +1,30 @@
+/* Long Haul — the horizon: a wide band of light where the road meets
+   the sky, and clear glass under it.
+   The OPPOSITE placement to Night Haul, and deliberately weaker for it.
+   Night Haul keeps its strongest stop low, furthest from the text that
+   sits in the upper two thirds of a pane; a horizon has to sit high to
+   read as one, which puts it nearer the words — so the band is half the
+   strength and twice as soft. The gate measures both either way. */
+@media screen {
+  :root[data-wallpaper="long-haul"] .chrome-ground,
+  :root[data-wallpaper-page="long-haul"] .page-ground {
+    background-color: var(--ground);
+    position: relative;
+    isolation: isolate;
+  }
+  :root[data-wallpaper="long-haul"] .chrome-ground::before,
+  :root[data-wallpaper-page="long-haul"] .page-ground::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to bottom,
+        color-mix(in oklab, var(--primary) 8%, transparent) 0%,
+        transparent 34%),
+      linear-gradient(to bottom,
+        color-mix(in oklab, var(--primary) 4%, transparent) 0%,
+        transparent 62%);
+  }
+}
