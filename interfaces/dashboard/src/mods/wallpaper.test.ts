@@ -239,8 +239,23 @@ describe('the ground is where it can be seen', () => {
   const OVER_CONTENT: Record<string, string> = {
     'features/ai/AssistantPanel.tsx':
       'the dock floats over the page, so transparency would show the page '
-      + 'through it. Its chat canvas carries `page-ground` instead, and the '
-      + 'frame half wants a `chrome-ground` of its own — not a `chrome-pane`.',
+      + 'through it. It brings its own grounds instead — `chrome-ground` on '
+      + 'the frame, `page-ground` on the chat canvas.',
+  };
+
+  /**
+   * The two chrome surfaces the shell's ground does not contain.
+   *
+   * The dock is a SIBLING of the shell; the mobile drawer is portalled
+   * onto `<body>`. Neither is inside `.chrome-ground`, so neither has a
+   * plane for a pattern to paint on — they read as flat slabs under
+   * every wallpaper until they bring a ground of their own. Named,
+   * because "is this element inside that one at runtime" is not a
+   * question a source scan can answer.
+   */
+  const BRING_THEIR_OWN: Record<string, string> = {
+    'features/ai/AssistantPanel.tsx': 'rendered beside the shell, not inside it',
+    'components/shell/MobileNavDrawer.tsx': 'portalled onto <body> by the sheet',
   };
 
   /** Every source file a chrome surface could be hiding in. */
@@ -290,6 +305,15 @@ describe('the ground is where it can be seen', () => {
       .toBeGreaterThan(0);
     expect(checked, 'no chrome surfaces found — this test measures nothing')
       .toBeGreaterThanOrEqual(3);
+  });
+
+  it('and the two outside it bring a ground of their own', () => {
+    const SRC = join(__dirname, '..');
+    for (const [rel, why] of Object.entries(BRING_THEIR_OWN)) {
+      const src = readFileSync(join(SRC, rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(src, `${rel} is ${why}, so a pattern has nothing to paint on unless `
+        + 'it carries `chrome-ground` itself').toMatch(/\bchrome-ground\b/);
+    }
   });
 
   it('and the ground carries its own colour under the pattern', () => {

@@ -64,11 +64,23 @@ export default function MobileNavDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="left"
-        // The Sidebar brings its own surface (``bg-sidebar``), its own
-        // width (``w-56``, or ``w-14`` collapsed) and its own padding, so
-        // the sheet must contribute NONE of those or the nav sits on a
-        // popover-coloured slab three-quarters of the screen wide.
-        className="gap-0 border-0 bg-transparent p-0 shadow-none"
+        // The Sidebar brings its own width (``w-56``, or ``w-14``
+        // collapsed) and its own padding, so the sheet contributes
+        // neither.
+        //
+        // It DOES contribute the surface, and `bg-transparent` was the
+        // wrong way to say so: `.surface` on SheetContent is declared
+        // outside every `@layer`, and an unlayered rule beats a layered
+        // utility whatever the specificity — so the drawer wore the
+        // POPOVER colour, which is the exact slab the old comment here
+        // said it was avoiding. Naming the chrome surface is what
+        // actually avoids it.
+        //
+        // `chrome-ground` as well, because the sheet is portalled onto
+        // <body> — outside the shell's own ground — so without one there
+        // is no plane for a wallpaper to paint and the Sidebar's
+        // `chrome-pane` nulls its colour onto nothing.
+        className="gap-0 border-0 p-0 shadow-none surface-sidebar chrome-ground"
         // Width goes in INLINE STYLE, not a class.  SheetContent's own
         // width is written as data-attribute variants
         // (``data-[side=left]:w-3/4`` + the size map's

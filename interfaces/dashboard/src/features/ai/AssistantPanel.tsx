@@ -104,9 +104,17 @@ export default function AssistantPanel() {
           canvas — the exact anatomy of the app frame (see the shells'
           `<main className="bg-background rounded-xl">` inside a bg-sidebar
           wrapper), so a docked panel reads as a second canvas in the SAME
-          frame, not a foreign white card floating over it. */}
+          frame, not a foreign white card floating over it.
+
+          Which is why it carries `chrome-ground` and the sidebar
+          surface. The dock is rendered as a SIBLING of the shell, so it
+          sits outside the app's own ground: without one of its own there
+          is no plane for a frame wallpaper to paint, and it read as a
+          flat slab under every pattern. It must NOT be `chrome-pane` —
+          that nulls the colour to reveal a ground BEHIND, and behind
+          this one is the page it is covering. */}
       <div
-        className={`fixed right-0 z-40 top-12 bottom-0 bg-sidebar text-sidebar-foreground transition-transform duration-200 ${
+        className={`fixed right-0 z-40 top-12 bottom-0 bg-sidebar surface surface-sidebar chrome-ground text-sidebar-foreground transition-transform duration-200 ${
           panelExpanded
             // Expanded = fill the whole CONTENT region: right of the
             // sidebar (--sidebar-w).  Below lg the sidebar is a drawer,
