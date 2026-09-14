@@ -26,6 +26,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { SOUND_PACKS } from './sound';
 import { KEY_PACKS } from './keys';
+import { ACT_PACKS } from './acts';
 import { WALLPAPERS } from './wallpaper';
 import { CURSOR_PACKS } from './cursor';
 import { SHADER_PACKS } from './shader';
@@ -42,6 +43,7 @@ import type { ItemMeta } from './meta';
 import { engineCss } from '../../../test/stylesheet';
 import { isCueWithin, CUE_LIMITS, CUE_NAMES } from '../../sound/engine';
 import { KEY_LIMITS, KEY_CLASSES } from '../../sound/keys';
+import { ACT_LIMITS, ACT_NAMES } from '../../sound/acts';
 
 const MODS = join(__dirname, '..', '..');
 const src = (rel: string) =>
@@ -134,8 +136,32 @@ describe('every item keeps the engine\'s contract', () => {
         expect(isCueWithin(p.cues[cls], KEY_LIMITS), `${p.id}.${cls}`).toBe(true);
   });
 
+  /**
+   * The third band, and the reason there is one.
+   *
+   * `CUE_LIMITS` floors duration at 20ms; a press is 14ms, so an act cue
+   * is ILLEGAL there. Validating these against the wide band would pass
+   * every pack and then `playCue` would refuse the cue at play time
+   * against the band it is actually handed — dead, mute, and green.
+   */
+  it('every act pack answers every act, inside the act band', () => {
+    expect(ACT_PACKS.length, 'no act packs — this checks nothing').toBeGreaterThan(2);
+    for (const p of ACT_PACKS)
+      for (const name of ACT_NAMES)
+        expect(isCueWithin(p.cues[name], ACT_LIMITS), `${p.id}.${name}`).toBe(true);
+  });
+
+  it('and the wide band would NOT have caught a bad one', () => {
+    // The positive control for the paragraph above: if these two bands
+    // ever converge, this file is validating nothing in particular.
+    const press = ACT_PACKS[0].cues.press;
+    expect(isCueWithin(press, CUE_LIMITS),
+      'CUE_LIMITS now admits an act cue — the third band has stopped meaning anything')
+      .toBe(false);
+  });
+
   it('ids are unique and usable as a stored value', () => {
-    for (const packs of [SOUND_PACKS, KEY_PACKS]) {
+    for (const packs of [SOUND_PACKS, KEY_PACKS, ACT_PACKS]) {
       const ids = packs.map((p) => p.id);
       expect(new Set(ids).size).toBe(ids.length);
       for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9-]*$/);

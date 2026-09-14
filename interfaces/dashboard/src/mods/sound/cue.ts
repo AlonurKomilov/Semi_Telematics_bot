@@ -20,10 +20,12 @@
  * `preferences/registry.ts`.
  */
 import { preferences } from '../../preferences';
-import { armAudio, playCue, type CueName } from './engine';
-import { pickKeyCue, KEY_LIMITS } from './keys';
+import { armAudio, lastNotifyAt, playCue, type CueName } from './engine';
+import { pickKeyCue, KEY_LIMITS, lastKeyAt } from './keys';
+import { pickActCue, ACT_LIMITS, ACT_FAMILY, type ActName } from './acts';
 import { soundPackById } from '../store/items/sound';
 import { keyPackById } from '../store/items/keys';
+import { actPackById } from '../store/items/acts';
 
 /**
  * Play an interface cue, if this screen has asked for interface sound.
@@ -60,6 +62,10 @@ export function armIfWanted(): void {
   if (preferences.get('mods.sound.ui')
     || preferences.get('dispatch.soundOn')
     || preferences.get('mods.sound.keyboard')
+    // The act axis asks for audio on the first CLICK, which is also the
+    // gesture that would unlock it — but only if something is already
+    // listening for that gesture when it happens.
+    || preferences.get('mods.sound.acts')
     // The bed asks for audio at MOUNT, so a screen with only this gate
     // on still has to be listening for the gesture — otherwise the one
     // person who wants background sound and nothing else is the one
@@ -101,6 +107,51 @@ export function installKeySound(): void {
   if (keySoundInstalled || typeof window === 'undefined') return;
   keySoundInstalled = true;
   window.addEventListener('keydown', playKeyCue);
+}
+
+
+// ── The act lane ─────────────────────────────────────────────────────
+
+/** Which switch owns each family. */
+const FAMILY_PREF = {
+  controls: 'mods.sound.acts.controls',
+  places: 'mods.sound.acts.places',
+  selection: 'mods.sound.acts.selection',
+} as const;
+
+/**
+ * The sound one act earns.
+ *
+ * Every gate is checked HERE and none at the call site, for the reason
+ * this file already gives about `playUiCue`: a caller that has to
+ * remember to ask is a caller that forgets, and the failure is sound
+ * nobody consented to on a shared office floor. The delegated listener
+ * will call this for every click in the product, so there is exactly
+ * one place that can get the answer wrong.
+ *
+ * The order matters. Deference and the rate limits live one layer down
+ * in `acts.ts`, which is pure of preferences — so this resolves WHO is
+ * allowed to hear it, and that file resolves whether the moment is
+ * right.
+ */
+export function playActCue(name: ActName): void {
+  if (!preferences.get('mods.sound.acts')) return;
+  if (!preferences.get(FAMILY_PREF[ACT_FAMILY[name]])) return;
+  // Epoch, not `performance.now()`: a snooze has to survive a reload,
+  // and the page's own clock restarts at zero.
+  if (Date.now() < preferences.get('mods.sound.snoozeUntil')) return;
+  const volume = preferences.get('mods.sound.volume');
+  if (volume <= 0) return;
+
+  const picked = pickActCue(
+    name,
+    actPackById(preferences.get('mods.sound.acts.pack')),
+    performance.now(),
+    { lastNotifyAt: lastNotifyAt(), lastKeyAt: lastKeyAt() },
+  );
+  // The ACTION bus: everything here is something you did, so it ducks
+  // when the app needs to say something.
+  if (picked) playCue(picked.cue, volume * picked.scale, ACT_LIMITS, 'action');
 }
 
 

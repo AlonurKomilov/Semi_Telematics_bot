@@ -50,6 +50,7 @@ import type { ModMaterial, ModMotion, ModIcons } from '../mods/catalogue';
 import { parseHex } from '../mods/theme/contrast';
 import { SOUND_PACKS } from '../mods/store/items/sound';
 import { KEY_PACKS } from '../mods/store/items/keys';
+import { ACT_PACKS } from '../mods/store/items/acts';
 import { MOD_FONTS } from '../mods/store/items/font';
 import { SURFACES } from '../mods/surfaces';
 import { GROUND_IDS } from '../mods/theme/grounds';
@@ -1212,6 +1213,90 @@ export const DEFS = {
     scope: 'synced',
     sanitize: (v) => (KEY_PACKS.some((p) => p.id === v) ? String(v) : 'click'),
     note: 'The sound typing makes.',
+  }),
+
+  // ── Interaction sound ─────────────────────────────────────────────
+  /**
+   * Whether the app answers your HAND.
+   *
+   * Its own master, and deliberately NOT a wider reading of
+   * `mods.sound.ui`. That gate's own note promises "a short cue when the
+   * app answers — saved, refused, or undoable", which is around thirty
+   * cues in a shift. This axis is the other half of the sentence: what
+   * happens when you press, choose, toggle or move around, which is two
+   * orders of magnitude more often. Folding it in would take every
+   * device that already opted in from thirty to roughly nineteen
+   * hundred on a deploy, with no new consent, on a shared floor — and
+   * the only obvious off-switch would also delete the lane they wanted.
+   *
+   * Device and false, for the reason every other sound gate gives:
+   * `mods.sound.volume` is a LEVEL defaulting to 1, so this is the only
+   * thing between a fresh account and noise it did not ask for.
+   */
+  'mods.sound.acts': def<boolean>({
+    default: false,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Play a short cue when you press, choose, toggle or move around.',
+  }),
+
+  /**
+   * The three families, on underneath the master.
+   *
+   * They default TRUE on purpose. Turning one switch on gives the whole
+   * vocabulary everywhere, with no second decision and no per-feature
+   * opt-in to forget — which is the point of an axis that is supposed to
+   * be the same wherever you are. These exist so the first complaint at
+   * hour six has an answer that is not "turn it all off": Places is the
+   * loudest single family and can go while every control still speaks.
+   */
+  'mods.sound.acts.controls': def<boolean>({
+    default: true,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Pressing, choosing, toggling.',
+  }),
+  'mods.sound.acts.places': def<boolean>({
+    default: true,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Pages, dialogs and panels opening and closing.',
+  }),
+  'mods.sound.acts.selection': def<boolean>({
+    default: true,
+    scope: 'device',
+    sanitize: asBool,
+    note: 'Gathering and dropping a set of rows.',
+  }),
+
+  /** Which act pack. SYNCED, like every other pack: the sound is a
+   *  property of the person, the switch is a property of the room. */
+  'mods.sound.acts.pack': def<string>({
+    default: 'chime',
+    scope: 'synced',
+    sanitize: (v) => (ACT_PACKS.some((p) => p.id === v) ? String(v) : 'chime'),
+    note: 'The sound your own actions make.',
+  }),
+
+  /**
+   * Everything mods can play, silent until this moment passes.
+   *
+   * Epoch milliseconds, not a boolean, because the control people
+   * actually want at hour six is "quiet for a while" and a boolean has
+   * to be remembered and turned back. It RESTORES itself, unlike the
+   * mute beside the volume, which is why it can be reached for freely.
+   *
+   * It does not cover `dispatch.soundOn`. An alert arriving is not
+   * something a convenience control may silence.
+   */
+  'mods.sound.snoozeUntil': def<number>({
+    default: 0,
+    scope: 'device',
+    sanitize: (v) => {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : undefined;
+    },
+    note: 'Mods sound stays quiet until this moment.',
   }),
 
   // ── Ambient mode ──────────────────────────────────────────────────

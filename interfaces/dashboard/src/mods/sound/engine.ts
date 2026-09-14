@@ -171,6 +171,28 @@ const LIMIT_DB = -12;
 /** How far the action side drops while the app is speaking. */
 const DUCK_TO = 0.35;
 
+/**
+ * When the app last spoke, and how long the action side stays down.
+ *
+ * Stamped HERE rather than in each of the three places that raise a
+ * notification — `playUiCue`, `playBannerCue` and the alert hook — for
+ * the reason `cue.ts` gives about its own gate: a caller that has to
+ * remember is a caller that forgets, and a fourth lane added later
+ * would silently opt out of the whole arrangement.
+ *
+ * The tail is the cue's own length plus enough for its release. It is
+ * what makes the two buses worth having: an alert arrives, everything
+ * you are doing gets out of its way, and then comes back.
+ */
+let notifyAt = -Infinity;
+const DUCK_TAIL_MS = 200;
+
+/** When a notification cue was last emitted, on `performance.now()`'s
+ *  clock, so another lane can defer to it. */
+export function lastNotifyAt(): number {
+  return notifyAt;
+}
+
 function buildGraph(c: AudioContext): void {
   // BEST-EFFORT, like everything else on this path. A browser without
   // DynamicsCompressor — or a test stub that has not grown one — must
@@ -385,6 +407,10 @@ export function playCue(
     void c.resume().then(() => emit(c, cue, volume, bus)).catch(() => { /* best-effort */ });
     return;
   }
+  if (bus === 'notify') {
+    notifyAt = performance.now();
+    duckActions(cue.dur * 1000 + DUCK_TAIL_MS);
+  }
   emit(c, cue, volume, bus);
 }
 
@@ -440,6 +466,7 @@ export function resetAudioForTests(): void {
   notifyBus = null;
   actionBus = null;
   limiter = null;
+  notifyAt = -Infinity;
   unlocked = false;
   awaitingUnlock.clear();
   // NOT `lifecycleHooked`. The listener is never removed — resetting the

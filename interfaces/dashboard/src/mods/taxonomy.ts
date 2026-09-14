@@ -166,6 +166,14 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
         axes: [], prefs: ['mods.sound.background', 'mods.sound.background.pack'],
         // A look may name the bed; the switch is never its to flip.
         modFields: ['ambience'] },
+      // The other half of the sentence "Interface sounds" begins: that
+      // item is the app ANSWERING, this one is the app answering your
+      // hand. Its own master, because the two differ by two orders of
+      // magnitude in how often they fire.
+      { id: 'acts',      title: 'Interaction sounds',
+        axes: [], prefs: ['mods.sound.acts', 'mods.sound.acts.pack',
+          'mods.sound.acts.controls', 'mods.sound.acts.places',
+          'mods.sound.acts.selection', 'mods.sound.snoozeUntil'] },
       { id: 'alerts',    title: 'Live alerts',
         axes: [], prefs: ['dispatch.soundOn'] },
     ],

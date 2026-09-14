@@ -11,6 +11,7 @@ import { groundTokens, type GroundId } from './theme/grounds';
 import { packById, THEME_PACKS } from './store/items/theme';
 import { useBed } from './sound/useBed';
 import { armIfWanted, installKeySound } from './sound/cue';
+import { installActSound } from './sound/listener';
 import { useAmbient } from './ambient/useAmbient';
 import { AMBIENT_SCALE } from './ambient/ambient';
 import type {
@@ -155,6 +156,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
   const { value: alertSound } = usePreference('dispatch.soundOn');
   const { value: keySound } = usePreference('mods.sound.keyboard');
   const { value: bedOn } = usePreference('mods.sound.background');
+  const { value: actSound } = usePreference('mods.sound.acts');
   const ambient = useAmbient();
   const root = document.documentElement;
 
@@ -258,7 +260,12 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // itself on every press, so installing it while the gate is on and
     // leaving it there costs one early-return per keystroke.
     if (keySound) installKeySound();
-  }, [uiSound, alertSound, keySound, bedOn]);
+    // Same bargain, one level wider: one delegated listener on the
+    // document rather than a cue in each primitive, because two thirds
+    // of this product's buttons are raw `<button>` and a cue in the
+    // primitive would sound on one page and not the next.
+    if (actSound) installActSound();
+  }, [uiSound, alertSound, keySound, bedOn, actSound]);
 
   // Publishing the cross-device default belongs HERE, on the single
   // funnel every appearance write already passes through — not at the

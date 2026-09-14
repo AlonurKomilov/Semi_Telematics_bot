@@ -11,6 +11,7 @@ import type { ItemMeta } from './meta';
 import { MODS } from './mods';
 import { SOUND_PACKS } from './sound';
 import { KEY_PACKS } from './keys';
+import { ACT_PACKS } from './acts';
 import { WALLPAPERS } from './wallpaper';
 import { CURSOR_PACKS } from './cursor';
 import { SHADER_PACKS } from './shader';
@@ -42,6 +43,7 @@ export const ITEM_AXES: readonly ItemAxis[] = [
   { axis: 'shader',    items: SHADER_PACKS },
   { axis: 'sound',     items: SOUND_PACKS },
   { axis: 'keys',      items: KEY_PACKS },
+  { axis: 'acts',      items: ACT_PACKS },
   { axis: 'ambience',  items: AMBIENCE_PACKS },
   { axis: 'entrance',  items: ENTRANCE_PACKS },
 ];

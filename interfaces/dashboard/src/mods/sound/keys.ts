@@ -125,6 +125,17 @@ export function resetKeySoundForTests(): void {
 }
 
 /**
+ * When a key last clicked, so another axis can stay out of the way.
+ *
+ * Typing and clicking are one continuous gesture when somebody fills a
+ * form — tab, type, tab, type — and the keyboard owns that stretch. Two
+ * voices on one physical act is a stutter.
+ */
+export function lastKeyAt(): number {
+  return lastAt;
+}
+
+/**
  * The cue one key press earns, or null.
  *
  * PURE of preferences AND of the pack catalogue on purpose. The gate,

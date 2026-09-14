@@ -30,6 +30,8 @@ import { usePreference } from '../../preferences';
 import { armAudio, playCue, type SoundPack } from '../sound/engine';
 import { KEY_LIMITS } from '../sound/keys';
 import { SOUND_PACKS, soundPackById } from '../store/items/sound';
+import { ACT_PACKS, actPackById } from '../store/items/acts';
+import { ACT_LIMITS } from '../sound/acts';
 import { KEY_PACKS, keyPackById } from '../store/items/keys';
 import { AMBIENCE_PACKS, ambienceById } from '../store/items/ambience';
 import { Chip } from './Chip';
@@ -341,6 +343,7 @@ export function SoundsGroup({ label }: { label: LabelClass }) {
       <SoundVolume label={label} />
       <div className="border-t border-border mt-2.5 pt-2.5" />
       <div className="mt-2"><InterfaceSoundItem /></div>
+      <div className="mt-2"><ActSoundItem /></div>
       <div className="mt-2"><KeyboardItem /></div>
       <div className="mt-2"><LiveAlertsItem /></div>
     </div>
@@ -395,6 +398,129 @@ export function BackgroundSoundItem() {
           : t('mods.sound_bg_hint',
             'A quiet bed under everything — nothing to listen to, just somewhere to be.')}
       </p>
+    </div>
+  );
+}
+
+
+/**
+ * Interaction sounds — the app answering your HAND.
+ *
+ * Its own master rather than a wider reading of "Interface sounds", and
+ * the arithmetic is the argument: that gate is around thirty cues in a
+ * shift, this axis is two orders of magnitude more. Folding them
+ * together would take a device that already opted in from thirty to
+ * roughly nineteen hundred, with no new consent, on a shared floor.
+ *
+ * Three families underneath, defaulting ON. Turning the master on gives
+ * the whole vocabulary everywhere with no second decision — the point of
+ * an axis that is the same wherever you are — and the sub-switches exist
+ * so the first complaint at hour six has an answer that is not "turn it
+ * all off".
+ */
+export function ActSoundItem() {
+  const offered = useOffered();
+  const { t } = useTranslation();
+  const { value: volume } = usePreference('mods.sound.volume');
+  const { value: on, setValue: setOn } = usePreference('mods.sound.acts');
+  const { value: pack, setValue: setPack } = usePreference('mods.sound.acts.pack');
+  const { value: snoozeUntil, setValue: setSnooze } = usePreference('mods.sound.snoozeUntil');
+  const controls = usePreference('mods.sound.acts.controls');
+  const places = usePreference('mods.sound.acts.places');
+  const selection = usePreference('mods.sound.acts.selection');
+
+  const FAMILIES = [
+    { pref: controls, label: t('mods.acts_controls', 'Controls'),
+      hint: t('mods.acts_controls_hint', 'Pressing, choosing, toggling.') },
+    { pref: places, label: t('mods.acts_places', 'Places'),
+      hint: t('mods.acts_places_hint', 'Pages, dialogs and panels opening and closing.') },
+    { pref: selection, label: t('mods.acts_selection', 'Selection'),
+      hint: t('mods.acts_selection_hint', 'Gathering and dropping a set of rows.') },
+  ];
+
+  const snoozed = Date.now() < snoozeUntil;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-foreground">
+          {t('mods.sound_acts_label', 'Interaction sounds')}
+        </span>
+        <Switch
+          size="sm"
+          checked={on}
+          onCheckedChange={(next) => {
+            setOn(next);
+            // Armed from inside the click, the same bargain the two
+            // switches above make: this gesture is the one that unlocks
+            // audio, so the first cue after it can be heard.
+            if (next) armAudio();
+          }}
+          aria-label={t('mods.sound_acts_label', 'Interaction sounds')}
+        />
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1">
+        {t('mods.sound_acts_hint',
+          'A short cue when you press, choose, toggle or move around — everywhere in the app.')}
+      </p>
+
+      {on && (
+        <>
+          {/* SNOOZE FIRST. It is the control a person reaches for at
+              hour six, and unlike the mute beside the volume it restores
+              itself — which is what makes it safe to reach for. */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            <span className="text-2xs text-muted-foreground">
+              {snoozed
+                ? t('mods.acts_snoozed', 'Quiet for now.')
+                : t('mods.acts_snooze', 'Quiet for')}
+            </span>
+            {snoozed ? (
+              <Chip value="off" current="off"
+                label={t('mods.acts_unsnooze', 'Turn sound back on')}
+                onClick={() => setSnooze(0)} />
+            ) : (
+              [[30, t('mods.acts_snooze_30', '30 min')],
+               [60, t('mods.acts_snooze_60', '1 hour')]].map(([mins, label]) => (
+                <Chip key={String(mins)} value={String(mins)} current=""
+                  label={String(label)}
+                  onClick={() => setSnooze(Date.now() + Number(mins) * 60_000)} />
+              ))
+            )}
+          </div>
+
+          {FAMILIES.map((f) => (
+            <div key={f.label} className="flex items-center justify-between gap-2 mt-2">
+              <span className="text-2xs text-muted-foreground">
+                {f.label} — {f.hint}
+              </span>
+              <Switch
+                size="sm"
+                checked={f.pref.value}
+                onCheckedChange={f.pref.setValue}
+                aria-label={f.label}
+              />
+            </div>
+          ))}
+
+          <div className="flex flex-wrap gap-1 mt-2">
+            {offered('acts', ACT_PACKS, (p) => p.id).map((p) => (
+              <Chip key={p.id} value={p.id} current={pack} label={p.label}
+                onClick={(v) => {
+                  setPack(v);
+                  // Preview the press: the one a person hears most, by
+                  // an order of magnitude over everything else here.
+                  if (volume > 0) {
+                    playCue(actPackById(v)!.cues.press, volume, ACT_LIMITS, 'action');
+                  }
+                }} />
+            ))}
+          </div>
+          <p className="text-2xs text-muted-foreground mt-1.5">
+            {actPackById(pack)?.description ?? ''}
+          </p>
+        </>
+      )}
     </div>
   );
 }
