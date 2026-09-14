@@ -11,11 +11,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  CUE_NAMES, CUE_LIMITS, WAVES, isSafeCue, playCue, armAudio, resetAudioForTests, type Cue,
+  CUE_NAMES, CUE_LIMITS, WAVES, isSafeCue, playCue, armAudio, resetAudioForTests,
+  audioGraphForTests, actionDestination, duckActions, type Cue,
 } from './engine';
 import { SOUND_PACKS, soundPackById } from '../store/items/sound';
 
 beforeEach(() => { resetAudioForTests(); });
+
+/** The limiter node, for every fake context in this file. */
+const compressor = () => ({
+  connect: () => {}, disconnect: () => {},
+  threshold: { value: 0 }, knee: { value: 0 },
+  ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 },
+});
 
 describe('the packs we ship', () => {
   it('answers every cue the app can ask for', () => {
@@ -135,6 +143,7 @@ describe('playing is best-effort and never throws', () => {
       state = 'running';
       createOscillator() { return node(); }
       createGain() { gainStages += 1; return node(); }
+      createDynamicsCompressor() { return compressor(); }
       resume() { this.state = 'running'; return Promise.resolve(); }
       suspend() { this.state = 'suspended'; return Promise.resolve(); }
       close() { return Promise.resolve(); }
@@ -292,6 +301,12 @@ function stubAudioForVolume() {
     state = 'running';
     createOscillator() { return node(); }
     createGain() { gainStages += 1; return node(); }
+    // The shared graph needs one. Without it `buildGraph` falls back and
+    // every cue connects straight to the destination — which still
+    // PLAYS, so nothing here would go red while the limiter silently
+    // stopped existing. `two buses, one limiter` below is what catches
+    // that; this keeps the volume test measuring the real path.
+    createDynamicsCompressor() { return compressor(); }
     resume() { this.state = 'running'; return Promise.resolve(); }
     suspend() { this.state = 'suspended'; return Promise.resolve(); }
     close() { return Promise.resolve(); }
@@ -323,8 +338,22 @@ describe('one volume, one gain', () => {
     expect(rec.peaks[2]).toBeCloseTo(CUE.gain * 0.25, 6);
 
     // The structural half: linearity could also survive two stages whose
-    // product happens to be right today. One cue, one gain stage.
-    expect(rec.gainStages).toBe(3);
+    // product happens to be right today. One cue, one gain stage — plus
+    // the two shared buses, built once with the context.
+    //
+    // Five does NOT prove the graph was built: the two bus gains are
+    // created BEFORE the compressor, so a stub missing that node reaches
+    // five and falls back to the destination. `two buses, one limiter`
+    // reads the graph itself, which is the only thing that can tell the
+    // two apart.
+    expect(rec.gainStages).toBe(5);
+
+    // And this test measured the REAL path. Without it the stub's
+    // compressor is decoration: `buildGraph` would throw, the cue would
+    // fall back to the destination, and all four assertions above would
+    // still pass on a chain that is not the one that ships.
+    expect(audioGraphForTests().limiter, 'the graph fell back — the chain '
+      + 'measured above is not the one the product uses').toBeTruthy();
   });
 });
 
@@ -468,5 +497,157 @@ describe('audio sleeps when the tab does', () => {
     resetAudioForTests();
     expect(() => setHidden(true)).not.toThrow();
     expect(live, 'a context was built just to suspend it').toBeNull();
+  });
+});
+
+/**
+ * Two buses, one limiter.
+ *
+ * Every cue used to connect its own gain straight to the destination, so
+ * two overlapping sounds SUMMED — and the one that lost was always the
+ * one that mattered: a `critical` at 0.20 sits under an `error` toast at
+ * 0.16 arriving 300ms later on a different clock, and nothing in the
+ * product could tell them apart.
+ *
+ * A single master gain cannot fix that. Everything connects through it,
+ * so pulling it down to protect the alert makes the alert quieter too.
+ * What has to move is the side you did NOT ask for in that moment — your
+ * own clicks, your keystrokes, the bed — which is why there are two.
+ *
+ * `buildGraph` is deliberately best-effort: a browser missing a node
+ * must lose the limiter and keep the sound. The cost of that mercy is
+ * that a broken stub looks exactly like a cautious browser, and the two
+ * bus gains are created BEFORE the compressor, so even a gain-stage
+ * count reaches the same number either way. These tests read the graph.
+ */
+describe('two buses, one limiter', () => {
+  /** A fake context that records what connects to what. */
+  function stubGraph({ compressor: hasCompressor = true } = {}) {
+    const links: Array<{ from: string; to: string }> = [];
+    const ducks: number[] = [];
+    let seq = 0;
+    const mk = (tag: string) => {
+      const self: Record<string, unknown> = {
+        tag: `${tag}${tag === 'gain' ? seq++ : ''}`,
+        disconnect: () => {},
+        frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+        gain: {
+          value: 0,
+          setValueAtTime: () => {},
+          exponentialRampToValueAtTime: () => {},
+          setTargetAtTime: (v: number) => { ducks.push(v); },
+        },
+        threshold: { value: 0 }, knee: { value: 0 },
+        ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 },
+        start: () => {}, stop: () => {}, type: 'sine', onended: null,
+      };
+      self.connect = (to: { tag?: string }) =>
+        links.push({ from: self.tag as string, to: to?.tag ?? 'destination' });
+      return self;
+    };
+    (window as unknown as { AudioContext: unknown }).AudioContext = class {
+      currentTime = 0;
+      destination = { tag: 'destination' };
+      state = 'running';
+      createOscillator() { return mk('osc'); }
+      createGain() { return mk('gain'); }
+      createDynamicsCompressor() {
+        if (!hasCompressor) throw new Error('no compressor here');
+        return mk('limiter');
+      }
+      resume() { return Promise.resolve(); }
+      suspend() { return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    };
+    return { links, ducks };
+  }
+
+  const CUE = { wave: 'sine', from: 880, to: 440, dur: 0.05, gain: 0.2 } as const;
+  const open = () => { armAudio(); window.dispatchEvent(new Event('pointerdown')); };
+
+  it('is built with the context', () => {
+    const rec = stubGraph();
+    open();
+    playCue(CUE, 1);
+    const g = audioGraphForTests();
+    expect(g.notify, 'no notify bus — every cue went straight to the destination').toBeTruthy();
+    expect(g.action, 'no action bus — there is nothing to duck').toBeTruthy();
+    expect(g.limiter, 'no limiter — a pile-up clips instead of compressing').toBeTruthy();
+    // Both buses reach the limiter, and only the limiter reaches out.
+    expect(rec.links).toContainEqual({ from: 'limiter', to: 'destination' });
+    expect(rec.links.filter((l) => l.to === 'destination'))
+      .toHaveLength(1);
+  });
+
+  it('sends a cue to the notify side unless it is told otherwise', () => {
+    const rec = stubGraph();
+    open();
+    playCue(CUE, 1);
+    const g = audioGraphForTests() as unknown as { notify: { tag: string } };
+    expect(rec.links.some((l) => l.from.startsWith('gain') && l.to === g.notify.tag),
+      'the default changed — six existing call sites all mean "the app answered"')
+      .toBe(true);
+  });
+
+  it('and to the action side when it is', () => {
+    const rec = stubGraph();
+    open();
+    playCue(CUE, 1, CUE_LIMITS, 'action');
+    const g = audioGraphForTests() as unknown as { action: { tag: string } };
+    expect(rec.links.some((l) => l.from.startsWith('gain') && l.to === g.action.tag)).toBe(true);
+  });
+
+  /**
+   * The threshold is PLACED, not copied. It sits above the loudest
+   * single cue this app can make — chime's `critical` at 0.20, which is
+   * -13.98 dBFS — so a lone alert passes untouched and `chime.ts`'s
+   * promise that it is "reproduced exactly" survives. Below that number
+   * the limiter would be working on every alert, quietly.
+   */
+  it('leaves the loudest single cue alone', () => {
+    stubGraph();
+    open();
+    playCue(CUE, 1);
+    const lim = audioGraphForTests().limiter as unknown as { threshold: { value: number } };
+    const loudest = Math.max(...SOUND_PACKS.flatMap(
+      (p) => CUE_NAMES.map((n) => p.cues[n].gain)));
+    expect(20 * Math.log10(loudest), 'a pack got louder than the threshold allows')
+      .toBeLessThan(lim.threshold.value);
+  });
+
+  it('ducks the action side, and puts it back on a clock', () => {
+    vi.useFakeTimers();
+    try {
+      const rec = stubGraph();
+      open();
+      playCue(CUE, 1);
+      duckActions(400);
+      expect(rec.ducks[0], 'the action side did not move').toBeLessThan(1);
+      // UNCONDITIONAL: a restore that waits for the sound to end is a
+      // restore that never happens the one time it does not, and the
+      // failure is the whole product going quiet with nothing to blame.
+      vi.advanceTimersByTime(400);
+      expect(rec.ducks[rec.ducks.length - 1]).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The mercy, asserted. A browser without DynamicsCompressor must lose
+   * the limiter and keep the SOUND — audio here is best-effort and never
+   * breaks a page. Without this test the fallback is a branch nobody has
+   * ever run.
+   */
+  it('still plays when the graph cannot be built', () => {
+    const rec = stubGraph({ compressor: false });
+    open();
+    playCue(CUE, 1);
+    const g = audioGraphForTests();
+    expect(g.limiter, 'the compressor threw and was kept anyway').toBeNull();
+    expect(g.notify, 'a half-built graph is worse than none').toBeNull();
+    expect(rec.links.some((l) => l.from.startsWith('gain') && l.to === 'destination'),
+      'the cue reached nothing — a missing limiter silenced the app')
+      .toBe(true);
   });
 });

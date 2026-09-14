@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import {
   BED_LIMITS, isBedWithin, startBed, stopBed, bedIsPlaying,
 } from './bed';
-import { CUE_LIMITS, resetAudioForTests, armAudio } from './engine';
+import { CUE_LIMITS, resetAudioForTests, armAudio, audioGraphForTests } from './engine';
 import { AMBIENCE_PACKS } from '../store/items/ambience';
 
 describe('what a bed may be', () => {
@@ -59,10 +59,16 @@ describe('what a bed may be', () => {
  * applied to the bed.
  */
 const counts = { started: 0, stopped: 0 };
+/** Where the bed's output landed, so "on the action side" is read rather
+ *  than assumed. */
+const wiredTo: string[] = [];
 function stubAudio() {
   counts.started = 0; counts.stopped = 0;
-  const node = () => ({
-    connect: () => {}, disconnect: () => {},
+  wiredTo.length = 0;
+  const node = (tag = 'node') => ({
+    tag,
+    connect(to: { tag?: string }) { wiredTo.push(to?.tag ?? 'destination'); },
+    disconnect: () => {},
     start: () => { counts.started += 1; }, stop: () => { counts.stopped += 1; },
     buffer: null, loop: false, type: 'sine',
     frequency: { value: 0 }, Q: { value: 0 },
@@ -72,11 +78,24 @@ function stubAudio() {
     state = 'running';
     currentTime = 0;
     sampleRate = 48_000;
-    destination = {};
-    createGain = node;
-    createBufferSource = node;
-    createBiquadFilter = node;
-    createOscillator = node;
+    destination = { tag: 'destination' };
+    createGain = () => node('gain');
+    createBufferSource = () => node('src');
+    createBiquadFilter = () => node('filter');
+    createOscillator = () => node('osc');
+    // The shared graph needs one. Without it `buildGraph` falls back and
+    // the bed connects to the destination — which still PLAYS, so every
+    // assertion in this file passed while the bed quietly left the side
+    // that ducks under an alert.
+    // A REAL compressor shape. The generic node above has no
+    // `threshold`, so `buildGraph` threw on it, no graph was ever built,
+    // and the routing test below passed whichever side the bed went to —
+    // vacuous, and it took a mutation to notice.
+    createDynamicsCompressor = () => ({
+      ...node('limiter'),
+      threshold: { value: 0 }, knee: { value: 0 },
+      ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 },
+    });
     createBuffer = (_ch: number, frames: number) => ({
       getChannelData: () => new Float32Array(frames),
     });
@@ -99,6 +118,36 @@ describe('the engine keeps quiet until it is allowed not to', () => {
     unlock();
     startBed(AMBIENCE_PACKS[0].bed, 1);
     expect(bedIsPlaying(), 'the engine cannot play a bed at all').toBe(true);
+  });
+
+  /**
+   * The bed is on the ACTION side, not the destination.
+   *
+   * It is not the app answering — it is the room tone under everything
+   * you do, and it has to drop out of the way when an alert arrives.
+   * Before the two buses existed it connected straight to the
+   * destination, where nothing could move it; the whole point of the
+   * graph is that the alert wins.
+   *
+   * Read as "only the limiter reaches the destination", because that is
+   * the invariant the graph exists to hold, and it catches every future
+   * node that wires itself out of the mix as well as this one.
+   */
+  it('plays into the side that ducks, never straight out', () => {
+    unlock();
+    startBed(AMBIENCE_PACKS[0].bed, 1);
+    expect(counts.started, 'nothing played — the assertion below is vacuous')
+      .toBeGreaterThan(0);
+    // The OTHER way this goes vacuous, and the one that actually
+    // happened: with no graph built, every route falls back to the
+    // destination and the count below is 1 whatever the bed does.
+    expect(audioGraphForTests().action, 'no graph — this proves nothing')
+      .toBeTruthy();
+    expect(
+      wiredTo.filter((t) => t === 'destination'),
+      'something reached the destination directly. Only the limiter may: '
+        + 'anything else is a sound an alert cannot duck.',
+    ).toHaveLength(1);
   });
 
   it('and stops when asked', () => {

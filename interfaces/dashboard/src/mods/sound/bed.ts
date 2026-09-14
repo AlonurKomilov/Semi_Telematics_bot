@@ -1,4 +1,4 @@
-import { audioContext, isUnlocked, type Wave } from './engine';
+import { actionDestination, audioContext, isUnlocked, type Wave } from './engine';
 import type { ItemMeta } from '../store/items/meta';
 
 /**
@@ -132,7 +132,10 @@ export function startBed(bed: unknown, volume: number): void {
   try {
     const out = ctx.createGain();
     out.gain.value = 0;
-    out.connect(ctx.destination);
+    // The ACTION side, not the destination. A bed is not the app
+    // answering — it is the room tone under everything you do, and it
+    // must drop out of the way when an alert arrives.
+    out.connect(actionDestination() ?? ctx.destination);
 
     const nodes: AudioNode[] = [];
     const buf = noiseBuffer(ctx);

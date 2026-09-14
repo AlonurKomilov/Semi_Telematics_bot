@@ -138,6 +138,118 @@ export function isUnlocked(): boolean {
   return unlocked;
 }
 
+/**
+ * Which bus a sound belongs on.
+ *
+ * `notify` is the app speaking to you — an alert, a toast, an undo
+ * window. `action` is you touching the app, plus the bed under it.
+ *
+ * TWO buses and not one, because the only thing a master gain would be
+ * FOR here is ducking — and a single master cannot duck A relative to B.
+ * Every sound connects through it, so pulling it down to protect a
+ * `critical` makes the `critical` quieter too: 0.20 x 0.35 is 0.07,
+ * below an `undo`. What has to move is everything that is not the
+ * alert.
+ */
+export type Bus = 'notify' | 'action';
+
+let notifyBus: GainNode | null = null;
+let actionBus: GainNode | null = null;
+let limiter: DynamicsCompressorNode | null = null;
+
+/**
+ * The limiter's threshold, in dB.
+ *
+ * Placed, not copied. It sits ABOVE the loudest single cue this app can
+ * produce — chime's `critical` at 0.20, which is -13.98 dBFS — and
+ * BELOW every two-cue sum, so it acts on pile-ups and leaves a lone cue
+ * alone. `chime.ts` promises its alert is "reproduced exactly"; a
+ * threshold under 0.20 would quietly make that false.
+ */
+const LIMIT_DB = -12;
+
+/** How far the action side drops while the app is speaking. */
+const DUCK_TO = 0.35;
+
+function buildGraph(c: AudioContext): void {
+  // BEST-EFFORT, like everything else on this path. A browser without
+  // DynamicsCompressor — or a test stub that has not grown one — must
+  // lose the limiter, never the sound: `busFor` falls back to the
+  // destination and every cue still plays, one gain stage shorter.
+  try {
+    const n = c.createGain();
+    const a = c.createGain();
+    // `.value`, never `setValueAtTime`. `engine.test.ts` records every
+    // scheduled value as a peak, so a bus written that way would put a
+    // 1 at the front of the list and break the linearity assertions
+    // that exist to stop a second volume number appearing.
+    n.gain.value = 1;
+    a.gain.value = 1;
+    const lim = c.createDynamicsCompressor();
+    lim.threshold.value = LIMIT_DB;
+    lim.knee.value = 6;
+    lim.ratio.value = 4;
+    // The node minimum: a 14ms act cue is shorter than the 3ms default
+    // attack, so a slower one would let exactly the sounds this exists
+    // for pass through untouched.
+    lim.attack.value = 0;
+    lim.release.value = 0.12;
+    n.connect(lim);
+    a.connect(lim);
+    lim.connect(c.destination);
+    notifyBus = n;
+    actionBus = a;
+    limiter = lim;
+  } catch {
+    notifyBus = null;
+    actionBus = null;
+    limiter = null;
+  }
+}
+
+/** Where a sound connects. The destination is the honest fallback. */
+function busFor(c: AudioContext, bus: Bus): AudioNode {
+  const node = bus === 'action' ? actionBus : notifyBus;
+  return node ?? c.destination;
+}
+
+/**
+ * The action side's bus, for the one continuous sound.
+ *
+ * `bed.ts` is not a cue and cannot go through `playCue`, but it is
+ * unambiguously the action side: it must duck under an alert like
+ * everything else you did not ask for in that moment.
+ */
+export function actionDestination(): AudioNode | null {
+  const c = ctx;
+  if (!c) return null;
+  return busFor(c, 'action');
+}
+
+/**
+ * Drop the action side while the app is speaking, and put it back.
+ *
+ * Restored on an UNCONDITIONAL timer rather than on the end of the
+ * sound that caused it. A restore that waits for an event is a restore
+ * that never happens the one time the event does not arrive — and the
+ * failure is the whole product going quiet, with nothing to blame.
+ */
+export function duckActions(ms: number): void {
+  const c = ctx;
+  if (!c || !actionBus) return;
+  try {
+    const t = c.currentTime;
+    actionBus.gain.setTargetAtTime?.(DUCK_TO, t, 0.01);
+    setTimeout(() => {
+      const now = ctx;
+      if (!now || !actionBus) return;
+      try { actionBus.gain.setTargetAtTime?.(1, now.currentTime, 0.05); } catch { /* gone */ }
+    }, Math.max(0, ms));
+  } catch {
+    /* best-effort */
+  }
+}
+
 function context(): AudioContext | null {
   if (ctx) return ctx;
   try {
@@ -145,6 +257,7 @@ function context(): AudioContext | null {
       ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
     ctx = new Ctor();
+    buildGraph(ctx);
     hookLifecycle();
     return ctx;
   } catch {
@@ -250,7 +363,14 @@ export function armAudio(): void {
  * the cue is malformed. A sound that fails is a sound nobody hears; a
  * sound that throws is a page that stops.
  */
-export function playCue(cue: Cue, volume: number, limits: CueLimits = CUE_LIMITS): void {
+export function playCue(
+  cue: Cue,
+  volume: number,
+  limits: CueLimits = CUE_LIMITS,
+  // Defaulted, so all six existing call sites keep meaning what they
+  // meant: everything that speaks today is the app answering.
+  bus: Bus = 'notify',
+): void {
   if (!unlocked || volume <= 0 || !isCueWithin(cue, limits)) return;
   const c = context();
   if (!c) return;
@@ -262,19 +382,19 @@ export function playCue(cue: Cue, volume: number, limits: CueLimits = CUE_LIMITS
   // then emit from the promise. Nothing is awaited on the way in: the
   // signature stays `void`, and the rejection path stays swallowed.
   if (c.state === 'suspended' && typeof c.resume === 'function') {
-    void c.resume().then(() => emit(c, cue, volume)).catch(() => { /* best-effort */ });
+    void c.resume().then(() => emit(c, cue, volume, bus)).catch(() => { /* best-effort */ });
     return;
   }
-  emit(c, cue, volume);
+  emit(c, cue, volume, bus);
 }
 
 /** The oscillator itself, once the context is known to be running. */
-function emit(c: AudioContext, cue: Cue, volume: number): void {
+function emit(c: AudioContext, cue: Cue, volume: number, bus: Bus = 'notify'): void {
   try {
     const osc = c.createOscillator();
     const gain = c.createGain();
     osc.connect(gain);
-    gain.connect(c.destination);
+    gain.connect(busFor(c, bus));
     osc.type = cue.wave;
     const t = c.currentTime;
     osc.frequency.setValueAtTime(cue.from, t);
@@ -294,10 +414,32 @@ function emit(c: AudioContext, cue: Cue, volume: number): void {
   }
 }
 
+/**
+ * Test seam: the shared graph.
+ *
+ * Exported so a fake `AudioContext` that cannot build it FAILS rather
+ * than degrading to the destination in silence. `buildGraph` is
+ * deliberately best-effort — a browser missing one node must lose the
+ * limiter and keep the sound — and the cost of that mercy is that a
+ * broken stub looks exactly like a cautious browser. This is how a test
+ * tells them apart.
+ */
+export function audioGraphForTests(): {
+  notify: GainNode | null; action: GainNode | null; limiter: DynamicsCompressorNode | null;
+} {
+  return { notify: notifyBus, action: actionBus, limiter };
+}
+
 /** Test seam: forget the context and the gesture grant. */
 export function resetAudioForTests(): void {
   try { void ctx?.close(); } catch { /* ignore */ }
   ctx = null;
+  // The graph belongs to the context: nodes from a closed one are dead,
+  // and leaving them here would have the next context's cues connect
+  // into nothing — silence with no error anywhere.
+  notifyBus = null;
+  actionBus = null;
+  limiter = null;
   unlocked = false;
   awaitingUnlock.clear();
   // NOT `lifecycleHooked`. The listener is never removed — resetting the
