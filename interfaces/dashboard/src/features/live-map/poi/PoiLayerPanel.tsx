@@ -200,11 +200,22 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
         </div>
       )}
 
-      {/* Where the map furniture comes from, and how old it is.  The
-          public mirrors run months behind; a missing truck stop is the
-          source being old, not the map being wrong, and only a date on
-          screen can tell the reader which. */}
-      {!collapsed && sourceAsOf && (
+      {/* WHOSE data this is, and — when we know it — how old.
+
+          Two jobs, gated separately on purpose.  The credit is ODbL's,
+          and it is the only place this surface credits OpenStreetMap for
+          the overlay: the basemap's attribution is Esri's or Google's
+          and covers nothing here.  It used to ride on the DATE being
+          known, so a layer whose mirror reported no extract stamp
+          dropped the attribution along with the age.
+
+          The age is the answer to "why is the truck stop that opened
+          this summer not here" — the public mirrors run months behind,
+          and a missing stop is the source being old, not the map being
+          wrong.  `Freshness` renders its children alone when `ts` is
+          null, so unknown simply says nothing; a wrong date would be
+          worse than none. */}
+      {!collapsed && (
         <div className="border-t border-border px-3 py-1.5">
           <Freshness ts={sourceAsOf}>
             <span className="text-2xs text-muted-foreground">OpenStreetMap data</span>

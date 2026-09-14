@@ -94,3 +94,25 @@ describe('an empty layer says why it is empty', () => {
     expect(controlsSrc).toMatch(/OSM data \$\{staleAge\} old/);
   });
 });
+
+describe('the OpenStreetMap credit', () => {
+  // ODbL asks for attribution, and this line is the ONLY place the panel
+  // gives it for the overlay: the basemap's own credit is Esri's or
+  // Google's and covers none of the POI data.
+  //
+  // It used to be rendered inside `{poi.sourceAsOf && (…)}` — so a layer
+  // whose mirror reported no extract stamp dropped the attribution along
+  // with the age.  That became the common case the day the layers moved
+  // into our own table, because a layer imported before the extract date
+  // was recorded has none.
+  it('is not gated on knowing how old the data is', () => {
+    const line = controlsSrc.slice(controlsSrc.indexOf('layer-source'));
+    const block = line.slice(0, line.indexOf('</div>'));
+    expect(block).toContain('OpenStreetMap');
+    expect(controlsSrc).not.toMatch(/\{poi\.sourceAsOf && \(\s*\n\s*<div className="layer-source"/);
+  });
+
+  it('still says the age when there is one', () => {
+    expect(controlsSrc).toMatch(/poi\.sourceAsOf && `.*old`/);
+  });
+});

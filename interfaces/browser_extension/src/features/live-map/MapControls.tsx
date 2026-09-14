@@ -163,15 +163,26 @@ function LayersCard({ poi }: { poi: PoiLayersState }) {
               </div>
             );
           })}
-          {/* How old the map furniture is.  The public OSM mirrors run
-              months behind, so a truck stop that opened this summer is
-              not in them — and a panel that says nothing lets the reader
-              conclude the panel is wrong instead. */}
-          {poi.sourceAsOf && (
-            <div className="layer-source">
-              OpenStreetMap · {formatAge(ageMs(poi.sourceAsOf, Date.now()))} old
-            </div>
-          )}
+          {/* WHOSE data this is, and — when we know it — how old.
+              
+              Two jobs in one line, and they are gated separately on
+              purpose.  The credit is ODbL's, and it is the only place
+              either surface credits OpenStreetMap for the overlay: the
+              basemap's own attribution is Esri's or Google's and covers
+              nothing here.  It used to ride on the DATE being known, so
+              a layer whose mirror reported no extract stamp dropped the
+              attribution along with the age.
+              
+              The age is the answer to "why is the truck stop that opened
+              this summer not here" — the public mirrors run months
+              behind, and a panel that says nothing lets the reader
+              conclude the panel is wrong instead.  Unknown says nothing
+              rather than guessing; a wrong date would be worse than
+              none. */}
+          <div className="layer-source">
+            OpenStreetMap
+            {poi.sourceAsOf && ` · ${formatAge(ageMs(poi.sourceAsOf, Date.now()))} old`}
+          </div>
         </div>
       )}
     </div>
