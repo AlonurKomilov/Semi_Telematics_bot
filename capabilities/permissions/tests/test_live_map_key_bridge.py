@@ -30,11 +30,13 @@ from capabilities.permissions import roles
 OLD, NEW = "can_view_location", "can_view_live_map"
 
 
-def _a_role_whose_seed_grants_the_map() -> Role:
-    for r in Role:
-        if r != Role.OWNER and getattr(roles.get_permissions(r), NEW, False):
-            return r
-    raise AssertionError("no non-owner role seeds the live map")
+#: every role the rename would have handed the map back to — the seed
+#: grants it, so a dropped stored `false` resolves to True.  The owner is
+#: left out: their own row is protected, and nobody revokes the owner.
+ROLES_WHOSE_SEED_GRANTS_THE_MAP = [
+    r for r in Role if r != Role.OWNER and getattr(roles.get_permissions(r), NEW, False)
+]
+assert len(ROLES_WHOSE_SEED_GRANTS_THE_MAP) >= 5, ROLES_WHOSE_SEED_GRANTS_THE_MAP
 
 
 def test_the_old_key_folds_onto_the_new_one_and_a_stored_no_stays_no():
@@ -48,13 +50,14 @@ def test_the_old_key_folds_onto_the_new_one_and_a_stored_no_stays_no():
     assert roles.FeatureSet(**{NEW: False}).can_view_location is False
 
 
+@pytest.mark.parametrize("role", ROLES_WHOSE_SEED_GRANTS_THE_MAP, ids=lambda r: r.value)
 @pytest.mark.asyncio
-async def test_a_revocation_stored_under_the_old_key_still_revokes(pg_db, monkeypatch):
-    """Through the resolver, from a row written before the rename."""
+async def test_a_revocation_stored_under_the_old_key_still_revokes(pg_db, monkeypatch, role):
+    """Through the resolver, from a row written before the rename — for
+    every role whose seed would have quietly handed the map back."""
     db = pg_db
     monkeypatch.setattr("infra.platform._db", db)
     monkeypatch.setattr("infra.platform.get_platform_db", lambda: db)
-    role = _a_role_whose_seed_grants_the_map()
     acct = await db.create_account("Old Key Co")
     # the row as the pre-rename matrix wrote it: the setter stores the
     # dict as given, so the old key lands on disk exactly as it did then
