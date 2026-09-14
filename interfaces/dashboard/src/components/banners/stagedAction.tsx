@@ -97,9 +97,13 @@ export function stagedAction(opts: StagedActionOptions): void {
       _pendingFlushes.add(flush);
       showBanner({
         tone: 'danger',
-    // This file plays the `undo` cue itself, just above; the banner
-    // lane must not add a second one on top.
-    cue: false,
+        // Silenced — and NOT for the reason this line used to give.
+        // Nothing in `stagedAction` plays a cue; that sentence was
+        // copied from `undoableAction` at the bottom of the file, which
+        // does. So a staged commit that FAILS is silent on both lanes.
+        // Whether it should be is an open question, not a decision
+        // anybody made here.
+        cue: false,
         title: `${opts.label} failed`,
         detail: e instanceof Error ? e.message : undefined,
         onClose: () => {
@@ -135,8 +139,10 @@ export function stagedAction(opts: StagedActionOptions): void {
 
   showBanner({
     tone: 'info',
-    // This file plays the `undo` cue itself, just above; the banner
-    // lane must not add a second one on top.
+    // Redundant rather than load-bearing: `info` raises no cue in the
+    // banner lane to begin with. Kept explicit so a later tone change
+    // cannot give a countdown a voice by accident — but again, nothing
+    // above plays one. That claim was copied from `undoableAction`.
     cue: false,
     title: opts.label,
     detail: opts.detail,
