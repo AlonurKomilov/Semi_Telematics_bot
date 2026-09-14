@@ -59,7 +59,12 @@ export function playUiCue(name: CueName): void {
 export function armIfWanted(): void {
   if (preferences.get('mods.sound.ui')
     || preferences.get('dispatch.soundOn')
-    || preferences.get('mods.sound.keyboard')) armAudio();
+    || preferences.get('mods.sound.keyboard')
+    // The bed asks for audio at MOUNT, so a screen with only this gate
+    // on still has to be listening for the gesture — otherwise the one
+    // person who wants background sound and nothing else is the one
+    // person who never hears anything.
+    || preferences.get('mods.sound.background')) armAudio();
 }
 
 /**

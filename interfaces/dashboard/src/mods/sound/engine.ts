@@ -201,11 +201,41 @@ function suspendIfRunning(): void {
  * extracted: any click anywhere unlocks, and after the first one the
  * listener removes itself.
  */
+/**
+ * Everything waiting for the gesture that unlocks audio.
+ *
+ * A cue is played FROM an interaction, so it never needs this: by the
+ * time `playCue` runs, the click that unlocked audio has already
+ * happened. A BED is the opposite — it wants to start at mount, which
+ * on a reload is always before any gesture — so without a signal it
+ * returned early once and nothing ever asked again. That was a whole
+ * feature that made no sound after every reload.
+ */
+const awaitingUnlock = new Set<() => void>();
+
+/**
+ * Run `then` once audio is unlocked — immediately if it already is.
+ * Returns an unsubscribe, so a component that unmounts first leaves
+ * nothing behind to fire into a dead effect.
+ */
+export function onUnlocked(then: () => void): () => void {
+  if (unlocked) { then(); return () => {}; }
+  awaitingUnlock.add(then);
+  return () => { awaitingUnlock.delete(then); };
+}
+
 export function armAudio(): void {
   if (unlocked) return;
   const arm = () => {
     unlocked = true;
     void context()?.resume().catch(() => { /* best-effort */ });
+    // Drained, not iterated: a waiter that resubscribes would otherwise
+    // be called again inside the same loop.
+    const waiting = [...awaitingUnlock];
+    awaitingUnlock.clear();
+    for (const run of waiting) {
+      try { run(); } catch { /* a waiter that throws is not the engine's problem */ }
+    }
     window.removeEventListener('pointerdown', arm);
     window.removeEventListener('keydown', arm);
   };
@@ -269,6 +299,7 @@ export function resetAudioForTests(): void {
   try { void ctx?.close(); } catch { /* ignore */ }
   ctx = null;
   unlocked = false;
+  awaitingUnlock.clear();
   // NOT `lifecycleHooked`. The listener is never removed — resetting the
   // flag would let the next context stack a second one, and the handler
   // reads module-scope `ctx` so the existing one keeps working across

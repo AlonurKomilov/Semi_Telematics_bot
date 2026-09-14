@@ -32,6 +32,7 @@ import { preferences } from '../../preferences';
 import { SOUND_PACKS } from '../store/items/sound';
 
 const set = (ui: boolean, volume = 1, pack = 'chime', alert = false) => {
+  preferences.set('mods.sound.background', false);
   preferences.set('mods.sound.ui', ui);
   preferences.set('mods.sound.volume', volume);
   preferences.set('mods.sound.pack', pack);
@@ -124,6 +125,19 @@ describe('arming happens for whoever asked, and nobody else', () => {
     set(false, 1, 'chime', true);
     armIfWanted();
     expect(armAudio).toHaveBeenCalled();
+  });
+
+  it('arms for background sound, which is the gate that needs it most', () => {
+    // A cue is played FROM a click, so by the time it runs the gesture
+    // has happened anyway. The bed asks at MOUNT — on a reload, before
+    // anything has been clicked — so a screen whose only sound is the
+    // bed is the one screen that cannot afford to be unarmed. It was
+    // missing from this condition, and the bed made no sound at all.
+    set(false, 1, 'chime', false);
+    preferences.set('mods.sound.background', true);
+    armIfWanted();
+    expect(armAudio, 'the one gate that asks for audio before any click was left unarmed')
+      .toHaveBeenCalled();
   });
 });
 

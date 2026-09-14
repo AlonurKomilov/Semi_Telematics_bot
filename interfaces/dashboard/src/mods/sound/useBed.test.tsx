@@ -27,14 +27,22 @@ vi.mock('../../preferences', async (orig) => ({
 }));
 
 import { useBed } from './useBed';
+import { armAudio, resetAudioForTests } from './engine';
 import { ambienceById } from '../store/items/ambience';
 
 function Host() { useBed(); return null; }
 const mount = () => render(<Host />);
 
 describe('the switch reaches the engine', () => {
+  /** The gesture a browser requires before any audio may sound. */
+  const unlock = () => {
+    armAudio();
+    window.dispatchEvent(new Event('pointerdown'));
+  };
+
   beforeEach(() => {
     cleanup();
+    resetAudioForTests();
     startBed.mockClear(); stopBed.mockClear();
     prefs.current = { on: false, which: 'road', volume: 1 };
   });
@@ -45,10 +53,35 @@ describe('the switch reaches the engine', () => {
     expect(stopBed).toHaveBeenCalled();
   });
 
-  it('starts the chosen bed when it is on', () => {
+  it('starts the chosen bed when it is on and audio is unlocked', () => {
+    unlock();
     prefs.current.on = true;
     mount();
     expect(startBed).toHaveBeenCalledWith(ambienceById('road')!.bed, 1);
+  });
+
+  it('waits for the gesture rather than giving up — the reload case', () => {
+    // THE bug this file exists to keep closed. On a reload the effect
+    // runs before anything has been clicked; a bare `startBed` returns
+    // early, nothing ever runs it again, and the feature makes no sound
+    // for the rest of the session. It was shipped that way.
+    prefs.current.on = true;
+    mount();
+    expect(startBed, 'a bed started before any gesture — the browser would refuse it')
+      .not.toHaveBeenCalled();
+    unlock();
+    expect(startBed, 'the bed never started after the gesture that allowed it')
+      .toHaveBeenCalledWith(ambienceById('road')!.bed, 1);
+  });
+
+  it('and a page that leaves before the gesture leaves nothing waiting', () => {
+    prefs.current.on = true;
+    const { unmount } = mount();
+    unmount();
+    startBed.mockClear();
+    unlock();
+    expect(startBed, 'a bed started into a page that had already gone')
+      .not.toHaveBeenCalled();
   });
 
   it('plays nothing at zero volume, however on', () => {
@@ -66,6 +99,7 @@ describe('the switch reaches the engine', () => {
   });
 
   it('stops when the page leaves, so nothing plays over a closed tab', () => {
+    unlock();
     prefs.current.on = true;
     const { unmount } = mount();
     stopBed.mockClear();

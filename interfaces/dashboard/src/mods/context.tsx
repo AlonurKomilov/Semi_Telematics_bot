@@ -154,6 +154,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
   const { value: uiSound } = usePreference('mods.sound.ui');
   const { value: alertSound } = usePreference('dispatch.soundOn');
   const { value: keySound } = usePreference('mods.sound.keyboard');
+  const { value: bedOn } = usePreference('mods.sound.background');
   const ambient = useAmbient();
   const root = document.documentElement;
 
@@ -257,7 +258,7 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // itself on every press, so installing it while the gate is on and
     // leaving it there costs one early-return per keystroke.
     if (keySound) installKeySound();
-  }, [uiSound, alertSound, keySound]);
+  }, [uiSound, alertSound, keySound, bedOn]);
 
   // Publishing the cross-device default belongs HERE, on the single
   // funnel every appearance write already passes through — not at the

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { usePreference } from '../../preferences';
 import { ambienceById } from '../store/items/ambience';
 import { startBed, stopBed } from './bed';
+import { onUnlocked } from './engine';
 
 /**
  * The bed's one lane: three preferences in, one continuous sound out.
@@ -23,7 +24,11 @@ export function useBed(): void {
   useEffect(() => {
     const pack = ambienceById(which);
     if (!on || !pack || volume <= 0) { stopBed(); return; }
-    startBed(pack.bed, volume);
-    return stopBed;
+    // NOT a bare `startBed`. On a reload this effect runs before any
+    // gesture has unlocked audio, `startBed` returns early, and nothing
+    // ever runs it again — which is a bed that plays exactly once, the
+    // first time the switch is turned on, and never afterwards.
+    const cancel = onUnlocked(() => startBed(pack.bed, volume));
+    return () => { cancel(); stopBed(); };
   }, [on, which, volume]);
 }
