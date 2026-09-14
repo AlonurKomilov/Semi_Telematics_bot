@@ -40,7 +40,13 @@ _SERVER_TIMEOUT_S = 180
 #: better made smaller than asked a third time — see _MAX_SPLIT_DEPTH.
 _ATTEMPT_S = 200
 _ATTEMPTS = 2
-_PAUSE_S = 60
+#: Twenty seconds, not sixty.  The pause is there to let a QUEUE move,
+#: and that argument is much weaker now that a refused box is split
+#: rather than re-asked — the next request is a different, cheaper
+#: question.  Measured 2026-09-13: with a sixty-second pause before
+#: every second attempt, five boxes in a region spent five minutes
+#: purely asleep, which was the region's entire share of the clock.
+_PAUSE_S = 20
 
 #: How many times a box that keeps refusing may be quartered.
 #:
@@ -62,6 +68,21 @@ _MAX_SPLIT_DEPTH = 2
 #: thoroughly dead mirror could keep one layer going for most of an hour;
 #: with it the run moves on and the layer keeps last week's points.
 #:
+#: SIXTY MINUTES, AND THE NUMBER IS ARITHMETIC, NOT A FEELING.
+#:
+#: A region that splits to depth 1 is five boxes — the whole one twice,
+#: then four quarters — which at a minute an attempt is 700 seconds.  The
+#: run on 2026-09-13 gave each region 300, then 600, and both times the
+#: layers came back with thousands of points and the note "out of time"
+#: on one small sub-box.  Not refusals: this budget, running out before
+#: the splitting it had just started could finish.  600 could not even
+#: complete depth 1.
+#:
+#: Sixty minutes is 1,200 seconds a region: depth 0 and depth 1 in full,
+#: and depth 2 in the ordinary case where most boxes answer first time
+#: and cost no pause.  Layers that do not need splitting still finish in
+#: minutes — this is a ceiling, not a duration.
+#:
 #: SHARED BETWEEN THE REGIONS RATHER THAN POOLED, and a real run is why.
 #: On 2026-09-13 the CONUS box spent all fifteen minutes quartering
 #: itself and never reached Alaska or Hawaii — two boxes that had
@@ -69,7 +90,7 @@ _MAX_SPLIT_DEPTH = 2
 #: starving the cheap ones is worse than the expensive one being cut
 #: short: the layer fails either way, and at least this way the log says
 #: which regions are reachable.
-_LAYER_BUDGET_S = 900
+_LAYER_BUDGET_S = 3600
 
 #: Between layers, so one import does not arrive as a burst.  A weekly
 #: job has all the time in the world and the mirrors are volunteers.
@@ -227,7 +248,8 @@ def _query_cost(layer: str) -> tuple[int, str]:
     return len(clauses) + sum(1 for c in clauses if "~" in c), layer
 
 
-async def import_all(db, stamp: str | None = None) -> list[dict]:
+async def import_all(db, stamp: str | None = None,
+                     only: list[str] | None = None) -> list[dict]:
     """Every built-in layer, cheapest query first, with a pause between.
 
     Sequential on purpose: the mirrors are volunteer-run and a weekly
@@ -235,7 +257,8 @@ async def import_all(db, stamp: str | None = None) -> list[dict]:
     """
     out: list[dict] = []
     dead = 0
-    layers = sorted(POI_OVERPASS_QUERIES, key=_query_cost)
+    layers = sorted(only if only is not None else POI_OVERPASS_QUERIES,
+                    key=_query_cost)
     for i, layer in enumerate(layers):
         if i:
             await asyncio.sleep(_BETWEEN_LAYERS_S)
