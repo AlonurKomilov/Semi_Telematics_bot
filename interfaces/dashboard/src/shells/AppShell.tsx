@@ -136,7 +136,16 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             the chrome colour; `pr-2 pb-2` leaves an 8px frame to the right
             and below, so the chrome wraps the content on every side — top
             from the header, left from the sidebar. */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-sidebar surface surface-sidebar chrome-pane pr-2 pb-2">
+        {/* NO `.surface` here, deliberately. This element wraps the
+            header AND every page, and its only visible pixels are the
+            8px gutter `pr-2 pb-2` leaves. Carrying `.surface` bought a
+            frosted 8px frame and cost a VIEWPORT-SIZED backdrop root
+            over every card in the app — under Glass, `backdrop-filter`
+            on an ancestor makes a descendant's own filter a no-op, which
+            is why the persona menu showed the sidebar through itself
+            CRISP rather than smeared. It keeps its paint (`bg-sidebar`)
+            and its transparency under a wallpaper (`chrome-pane`). */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-sidebar surface-sidebar chrome-pane pr-2 pb-2">
           {/* Three zones: mobile-menu (left), hero (middle, flex-1), tools
               (right). The hero lives INSIDE the h-12 strip rather than in
               a row of its own, so content sits at the same Y whether or

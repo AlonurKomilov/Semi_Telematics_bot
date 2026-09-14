@@ -57,15 +57,53 @@
   }
 
   /* The escape hatch, and it is not optional.
-     21 sticky and pinned elements use their fill to OCCLUDE the content
-     scrolling underneath — the grid's frozen columns, pinned headers, the
-     pivot's left rail. A translucent surface makes them see-through and
-     the table becomes unreadable. Those sites opt out explicitly. */
+     A surface positioned out of flow uses its fill to OCCLUDE what it
+     covers. A translucent one shows the content through and the thing
+     becomes unreadable — which is what happened.
+     THIS COMMENT USED TO SAY "those sites opt out explicitly", and name
+     21 of them. Not one did: `surface-opaque` existed here, in a comment
+     in `index.css`, and in the test asserting this rule exists. Nowhere
+     else. The grid's frozen columns and pinned headers were never at
+     risk either — they paint opaque utilities of their own. The rule was
+     written for a population that did not exist while the population
+     that did went unserved, and a bug report is what found it.
+     So the selectors below claim the category by GEOMETRY, and
+     `.surface-opaque` stays for the one case geometry cannot see. */
   /* Only under glass. In the solid path there is no translucency to
      cancel, so a bare `.surface-opaque` rule would be a no-op — and a
      no-op rule is one a mutation can delete without any guard noticing,
      which is how it was found. */
-  :root[data-material="glass"] .surface-opaque {
+  /* A POPOVER IS ALWAYS ONE OF THESE, and it took a bug report to see
+     it. The comment above says "those sites opt out explicitly"; not one
+     site did — `surface-opaque` appeared in this file, in a comment in
+     `index.css`, and in the test asserting this rule exists. Nowhere
+     else. So every floating surface in the product was translucent, and
+     the persona menu in the top bar rendered the SIDEBAR through itself:
+     at alpha 0.72 the text behind keeps 28% of its contrast, which is
+     legible grey, blur or no blur.
+     Occlusion is not a property a call site should have to remember.
+     `.surface-popover` already marks exactly the category — 24 sites,
+     every menu, select, context menu, dialog, sheet and banner — and
+     what defines that category IS floating over content nobody chose.
+     `.surface.surface-popover` rather than `.surface-popover` alone:
+     (0,3,0) beats the glass `.surface` rung's (0,2,0) outright, instead
+     of tying and leaving the answer to which line came last. */
+  /* And the category is wider than `.surface-popover`, which is the
+     half-fix that did not reach the reported bug at all: the persona
+     menu is a `<Card>`, and `cardVariants` is
+     `"surface border border-border rounded-lg"` — no popover class, and
+     no call site would have thought to add one.
+     What these surfaces have in common is not a name, it is GEOMETRY:
+     they are positioned out of flow, over content nobody chose. The
+     product writes that in bare tokens only — the four responsive hits
+     in the tree are `after:absolute` and Leaflet's inline CSS, neither
+     of which is a position class on an element — so three selectors
+     cover thirteen sites with no call-site edits. */
+  :root[data-material="glass"] .surface-opaque,
+  :root[data-material="glass"] .surface.surface-popover,
+  :root[data-material="glass"] .surface.absolute,
+  :root[data-material="glass"] .surface.fixed,
+  :root[data-material="glass"] .surface.sticky {
     background-color: var(--surface-base, var(--card));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;

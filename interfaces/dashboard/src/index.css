@@ -976,6 +976,25 @@
 /* The base a surface is made from. `--card` unless a variant says
    otherwise, so the common case needs one class. NOT inside a media
    query: a card still needs a background when it is printed. */
+/* A SURFACE'S BASE IS ITS OWN, NEVER AN ANCESTOR'S.
+   `--surface-base` is a custom property, and custom properties inherit —
+   so every `.surface` inside the sidebar painted in the RAIL's colour.
+   The persona menu is the case that showed it: a `<Card>` mounted in
+   `Sidebar.tsx`, picking up `--sidebar` from four levels up, which in
+   dark is the same lightness as the rail it covers. Opaque and
+   invisible is not better than translucent and illegible.
+   Registered rather than reset per class, because a reset would have to
+   be repeated on every variant anybody adds later. Where `@property` is
+   unsupported this degrades to exactly today's behaviour.
+   Every explicit `.surface` in the product already declares its own
+   variant — measured, zero exceptions — so nothing loses a colour it
+   was relying on; what changes is the implicit ones, the Cards, and a
+   Card should be card-coloured. */
+@property --surface-base {
+  syntax: "*";
+  inherits: false;
+}
+
 .surface {
   background-color: var(--surface-base, var(--card));
 }
@@ -1125,8 +1144,10 @@
   }
 
   /* GLASS IS NOT HERE. `mods/store/items/material/glass.css` carries the
-     translucent surface — its tokens, the backdrop filter, and the
-     `.surface-opaque` escape hatch — imported at the top of this sheet.
+     translucent surface — its tokens, the backdrop filter, the rule
+     that makes a surface positioned out of flow OCCLUDE instead, and
+     the `.surface-opaque` hatch for the one case that rule cannot see
+     — imported at the top of this sheet.
      Solid has no file: it IS `.surface` above, and costs nothing. */
 }
 

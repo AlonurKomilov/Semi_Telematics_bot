@@ -228,7 +228,13 @@ export default function TourOverlay({
   if (celebrating) {
     return (
       <div className="fixed inset-x-0 bottom-6 z-[60] flex justify-center pointer-events-none">
-        <div className={cn(cardVariants({ padding: 'none' }), 'pointer-events-auto flex items-center gap-3 border-ok-bd px-4 py-3 shadow-lg motion-safe:animate-in motion-safe:slide-in-from-bottom-4')}>
+        {/* `surface-opaque` because the geometry rule cannot see this
+            one: the `fixed` is on the wrapper above, not here, so under
+            Glass this banner would be the one floating surface left
+            translucent — over whatever page the tour just finished on.
+            This is the entire residual manual list, and exactly what the
+            hatch was built for. */}
+        <div className={cn(cardVariants({ padding: 'none' }), 'surface-opaque pointer-events-auto flex items-center gap-3 border-ok-bd px-4 py-3 shadow-lg motion-safe:animate-in motion-safe:slide-in-from-bottom-4')}>
           <CheckCircle2 className="size-5 text-ok" />
           <div>
             <p className="text-sm font-semibold text-foreground">

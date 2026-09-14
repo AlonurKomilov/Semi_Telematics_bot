@@ -96,17 +96,22 @@ describe('what the solid path costs', () => {
 
 describe('the occlusion escape hatch', () => {
   it('exists, and cancels both the translucency and the blur', () => {
-    // 21 sticky and pinned elements use their fill to HIDE the content
-    // scrolling underneath — the grid's frozen columns, the pivot's left
-    // rail. Glass makes them see-through and the table unreadable.
+    // A surface positioned out of flow uses its fill to HIDE what it
+    // covers, and glass makes it see-through instead. This comment used
+    // to name "21 sticky and pinned elements" that opted out; none did,
+    // and the grid's frozen columns were never at risk — they paint
+    // opaque utilities of their own. The population this rule serves is
+    // claimed by geometry now; `.surface-opaque` is for the one case
+    // geometry cannot see.
     // Scoped to glass, and asserted that way. The rule was once a
     // two-selector list whose bare half did nothing — solid mode has no
     // translucency to cancel — and a mutation deleting that half was
     // invisible to every assertion here. A rule a mutation can remove
     // without breaking anything should not be in the file.
     expect(CODE, 'the escape hatch is no longer scoped to glass')
-      .toMatch(/:root\[data-material="glass"\]\s+\.surface-opaque\s*\{/);
-    const rule = /:root\[data-material="glass"\]\s+\.surface-opaque\s*\{([^}]*)\}/.exec(CODE)?.[1] ?? '';
+      .toMatch(/:root\[data-material="glass"\]\s+\.surface-opaque\s*[,{]/);
+    const rule = /:root\[data-material="glass"\]\s+\.surface-opaque\s*(?:,[^{]*)?\{([^}]*)\}/
+      .exec(CODE)?.[1] ?? '';
     expect(rule, '.surface-opaque is gone — the pinned columns have no way out').not.toBe('');
     expect(rule).toMatch(/background-color:\s*var\(--surface-base/);
     // Both spellings, separately. `/backdrop-filter/` matches inside
@@ -115,6 +120,72 @@ describe('the occlusion escape hatch', () => {
     // every modern browser ignoring the reset.
     expect(rule, 'the unprefixed reset is gone').toMatch(/(^|[\s;])backdrop-filter:\s*none/);
     expect(rule, 'the -webkit- reset is gone').toMatch(/-webkit-backdrop-filter:\s*none/);
+  });
+
+  /**
+   * A POPOVER TAKES IT WITHOUT ASKING.
+   *
+   * The comment above says "those sites opt out explicitly". Not one
+   * site did: `surface-opaque` existed in the glass sheet, in a comment
+   * in `index.css`, and in the assertion above. Nowhere else. So every
+   * floating surface in the product was translucent, and the persona
+   * menu in the top bar rendered the SIDEBAR through itself — at alpha
+   * 0.72 the text behind keeps 28% of its contrast, which is legible
+   * grey whether or not the blur lands.
+   *
+   * Occlusion is not a property a call site should have to remember,
+   * and this one proves the point: twenty-four sites carry
+   * `.surface-popover`, and not one of them would have thought to add a
+   * second class. What defines that category IS floating over content
+   * nobody chose.
+   */
+  it('and a popover takes it without having to ask', () => {
+    const selectors = /([^{}]*)\{[^}]*backdrop-filter:\s*none[^}]*\}/.exec(CODE)?.[1] ?? '';
+    expect(
+      selectors,
+      'a popover is translucent again. Every menu, select, context menu, dialog, '
+        + 'sheet and banner floats over content nobody chose, so it must occlude — '
+        + 'and no call site should have to remember that.',
+    ).toMatch(/\.surface\.surface-popover/);
+  });
+
+  /**
+   * AND THE CATEGORY IS GEOMETRY, not a class somebody remembered.
+   *
+   * `.surface-popover` was the first answer and it did not reach the
+   * reported bug at all: the persona menu is a `<Card>`, and
+   * `cardVariants` is `"surface border border-border rounded-lg"` — no
+   * popover class, and no call site would have thought to add one.
+   *
+   * What these surfaces share is not a name. They are positioned out of
+   * flow, over content nobody chose, and the product writes that in
+   * bare Tailwind tokens only — so three selectors claim thirteen sites
+   * with no call-site edits and nothing left to forget.
+   */
+  it('and a surface positioned out of flow occludes, whatever it is called', () => {
+    const selectors = /([^{}]*)\{[^}]*backdrop-filter:\s*none[^}]*\}/.exec(CODE)?.[1] ?? '';
+    for (const pos of ['absolute', 'fixed', 'sticky']) {
+      expect(
+        selectors,
+        `a \`.surface.${pos}\` is translucent again. It floats over content nobody `
+          + 'chose, so it must occlude — and the class that says so is the one the '
+          + 'author already wrote for layout.',
+      ).toMatch(new RegExp(`\\.surface\\.${pos}`));
+    }
+  });
+
+  /**
+   * `.surface.surface-popover`, never `.surface-popover` alone.
+   *
+   * The glass rung is `:root[data-material="glass"] .surface` at
+   * (0,2,0). A single-class override ties it, and a tie is decided by
+   * which line came last — a rule this sheet already learned about
+   * vendor stylesheets, where the answer differed between `vite dev`
+   * and the production build.
+   */
+  it('and it out-specifies the rung it overrides rather than tying it', () => {
+    expect(CODE, 'the popover override ties the glass rung instead of beating it')
+      .not.toMatch(/:root\[data-material="glass"\]\s+\.surface-popover\s*[,{]/);
   });
 });
 
@@ -232,5 +303,49 @@ describe('the axis reaches every surface that is one', () => {
       'a surface paints the popover colour and never joins the material axis — '
       + 'use `surface surface-popover` instead of `bg-popover`')
       .toEqual([]);
+  });
+});
+
+
+/**
+ * The two things that made the menu unreadable, neither of them the
+ * translucency itself.
+ */
+describe('a surface paints its own colour, on its own backdrop', () => {
+  const CSS = readFileSync(join(SRC, 'index.css'), 'utf8');
+
+  /**
+   * `--surface-base` is a CUSTOM PROPERTY, and those inherit — so every
+   * `.surface` inside the sidebar painted in the RAIL's colour. The
+   * persona menu is a `<Card>` four levels down; in dark that made it
+   * the same lightness as the thing it covers. Opaque and invisible is
+   * not better than translucent and illegible.
+   */
+  it('never inherits its base from an ancestor', () => {
+    expect(
+      CSS,
+      '`--surface-base` inherits again — a Card inside the sidebar will paint in '
+        + 'the rail colour instead of its own.',
+    ).toMatch(/@property\s+--surface-base\s*\{[^}]*inherits:\s*false/);
+  });
+
+  /**
+   * `backdrop-filter` on an ANCESTOR makes a descendant's own filter a
+   * no-op — which is why the menu showed the sidebar through itself
+   * CRISP rather than smeared. The shell's content envelope wraps the
+   * header and every page, and its only visible pixels are the 8px
+   * gutter: carrying `.surface` bought a frosted frame and cost a
+   * viewport-sized backdrop root over every card in the app.
+   */
+  it('and the shell envelope is not one giant backdrop root', () => {
+    const shell = readFileSync(join(SRC, 'shells/AppShell.tsx'), 'utf8');
+    const envelope = /className="flex-1 flex flex-col overflow-hidden[^"]*"/.exec(shell)?.[0] ?? '';
+    expect(envelope, 'the content envelope moved — this reader is stale').not.toBe('');
+    expect(
+      /\bsurface\b/.test(envelope.replace(/surface-\w+/g, '')),
+      'the shell envelope carries `.surface` again. Under Glass that is a '
+        + 'viewport-sized backdrop root, and every card inside it loses its own blur '
+        + 'silently — for an 8px frosted gutter.',
+    ).toBe(false);
   });
 });
