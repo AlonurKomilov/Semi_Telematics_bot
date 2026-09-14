@@ -25,6 +25,10 @@
  *  marker's glyph has to be a string anyway — Leaflet takes HTML, not
  *  components.  Each is the `d`/elements of the 24×24 lucide original. */
 const GLYPH: Record<string, string> = {
+  // A dial, not a balance: the DOT layer keeps the balance (judgement),
+  // this one reads out a number you paid for.
+  gauge:
+    '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
   fuel:
     '<line x1="3" x2="15" y1="22" y2="22"/><line x1="4" x2="14" y1="9" y2="9"/>'
     + '<path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/>'
@@ -284,8 +288,14 @@ export const POI_LAYERS: PoiLayerDef[] = [
   { id: 'shower', label: 'Showers', color: '#ec4899',
     glyph: 'shower', group: 'fuel_plaza' },
 
-  { id: 'weigh_station', label: 'Weigh stations', color: '#8b5cf6',
+  // Two layers: OSM tags both with `amenity=weighbridge`, and 48% of
+  // our 4,500 imported points turned out to be truck-stop chains.  A
+  // DOT station is a stop you MUST make; a truck scale is one you MAY
+  // buy.  See features/live_map/poi/layers.py for the split.
+  { id: 'weigh_station', label: 'Weigh stations (DOT)', color: '#8b5cf6',
     glyph: 'scale', group: 'highway_safety' },
+  { id: 'truck_scale', label: 'Truck scales', color: '#ea580c',
+    glyph: 'gauge', group: 'highway_safety' },
   { id: 'rest_area', label: 'Rest areas', color: '#06b6d4',
     glyph: 'bed', group: 'highway_safety' },
 

@@ -25,6 +25,7 @@ import {
   FlaskConical,
   FolderOpen,
   Fuel,
+  Gauge,
   Scale,
   ShowerHead,
   SquareParking,
@@ -336,11 +337,33 @@ export const POI_LAYERS: PoiLayerDef[] = [
   // ═══════════════════════════════════════════════════════════════════════════
   // GROUP: Highway & Safety
   // ═══════════════════════════════════════════════════════════════════════════
+  // TWO LAYERS, BECAUSE THEY ANSWER DIFFERENT QUESTIONS.
+  //
+  // OpenStreetMap tags both with `amenity=weighbridge`, which says only
+  // "there is a scale here".  Measured on our own 4,500 imported points
+  // (2026-09-14), 2,160 of them — 48% — were truck-stop chains: Love's
+  // 513, Pilot 370, Flying J 197, TA 173, CAT Scale 157.  Served as one
+  // layer, a driver asking "where must I stop" got a map half made of
+  // places that cannot answer that.
+  //
+  // A DOT station is a stop you MUST make — free, enforced.  A truck
+  // scale is a service you MAY buy.  The split is at import (one
+  // Overpass fetch still), so the mirrors are asked as often as before.
   {
     id: 'weigh_station',
-    label: 'Weigh Stations',
+    label: 'Weigh Stations (DOT)',
     color: '#8b5cf6',
     icon: Scale,
+    defaultOn: false,
+    group: 'highway_safety',
+  },
+  {
+    // Warm, like the other SERVICES on this map, against the DOT
+    // layer's violet: one is an obligation, the other is a purchase.
+    id: 'truck_scale',
+    label: 'Truck Scales',
+    color: '#ea580c',
+    icon: Gauge,
     defaultOn: false,
     group: 'highway_safety',
   },

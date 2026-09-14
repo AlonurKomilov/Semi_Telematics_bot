@@ -1,9 +1,16 @@
 """Fill ``poi_points`` from OSM — the work the map used to do per pan.
 
-The six Overpass-backed layers describe things that do not move, so they
-are fetched on a schedule and served from our own table.  This is the
-fetch.  (The map draws seven built-in layers; repair shops are the
-seventh and come from ``vendor_directory``, which was already ours.)
+The Overpass-backed layers describe things that do not move, so they are
+fetched on a schedule and served from our own table.  This is the fetch,
+and it iterates ``POI_OVERPASS_QUERIES`` — what we ASK THE MIRROR.
+
+That is no longer the same list as what the map SERVES.  One fetch can
+produce two layers: ``weigh_station`` asks for every weighbridge and
+files the answer as a DOT station or a commercial truck scale, because
+OSM's tag does not distinguish them and half the layer was the wrong
+answer.  ``SERVED_LAYERS`` is that second list; the repair shops beside
+it come from ``vendor_directory``, which was already ours.  Counting
+either of them in prose is how a docstring goes stale, so it does not.
 
 WHAT A JOB MAY DO THAT A REQUEST MAY NOT: wait.  The request path holds
 itself to fifty seconds because nginx answers for it at sixty; nobody is
@@ -26,7 +33,7 @@ import logging
 from datetime import datetime, timezone
 
 from . import overpass, viewport
-from .layers import POI_OVERPASS_QUERIES
+from .layers import POI_OVERPASS_QUERIES, POI_SPLITS, split_of
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +235,15 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
     if layer not in POI_OVERPASS_QUERIES:
         return {"layer": layer, "points": 0, "ok": False, "note": "unknown layer"}
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    total = 0
+    # ONE FETCH CAN PRODUCE TWO LAYERS.  `weigh_station` asks the mirror
+    # for every weighbridge and files the answer under two names,
+    # because OSM's tag does not distinguish a state DOT station from
+    # the CAT Scale behind a Pilot — see layers.py.  Splitting here and
+    # not at the query keeps the volunteer mirrors asked exactly as
+    # often as before: every tag the split reads is already in the reply.
+    classify = split_of(layer)
+    produced = POI_SPLITS[layer][0] if layer in POI_SPLITS else (layer,)
+    stored: dict[str, int] = {name: 0 for name in produced}
     failures: list[str] = []
     # The OLDEST extract any mirror served during this run.
     #
@@ -254,19 +269,39 @@ async def import_layer(db, layer: str, stamp: str | None = None) -> dict:
             failures.append(f"{bbox}: {str(exc)[:120]}")
             continue
         try:
-            total += await db.upsert_poi_points(layer, points, stamp)
+            if classify is None:
+                stored[layer] += await db.upsert_poi_points(layer, points, stamp)
+            else:
+                buckets: dict[str, list[dict]] = {n: [] for n in produced}
+                for pt in points:
+                    buckets[classify(pt)].append(pt)
+                for name, group in buckets.items():
+                    if group:
+                        stored[name] += await db.upsert_poi_points(
+                            name, group, stamp)
         except Exception as exc:
             failures.append(f"{bbox}: store failed: {str(exc)[:120]}")
 
     ok = not failures
     note = "" if ok else " | ".join(failures)
-    try:
-        await db.finish_poi_import(layer, stamp, total, ok, note, oldest)
-    except Exception:
-        logger.exception("poi import: could not close %s", layer)
-    logger.info("poi import: %s — %d points, ok=%s%s",
-                layer, total, ok, f" ({note})" if note else "")
-    return {"layer": layer, "points": total, "ok": ok, "note": note}
+    total = sum(stored.values())
+    # EVERY produced layer is closed, including one that came back empty.
+    # A split whose commercial half happened to find nothing still ran,
+    # and skipping its close would leave it looking never-imported —
+    # which the map reads as "ask the mirror per viewport", forever.
+    for name in produced:
+        try:
+            await db.finish_poi_import(
+                name, stamp, stored[name], ok, note, oldest)
+        except Exception:
+            logger.exception("poi import: could not close %s", name)
+    logger.info("poi import: %s — %d points, ok=%s%s%s",
+                layer, total, ok,
+                "" if len(produced) == 1
+                else " [" + ", ".join(f"{n}={stored[n]}" for n in produced) + "]",
+                f" ({note})" if note else "")
+    return {"layer": layer, "points": total, "ok": ok, "note": note,
+            "stored": dict(stored)}
 
 
 def _query_cost(layer: str) -> tuple[int, str]:

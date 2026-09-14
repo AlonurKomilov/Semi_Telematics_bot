@@ -73,3 +73,40 @@ def test_every_brand_chip_exists_on_both():
     assert ext == dash, (
         "a chain a driver can filter by on one surface and not the other: "
         f"only dashboard={sorted(dash - ext)}, only panel={sorted(ext - dash)}")
+
+
+def test_every_offered_layer_is_one_the_server_serves():
+    """THE THIRD REGISTRY, which this file's own docstring claimed to
+    hold and did not.
+
+    The two frontends were only ever compared to EACH OTHER, so a layer
+    added to both and forgotten on the server agreed perfectly and
+    answered nothing: `GET /map/pois?type=…` falls through to an empty
+    FeatureCollection for a type it does not know, which is the one
+    shape this feature has spent a week learning not to draw.
+
+    The server's list is SERVED_LAYERS and not POI_OVERPASS_QUERIES —
+    those diverged when `weigh_station` became one fetch producing two
+    layers (a DOT station and a commercial truck scale are different
+    questions; 48% of that layer was the wrong answer).  A guard reading
+    the query dict would now reject a layer that works.
+    """
+    from features.live_map.poi.layers import SERVED_LAYERS
+
+    offered = set(_layers(DASH))
+    served = set(SERVED_LAYERS)
+    # The frontends also carry layers with no Overpass query behind them
+    # — the curated directory and the account's own vendors are served
+    # from our tables, and custom layers are per-account ids.
+    db_backed = {"vendor_directory", "my_vendors"}
+    unknown = offered - served - db_backed
+    assert not unknown, (
+        f"both surfaces offer {sorted(unknown)}, which the server does not "
+        "serve — the map will draw an empty layer and call it 'none in "
+        "this view'.  Add it to POI_OVERPASS_QUERIES (or to POI_SPLITS "
+        "if one fetch produces it).")
+
+    missing = served - offered
+    assert not missing, (
+        f"the server serves {sorted(missing)} and neither surface offers "
+        "it — the import runs and nobody can see the result")

@@ -52,7 +52,11 @@ load_dotenv()
 
 from features.live_map.poi.importer import import_all, import_layer  # noqa: E402
 from features.live_map.poi.overpass import close_http_session  # noqa: E402
-from features.live_map.poi.layers import POI_OVERPASS_QUERIES  # noqa: E402
+from features.live_map.poi.layers import (  # noqa: E402
+    POI_OVERPASS_QUERIES,
+    POI_SPLITS,
+    SERVED_LAYERS,
+)
 from infra.platform import get_platform_db  # noqa: E402
 from infra.startup import initialize as init_services  # noqa: E402
 
@@ -62,14 +66,16 @@ logger = logging.getLogger("poi.import")
 async def show_status(db) -> int:
     counts = await db.count_poi_points()
     runs = await db.poi_layer_imports()
-    width = max(len(name) for name in POI_OVERPASS_QUERIES)
+    # SERVED and not fetched: `weigh_station` produces two layers, and
+    # an operator reading this table wants to see both of them.
+    width = max(len(name) for name in SERVED_LAYERS)
     # TWO DATES, because they answer different questions and an operator
     # reading one of them for the other is the bug this column was added
     # to end: "we ran" is always recent, "the data" can be a season old.
     print(f"\n{'layer'.ljust(width)}  {'points':>7}  {'we imported':<22}"
           f"  {'OSM extract':<22}  last run")
     print("-" * (width + 82))
-    for layer in POI_OVERPASS_QUERIES:
+    for layer in SERVED_LAYERS:
         run = runs.get(layer) or {}
         when = run.get("imported_at") or "—  never"
         # Unknown until a run records one — the layers imported before
@@ -84,7 +90,7 @@ async def show_status(db) -> int:
         print(f"{layer.ljust(width)}  {counts.get(layer, 0):>7}  {when:<22}"
               f"  {base:<22}  {outcome}")
     print()
-    missing = [l for l in POI_OVERPASS_QUERIES if not counts.get(l)]
+    missing = [l for l in SERVED_LAYERS if not counts.get(l)]
     if missing:
         print(f"Not loaded yet: {', '.join(missing)}")
         print("The map falls back to asking Overpass per request for those.\n")
@@ -111,8 +117,22 @@ async def main_async(args: argparse.Namespace) -> int:
         r = await import_layer(db, args.layer)
         print(f"  {r['layer']}: {r['points']} points, ok={r['ok']}"
               f"{'  — ' + r['note'] if r['note'] else ''}")
+    elif args.reclassify:
+        # RE-FILE WHAT WE ALREADY HAVE.  A split decided after an import
+        # does not need the source asked again — every tag the classifier
+        # reads is in the stored props.  Seconds, and the volunteer
+        # mirrors are not touched at all.
+        for fetched, (produced, classify) in POI_SPLITS.items():
+            when = await db.poi_layer_imported_at(fetched)
+            base = await db.poi_layer_source_as_of(fetched)
+            if not when:
+                print(f"  {fetched}: never imported — nothing to re-file")
+                continue
+            counts = await db.reclassify_poi_points(produced, classify, when, base)
+            print(f"  {fetched}: " + ", ".join(
+                f"{n}={counts.get(n, 0)}" for n in produced))
     elif args.all or args.missing:
-        todo = list(POI_OVERPASS_QUERIES)
+        todo = list(POI_OVERPASS_QUERIES)   # fetches, not served layers
         if args.missing:
             # A layer that already has a good import does not need one
             # today, and re-doing it spends clock the missing ones need.
@@ -142,9 +162,13 @@ def main() -> int:
     p.add_argument("--all", action="store_true", help="import every built-in layer")
     p.add_argument("--missing", action="store_true",
                    help="import only the layers with no good import yet")
+    p.add_argument("--reclassify", action="store_true",
+                   help="re-file stored points under a split decided after "
+                        "the import — no network, seconds")
     args = p.parse_args()
-    if sum(bool(x) for x in (args.layer, args.all, args.missing)) > 1:
-        p.error("--layer, --all and --missing are alternatives")
+    if sum(bool(x) for x in (args.layer, args.all, args.missing,
+                             args.reclassify)) > 1:
+        p.error("--layer, --all, --missing and --reclassify are alternatives")
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s")
     return asyncio.run(main_async(args))

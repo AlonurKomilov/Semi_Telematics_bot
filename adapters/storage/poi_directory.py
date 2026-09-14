@@ -169,7 +169,7 @@ class PoiDirectoryMixin:
 
     async def finish_poi_import(
         self, layer: str, stamp: str, points: int, ok: bool, note: str = "",
-        osm_base: Optional[str] = None,
+        osm_base: Optional[str] = None, sweep: bool = True,
     ) -> None:
         """Close one layer's import run.
 
@@ -180,7 +180,13 @@ class PoiDirectoryMixin:
         same rule the /pois endpoint learned: a source that did not
         answer is not an area with nothing in it.
         """
-        if ok:
+        # `sweep=False` is for a caller that did not FETCH anything —
+        # re-filing stored rows under a split, say.  Its stamp is the
+        # existing import's, not this moment's, so the DELETE below
+        # would be a no-op if it were passed correctly and would empty
+        # the layer if it were not.  A parameter beats a docstring: the
+        # foot-gun is removed rather than described.
+        if ok and sweep:
             await self._db.execute(
                 "DELETE FROM poi_points WHERE layer = ? AND updated_at < ?",
                 (layer, stamp))
@@ -215,6 +221,55 @@ class PoiDirectoryMixin:
             (layer, stamp if ok else "", int(points), 1 if ok else 0, note[:400],
              (osm_base or None) if ok else None),
         )
+
+    async def reclassify_poi_points(
+        self, produced: tuple[str, ...], classify, stamp: str,
+        osm_base: Optional[str] = None,
+    ) -> dict[str, int]:
+        """Re-file already-stored points under the layers a classifier
+        now produces — WITHOUT asking the source again.
+
+        Every tag the classifier reads is already in ``props``, so a
+        split that was decided after the import can be applied to the
+        rows in place: seconds instead of an hour, and the volunteer
+        mirrors are not touched at all.
+
+        Returns layer → how many points it holds afterwards.  Each
+        produced layer is also CLOSED, because a layer with no row in
+        ``poi_imports`` is one the map asks the mirror for on every pan.
+        """
+        placeholders = ",".join("?" for _ in produced)
+        cur = await self._db.execute(
+            f"SELECT layer, osm_type, osm_id, name, props FROM poi_points "
+            f"WHERE layer IN ({placeholders})", tuple(produced))
+        rows = [dict(r) for r in await cur.fetchall()]
+
+        moved = 0
+        counts = {name: 0 for name in produced}
+        for r in rows:
+            try:
+                props = json.loads(r["props"] or "{}")
+            except Exception:
+                props = {}
+            want = classify({"name": r["name"] or "", "props": props})
+            counts[want] = counts.get(want, 0) + 1
+            if want != r["layer"]:
+                await self._db.execute(
+                    "UPDATE poi_points SET layer = ? "
+                    "WHERE layer = ? AND osm_type = ? AND osm_id = ?",
+                    (want, r["layer"], r["osm_type"], r["osm_id"]))
+                moved += 1
+
+        for name in produced:
+            # NEVER sweeps: nothing was fetched, so nothing left OSM.
+            # Every row here already carries the source import's
+            # `updated_at`, and a sweep against any other stamp would
+            # delete the whole layer without raising.
+            await self.finish_poi_import(
+                name, stamp, counts.get(name, 0), True,
+                f"reclassified in place ({moved} moved)", osm_base,
+                sweep=False)
+        return counts
 
     async def count_poi_points(self, layer: Optional[str] = None) -> dict[str, int]:
         """layer → row count.  The operator's answer to "did it import?"."""

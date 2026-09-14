@@ -524,10 +524,19 @@ class TestWholeLayerHandover:
         # NULL, not a date and not an omission: a layer with no import is
         # a layer the client must fetch the old way.
         assert versions["rest_area"] is None
-        # Every built-in layer is named, so a client can decide about all
-        # of them from one reply.
-        from features.live_map.poi.layers import POI_OVERPASS_QUERIES
-        assert set(versions) == set(POI_OVERPASS_QUERIES)
+        # Every SERVED layer is named, so a client can decide about all
+        # of them from one reply — and that is a different set from the
+        # queries: `weigh_station` is one fetch that produces two layers,
+        # and a client that never hears a version for the second one can
+        # never hold it.
+        from features.live_map.poi.layers import (
+            POI_OVERPASS_QUERIES, SERVED_LAYERS,
+        )
+        assert set(versions) == set(SERVED_LAYERS)
+        assert "truck_scale" in versions
+        assert set(SERVED_LAYERS) > set(POI_OVERPASS_QUERIES), (
+            "the split collapsed — if one fetch no longer produces two "
+            "layers this assertion is the place to say so deliberately")
 
     async def test_a_layer_comes_over_whole_with_the_version_it_is(self, app_ctx):
         db = app_ctx["db"]
@@ -721,6 +730,59 @@ class TestServedFromOurTable:
                 )
         assert r.status_code == 200, r.text
         assert asked, "a layer with no import did not fall through to the mirror"
+
+    async def test_half_a_split_asks_its_sources_question_before_it_imports(self, app_ctx):
+        """`truck_scale` has no Overpass query of its own — it is one
+        half of what `weigh_station` fetches.
+
+        Before its first import it must ask the SOURCE's question and
+        keep only its own half.  Answering with an empty list instead
+        would tell a driver there are no scales here, which is the shape
+        this whole file exists to stop; and reading the wrong key off
+        the Feature would empty it just as silently, because
+        `_fetch_overpass` returns GeoJSON where the OSM tags are spread
+        into `properties`, not nested under `props`.
+        """
+        asked: list[list[str]] = []
+
+        async def _fake(parts, bbox):
+            asked.append(list(parts))
+            # THE SIGNAL IS ONLY IN THE TAGS.  Both names are neutral on
+            # purpose: if this test let the name carry the answer, a
+            # build reading `f["props"]` instead of `f["properties"]`
+            # would classify correctly anyway and the test would pass
+            # over the bug it exists to catch.
+            return [
+                {"type": "Feature",
+                 "geometry": {"type": "Point", "coordinates": [-87.65, 41.85]},
+                 "properties": {"name": "Scale", "amenity": "weighbridge",
+                                "operator": "CAT Scale"}},
+                {"type": "Feature",
+                 "geometry": {"type": "Point", "coordinates": [-87.60, 41.80]},
+                 "properties": {"name": "Scale", "amenity": "weighbridge",
+                                "operator": "Illinois Department of Transportation"}},
+            ]
+
+        with patch("features.live_map.poi.overpass._fetch_overpass", new=_fake):
+            async with _client(app_ctx["app"]) as c:
+                scales = await c.get(
+                    "/api/map/pois?type=truck_scale&bbox=41.0,-88.0,42.0,-87.0",
+                    headers=_h(app_ctx["owner_a_token"]))
+                dot = await c.get(
+                    "/api/map/pois?type=weigh_station&bbox=41.0,-88.0,42.0,-87.0",
+                    headers=_h(app_ctx["owner_a_token"]))
+
+        assert scales.status_code == 200, scales.text
+        assert dot.status_code == 200, dot.text
+
+        # It asked the SOURCE's question, not one of its own.
+        from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+        assert asked and asked[0] == POI_OVERPASS_QUERIES["weigh_station"]
+
+        got_scales = [f["properties"]["operator"] for f in scales.json()["features"]]
+        got_dot = [f["properties"]["operator"] for f in dot.json()["features"]]
+        assert got_scales == ["CAT Scale"], got_scales
+        assert got_dot == ["Illinois Department of Transportation"], got_dot
 
     async def test_a_failed_import_does_not_switch_the_layer_over(self, app_ctx):
         """`ok=False` leaves no date, and no date means the table is not

@@ -26,7 +26,13 @@ from .custom import (
     _layer_to_dto,
     _serve_custom_layer,
 )
-from .layers import POI_OVERPASS_QUERIES, point_to_feature
+from .layers import (
+    POI_OVERPASS_QUERIES,
+    SERVED_LAYERS,
+    fetch_layer_for,
+    point_to_feature,
+    split_of,
+)
 from .viewport import (
     _MAX_BBOX_AREA,
     _bbox_to_str,
@@ -63,7 +69,10 @@ async def poi_versions(
     runs = await tenant.poi_layer_imports()
     return {"versions": {
         layer: ((runs.get(layer) or {}).get("imported_at") or None)
-        for layer in POI_OVERPASS_QUERIES
+        # SERVED_LAYERS and not POI_OVERPASS_QUERIES: one fetch can
+        # produce two layers (see layers.py), and a client that never
+        # hears a version for the second one can never hold it.
+        for layer in SERVED_LAYERS
     }}
 
 
@@ -83,7 +92,7 @@ async def poi_set(
     download, then every pan is local — and no third party is asked for
     anything, ever.
     """
-    if poi_type not in POI_OVERPASS_QUERIES:
+    if poi_type not in SERVED_LAYERS:
         raise HTTPException(
             status_code=404,
             detail=f"{poi_type!r} is not a built-in POI layer")
@@ -120,7 +129,9 @@ async def map_pois(
 ):
     """POI overlay data for map layers.
 
-    Built-in types are defined in POI_OVERPASS_QUERIES; custom per-tenant
+    Built-in types are the ones in SERVED_LAYERS — which is no longer
+    the same list as POI_OVERPASS_QUERIES, because one fetch can produce
+    two layers (see layers.py).  Custom per-tenant
     layers use ``type=custom_{id}`` and dispatch to either Overpass or the
     DB-points reader. Unknown types return an empty FeatureCollection.
     """
@@ -222,7 +233,7 @@ async def map_pois(
             user["account_id"], layer_id, bbox, (s, w, n, e),
         )
 
-    if poi_type not in POI_OVERPASS_QUERIES:
+    if poi_type not in SERVED_LAYERS:
         return {"type": "FeatureCollection", "features": []}
 
     # ── Our own table, once this layer has been imported ─────────────
@@ -270,9 +281,23 @@ async def map_pois(
     if cached is not None:
         return {"type": "FeatureCollection", "features": cached}
 
-    query_parts = POI_OVERPASS_QUERIES[poi_type]
+    # HALF A SPLIT ASKS ITS SOURCE'S QUESTION.  `truck_scale` has no
+    # Overpass query of its own — it is one half of what `weigh_station`
+    # fetches — so before the first import it asks the source's query and
+    # keeps only its own half.  Without this the fallback would KeyError,
+    # and answering with an empty list instead would tell a driver there
+    # are no scales here, which is the one thing this file exists to stop.
+    fetched = fetch_layer_for(poi_type) or poi_type
+    query_parts = POI_OVERPASS_QUERIES[fetched]
+    classify = split_of(fetched)
     try:
         features = await overpass._fetch_overpass(query_parts, bbox)
+        if classify is not None:
+            features = [
+                f for f in features
+                if classify({"name": (f.get("properties") or {}).get("name") or "",
+                             "props": f.get("properties") or {}}) == poi_type
+            ]
     except Exception as exc:
         # A source that did not answer is NOT an area with nothing in
         # it.  This used to be `features = []`, cached for five minutes

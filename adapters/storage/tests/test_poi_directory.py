@@ -191,3 +191,109 @@ async def test_an_extract_date_the_mirror_never_gave_is_none_not_our_own(poi):
 
 async def test_a_layer_never_imported_has_no_extract_date_either(poi):
     assert await poi.poi_layer_source_as_of("truck_parking") is None
+
+
+# ── re-filing a split decided after the import ────────────────────────
+
+
+def _classify_by_operator(point):
+    """Stand-in for the real weigh-station classifier — the storage
+    layer takes any callable, and pinning the real one here would make
+    this a test of that rule instead of of this one."""
+    op = (point["props"].get("operator") or "").lower()
+    return "truck_scale" if "cat scale" in op else "weigh_station"
+
+
+async def test_a_split_decided_later_is_applied_without_asking_the_source(poi):
+    """THE POINT: every tag the classifier reads is already stored.
+
+    The weigh-station split was designed after 4,500 points had been
+    imported, and re-fetching them would have meant an hour against
+    volunteer mirrors to learn nothing new.  The rows carry their own
+    tags; re-filing them is a local decision.
+    """
+    await poi.upsert_poi_points("weigh_station", [
+        _point(1, 41.0, -93.0, "CAT Scale", operator="CAT Scale"),
+        _point(2, 41.1, -93.1, "", operator="Illinois Department of Transportation"),
+        _point(3, 41.2, -93.2, "", operator="CAT Scale"),
+    ], "2026-09-14T10:00:00Z")
+    await poi.finish_poi_import(
+        "weigh_station", "2026-09-14T10:00:00Z", 3, ok=True,
+        osm_base="2026-06-01T00:00:00Z")
+
+    counts = await poi.reclassify_poi_points(
+        ("weigh_station", "truck_scale"), _classify_by_operator,
+        "2026-09-14T10:00:00Z", "2026-06-01T00:00:00Z")
+
+    assert counts == {"weigh_station": 1, "truck_scale": 2}
+    box = (40.0, -94.0, 42.0, -92.0)
+    assert {r["osm_id"] for r in await poi.poi_points_in_bbox("weigh_station", *box)} == {2}
+    assert {r["osm_id"] for r in await poi.poi_points_in_bbox("truck_scale", *box)} == {1, 3}
+
+
+async def test_the_new_half_gets_a_version_or_the_map_never_stops_asking(poi):
+    """A layer with no row in poi_imports is one the client fetches per
+    viewport forever.  Re-filing has to close BOTH halves, and carry the
+    source's dates — the points did not change, so neither did their
+    age."""
+    await poi.upsert_poi_points("weigh_station", [
+        _point(1, 41.0, -93.0, "", operator="CAT Scale"),
+    ], "2026-09-14T10:00:00Z")
+    await poi.finish_poi_import(
+        "weigh_station", "2026-09-14T10:00:00Z", 1, ok=True,
+        osm_base="2026-06-01T00:00:00Z")
+
+    await poi.reclassify_poi_points(
+        ("weigh_station", "truck_scale"), _classify_by_operator,
+        "2026-09-14T10:00:00Z", "2026-06-01T00:00:00Z")
+
+    assert await poi.poi_layer_imported_at("truck_scale") == "2026-09-14T10:00:00Z"
+    assert await poi.poi_layer_source_as_of("truck_scale") == "2026-06-01T00:00:00Z"
+    # And the half that gave everything away still has a date, not a
+    # zero-point layer that looks like a failed import.
+    assert await poi.poi_layer_imported_at("weigh_station") == "2026-09-14T10:00:00Z"
+
+
+async def test_re_filing_twice_changes_nothing_the_second_time(poi):
+    """The rows are keyed (layer, osm_type, osm_id), so a point that is
+    already in the right layer must not be UPDATEd onto itself — that is
+    a primary-key collision waiting for the second run."""
+    await poi.upsert_poi_points("weigh_station", [
+        _point(1, 41.0, -93.0, "", operator="CAT Scale"),
+        _point(2, 41.1, -93.1, "", operator="FDOT"),
+    ], "2026-09-14T10:00:00Z")
+    await poi.finish_poi_import("weigh_station", "2026-09-14T10:00:00Z", 2, ok=True)
+
+    args = (("weigh_station", "truck_scale"), _classify_by_operator,
+            "2026-09-14T10:00:00Z", None)
+    first = await poi.reclassify_poi_points(*args)
+    second = await poi.reclassify_poi_points(*args)
+    assert first == second == {"weigh_station": 1, "truck_scale": 1}
+
+
+async def test_re_filing_never_sweeps_whatever_stamp_it_is_given(poi):
+    """THE FOOT-GUN, REMOVED RATHER THAN DOCUMENTED.
+
+    `finish_poi_import` deletes every row older than its stamp, which is
+    right after a fetch and catastrophic after a re-file: nothing was
+    fetched, so nothing left OpenStreetMap.  Re-filing used to be safe
+    only because its one caller happened to pass the existing import's
+    stamp; a caller passing "now" — the natural-looking argument — would
+    have emptied both layers silently.
+    """
+    await poi.upsert_poi_points("weigh_station", [
+        _point(1, 41.0, -93.0, "", operator="CAT Scale"),
+        _point(2, 41.1, -93.1, "", operator="FDOT"),
+    ], "2026-09-14T10:00:00Z")
+    await poi.finish_poi_import("weigh_station", "2026-09-14T10:00:00Z", 2, ok=True)
+
+    # A stamp from the FUTURE — every stored row is older than it.
+    counts = await poi.reclassify_poi_points(
+        ("weigh_station", "truck_scale"), _classify_by_operator,
+        "2099-01-01T00:00:00Z", None)
+
+    assert counts == {"weigh_station": 1, "truck_scale": 1}
+    box = (40.0, -94.0, 42.0, -92.0)
+    assert len(await poi.poi_points_in_bbox("weigh_station", *box)) == 1, (
+        "re-filing swept the layer it was only meant to re-label")
+    assert len(await poi.poi_points_in_bbox("truck_scale", *box)) == 1
