@@ -13,6 +13,14 @@ that were originally written against SQLite.
 
 from __future__ import annotations
 
+# The board reporter: inert unless SUITE_REPORT_URL and
+# SUITE_REPORT_TOKEN are set, so a normal run costs nothing. Registered
+# here rather than in an entry point because the repo has no installable
+# package — pytest loads conftest first, and this is the one file every
+# run reads.
+pytest_plugins = ["tests._suite_report"]
+
+
 import itertools
 import os
 import sys

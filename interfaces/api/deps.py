@@ -741,6 +741,34 @@ def require_permission(feature: str):
     return _check
 
 
+async def require_suite_token(request: Request) -> dict:
+    """The one gate on this platform that admits a MACHINE, not a person.
+
+    The test board's ingest is called by a finished pytest process: it
+    has no session, no operator, and nothing to log in with. It carries a
+    shared secret instead, compared in constant time.
+
+    A dependency rather than a check inside the handler, deliberately.
+    ``interfaces/api/tests/test_every_route_is_gated.py`` reads the
+    dependency tree to prove every route is gated; a check hidden in a
+    function body is invisible to it, and a gate nobody can audit is the
+    thing that guard exists to find. This way the route is gated AND the
+    gate is legible — and the guard lists it by name as the single
+    ``/system/*`` route not held by the system owner.
+
+    Unset means CLOSED, not open: a board nobody configured must not take
+    runs from whoever finds the URL.
+    """
+    import hmac
+    import os
+
+    expected = os.getenv("SUITE_REPORT_TOKEN", "")
+    provided = request.headers.get("X-Suite-Token", "")
+    if not expected or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="bad suite token")
+    return {"sub": "suite-reporter", "role": "machine"}
+
+
 async def require_system_owner(user: dict = Depends(get_current_user)) -> dict:
     """Gate for cross-account operator endpoints (``/system/*``).
 

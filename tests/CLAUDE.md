@@ -28,6 +28,33 @@ Filing a guard under the consumer puts it where the rule is not.
 If a file is genuinely two things, it is two files —
 `test_source_ts.py` was split 6/9 for exactly this reason.
 
+## The test board
+
+`system/suite/` is the operator console's mirror of what the suite did —
+our half of what GitHub Actions shows, for the runs Actions never sees,
+which here is most of them. It does not run tests: pytest does, and
+`tests/_suite_report.py` POSTs a summary afterwards, only when
+`SUITE_REPORT_URL` and `SUITE_REPORT_TOKEN` are both set. Unset it is
+inert, which is every developer's default.
+
+Its question is attribution, not a green light. Three sessions and a
+person write to this tree, so "the suite is red" was never the useful
+sentence — "this went red between these two commits" is. Every run is
+kept, so a failing node id can be looked back to the last run that
+passed it; the bracket is computed in
+`adapters/storage/suite_runs.py`, never by the reporter, which knows
+only its own run.
+
+Two labels carry as much as the counts. A run with a `scope` asked for
+part of the suite, so its green says nothing about the rest; a run on a
+dirty tree measured uncommitted edits, so its red accuses nobody. The
+board renders both, because rendering them like a clean full run would
+be worse than having no board.
+
+The reporter never touches a database. Tests run against a template
+copy, and a test process holding the production handle is the leak this
+platform has already had once.
+
 ## Security tests
 
 Two instruments, deliberately different in kind.

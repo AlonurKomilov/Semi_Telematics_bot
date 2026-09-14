@@ -20,6 +20,8 @@ Members:
   security                  the request ledger, the detector, the holds,
                             the nightly watch, the owner notice
   capacity                  the sampler, request metering, capacity alerts
+  suite                     the test board — what the suite did, and
+                            who was holding it when it broke
   watchdog                  the machinery watchdog (watches the WORK)
   market_intel              market-intel rollups over shared work orders
   vendor_directory          the global vendor directory + reviews

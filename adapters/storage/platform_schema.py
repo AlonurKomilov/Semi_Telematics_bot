@@ -951,6 +951,11 @@ async def create_tables(conn) -> None:
             hosted_invoice_url        TEXT    NOT NULL DEFAULT '',
             invoice_pdf_url           TEXT    NOT NULL DEFAULT '',
             paid_at                   TEXT,
+            -- when 4truck's OWN receipt email went out for this invoice
+            -- (Stripe's is Stripe's).  Empty means it did not: the
+            -- switch was off, there was no address, or the relay
+            -- refused — the wiring card reads this to say which.
+            receipt_emailed_at        TEXT,
             created_at                TEXT    NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_billing_invoices_account
@@ -1017,6 +1022,58 @@ async def create_tables(conn) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_requests_open
             ON plan_requests(account_id, tier) WHERE status = 'open';
 
+        -- suite_runs / suite_failures: what the test suite did, and who
+        -- was holding it.  Three sessions and a person write to this tree,
+        -- so "the suite is red" is never the useful sentence — "this went
+        -- red between these two commits, and here is who committed them"
+        -- is.  A run summary is POSTed after pytest finishes; the tests
+        -- themselves never touch this database (they run against a
+        -- template copy, and a test process writing to production is the
+        -- leak we have already had once).
+        CREATE TABLE IF NOT EXISTS suite_runs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at    TEXT    NOT NULL,
+            finished_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+            -- ci | local: a CI run is the whole suite on a clean tree; a
+            -- local one is usually a subset on a dirty one, and reading
+            -- them as the same number is how a board starts lying.
+            source        TEXT    NOT NULL DEFAULT 'local',
+            actor         TEXT,
+            git_sha       TEXT,
+            git_branch    TEXT,
+            -- Whether the tree had uncommitted edits. A red run on a dirty
+            -- tree accuses nobody.
+            dirty         INTEGER NOT NULL DEFAULT 0,
+            -- What was asked for — the pytest args. "30 passed" means
+            -- nothing without it.
+            scope         TEXT,
+            passed        INTEGER NOT NULL DEFAULT 0,
+            failed        INTEGER NOT NULL DEFAULT 0,
+            skipped       INTEGER NOT NULL DEFAULT 0,
+            errors        INTEGER NOT NULL DEFAULT 0,
+            duration_s    REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_suite_runs_finished
+            ON suite_runs(finished_at DESC);
+
+        CREATE TABLE IF NOT EXISTS suite_failures (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id        INTEGER NOT NULL,
+            nodeid        TEXT    NOT NULL,
+            file          TEXT,
+            message       TEXT,
+            -- The attribution the board exists for: the run this nodeid
+            -- was first seen failing in, and the commit that run was on.
+            -- Together with the last run that PASSED it, they bracket the
+            -- change that broke it.
+            first_seen_run INTEGER,
+            last_green_sha TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_suite_failures_run
+            ON suite_failures(run_id);
+        CREATE INDEX IF NOT EXISTS idx_suite_failures_nodeid
+            ON suite_failures(nodeid);
+
         -- security_requests: the request ledger the security console reads.
         -- Two populations land here: every 401/403/429 from ANY account
         -- (the denial signal the detector was missing — the 2026-09-08
@@ -1047,6 +1104,31 @@ async def create_tables(conn) -> None:
             ON security_requests(account_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_security_requests_status
             ON security_requests(status, created_at DESC);
+
+        -- security_events: what the detector concluded from the ledger and
+        -- the auth tables — one row per (kind, subject) while it is open,
+        -- re-observed each sweep (count = latest window, last_seen moves).
+        -- Status is the operator's decision: acked, dismissed, or
+        -- monitored (the account was put under observation from here).
+        CREATE TABLE IF NOT EXISTS security_events (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind          TEXT    NOT NULL,
+            severity      TEXT    NOT NULL,
+            subject_type  TEXT    NOT NULL,
+            subject       TEXT    NOT NULL,
+            summary       TEXT    NOT NULL,
+            evidence      TEXT,
+            count         INTEGER NOT NULL DEFAULT 1,
+            first_seen    TEXT    NOT NULL,
+            last_seen     TEXT    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'open',
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_security_events_open
+            ON security_events(status, last_seen DESC);
+        CREATE INDEX IF NOT EXISTS idx_security_events_subject
+            ON security_events(kind, subject, status);
 
         CREATE TABLE IF NOT EXISTS account_persona_groups (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,

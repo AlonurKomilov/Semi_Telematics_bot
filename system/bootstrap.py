@@ -50,6 +50,7 @@ def install() -> None:
     # register_need at import time.
     import system.security.retention  # noqa: F401
     import system.capacity.retention  # noqa: F401
+    import system.suite.retention  # noqa: F401
 
     _installed = True
     logger.info("system layer installed: hold policies + ledger retention")

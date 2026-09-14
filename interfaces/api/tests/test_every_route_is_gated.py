@@ -48,6 +48,23 @@ AUTHN = "get_current_user"
 #: Proves the caller is US.
 OWNER = "require_system_owner"
 
+#: Proves the caller is a MACHINE of ours — a shared secret, compared in
+#: constant time, with no session behind it. Exactly one route uses it
+#: and it is named below: a finished pytest process reporting what it
+#: did. It is a gate, so it is recognised; it is not the operator, so it
+#: cannot satisfy the /system/* rule on its own.
+MACHINE = "require_suite_token"
+
+#: The ``/system/*`` routes held by a machine token instead of the
+#: system owner. Listed one by one, with why, because every entry is a
+#: door into the operator's half of the platform that a person does not
+#: open.
+SYSTEM_MACHINE_ROUTES: dict[str, str] = {
+    "POST /system/suite/runs":
+        "a finished pytest process posting what it did — it has no "
+        "session and no operator to be",
+}
+
 #: Proves the caller is allowed THIS. Matched as a prefix because these
 #: are factories: ``require_permission("loads")`` closes over the feature
 #: and the dependency's qualname is ``require_permission.<locals>._check``.
@@ -89,6 +106,8 @@ def _gates(route) -> set[str]:
 def _classify(gates: set[str]) -> str:
     if any(g.startswith(OWNER) for g in gates):
         return "system_owner"
+    if any(g.startswith(MACHINE) for g in gates):
+        return "machine"
     if any(g.startswith(f) for g in gates for f in PERMISSION_FACTORIES):
         return "permission"
     if AUTHN in gates:
@@ -520,7 +539,9 @@ def test_every_system_route_requires_the_system_owner(routes):
     ``/auth/`` precisely because they cannot require what they grant."""
     ungated = sorted(
         f"{_key(m, p)}  [{kind}]" for m, p, kind in routes
-        if (p == "/system" or p.startswith("/system/")) and kind != "system_owner"
+        if (p == "/system" or p.startswith("/system/"))
+        and kind != "system_owner"
+        and _key(m, p) not in SYSTEM_MACHINE_ROUTES
     )
     assert not ungated, (
         "these /system/* routes do not require the system owner:\n  "
@@ -552,4 +573,17 @@ def test_an_auth_only_entry_that_is_now_gated_is_removed(routes):
     assert not stale, (
         "now gated (or no longer mounted) — remove from AUTH_ONLY:\n  "
         + "\n  ".join(stale)
+    )
+
+
+def test_a_machine_route_that_is_now_held_by_the_operator_is_removed(routes):
+    """The stale half, for the smallest and most dangerous list: an
+    entry that no longer names a machine-gated /system/ route is an
+    unclaimed exemption sitting on a path anybody may later take."""
+    live = {_key(m, p) for m, p, kind in routes
+            if kind == "machine" and (p == "/system" or p.startswith("/system/"))}
+    stale = sorted(set(SYSTEM_MACHINE_ROUTES) - live)
+    assert not stale, (
+        "no longer a machine-gated /system/ route — remove from "
+        "SYSTEM_MACHINE_ROUTES:\n  " + "\n  ".join(stale)
     )

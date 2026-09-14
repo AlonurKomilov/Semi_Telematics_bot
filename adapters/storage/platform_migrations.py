@@ -225,6 +225,7 @@ async def run_all(conn) -> None:
     await migrate_split_kind_and_security(conn)
     await migrate_ledger_kind_to_security(conn)
     await migrate_user_security(conn)
+    await migrate_suite_board(conn)
     # Vehicle-document expiry needed a personal toggle like every other
     # alert type — without the column its subscriber query returned
     # nobody, so the alert fired into silence.
@@ -387,6 +388,58 @@ async def migrate_user_security(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+async def migrate_suite_board(conn) -> None:
+    """The tables the test board reads: ``suite_runs``, ``suite_failures``.
+
+    Declared in platform_schema for a fresh install; this is the same
+    thing for a database that already exists.  CREATE TABLE IF NOT
+    EXISTS, so a rerun is a no-op and an install that already has them
+    changes nothing.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS suite_runs (
+                id            SERIAL PRIMARY KEY,
+                started_at    TEXT    NOT NULL,
+                finished_at   TEXT    NOT NULL DEFAULT (now()::text),
+                source        TEXT    NOT NULL DEFAULT 'local',
+                actor         TEXT,
+                git_sha       TEXT,
+                git_branch    TEXT,
+                dirty         INTEGER NOT NULL DEFAULT 0,
+                scope         TEXT,
+                passed        INTEGER NOT NULL DEFAULT 0,
+                failed        INTEGER NOT NULL DEFAULT 0,
+                skipped       INTEGER NOT NULL DEFAULT 0,
+                errors        INTEGER NOT NULL DEFAULT 0,
+                duration_s    DOUBLE PRECISION
+            )""")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS suite_failures (
+                id             SERIAL PRIMARY KEY,
+                run_id         INTEGER NOT NULL,
+                nodeid         TEXT    NOT NULL,
+                file           TEXT,
+                message        TEXT,
+                first_seen_run INTEGER,
+                last_green_sha TEXT
+            )""")
+        for ddl in (
+            "CREATE INDEX IF NOT EXISTS idx_suite_runs_finished ON suite_runs(finished_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_suite_failures_run ON suite_failures(run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_suite_failures_nodeid ON suite_failures(nodeid)",
+        ):
+            await conn.execute(ddl)
+        await conn.commit()
+        logger.info("Platform migration: suite_runs / suite_failures ready")
+    except Exception:
+        logger.exception("suite board tables failed")
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
 
 async def migrate_alert_vehicle_documents_column(conn) -> None:
     """Add ``users.alert_vehicle_documents`` — the per-person toggle
@@ -5091,6 +5144,10 @@ async def migrate_plan_extra_price(conn) -> None:
         # Product, so sharing the base one printed the plan's name twice
         await conn.execute(
             "ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_extra_product_id TEXT NOT NULL DEFAULT ''")
+        # whether 4truck's own receipt email went out for an invoice —
+        # the wiring card's answer to "does that service work"
+        await conn.execute(
+            "ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS receipt_emailed_at TEXT")
     except Exception:
         # Boot must not fail for this: without the column the plan
         # parser reads '' and checkout refuses a priced extras line

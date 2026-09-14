@@ -21,15 +21,16 @@ endpoints directly rather than wrapping them here.
 
 from __future__ import annotations
 
+import os
 import logging
 import re
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import require_system_owner, get_platform_db
+from interfaces.api.deps import require_system_owner, require_suite_token, get_platform_db
 from adapters.storage.models import ACCOUNT_KINDS, ACCOUNT_SECURITY
 
 logger = logging.getLogger(__name__)
@@ -1811,6 +1812,103 @@ async def security_requests(
     return {"items": items, "count": len(items)}
 
 
+class SuiteFailureIn(BaseModel):
+    nodeid: str = Field(max_length=500)
+    file: str = Field(default="", max_length=300)
+    message: str = Field(default="", max_length=2000)
+
+
+class SuiteRunIn(BaseModel):
+    """One finished pytest run, as its reporter saw it.
+
+    Every field is a fact about the RUN, not about the code: what was
+    asked for, on which commit, whether the tree was clean, and who was
+    holding it. The board reads a red run on a dirty subset very
+    differently from a red full suite on a clean tree, and it can only do
+    that if the reporter says which this was.
+    """
+    started_at: str = Field(max_length=64)
+    source: str = Field(default="local", pattern="^(ci|local)$")
+    actor: str = Field(default="", max_length=120)
+    git_sha: str = Field(default="", max_length=64)
+    git_branch: str = Field(default="", max_length=200)
+    dirty: bool = False
+    scope: str = Field(default="", max_length=2000)
+    passed: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    skipped: int = Field(default=0, ge=0)
+    errors: int = Field(default=0, ge=0)
+    duration_s: float | None = None
+    failures: list[SuiteFailureIn] = Field(default_factory=list, max_length=2000)
+
+
+@router.post("/suite/runs")
+async def suite_ingest_run(
+    body: SuiteRunIn,
+    _reporter: dict = Depends(require_suite_token),
+    platform_db=Depends(get_platform_db),
+):
+    """Record one finished test run.
+
+    Deliberately NOT behind ``require_system_owner``: the caller is a
+    pytest process, which has no session and no operator. It carries a
+    shared secret instead, compared in constant time. That is why this
+    route is the one exception the route-gate guard lists by name.
+    """
+    run_id = await platform_db.record_suite_run(
+        started_at=body.started_at, source=body.source, actor=body.actor,
+        git_sha=body.git_sha, git_branch=body.git_branch, dirty=body.dirty,
+        scope=body.scope, passed=body.passed, failed=body.failed,
+        skipped=body.skipped, errors=body.errors, duration_s=body.duration_s,
+        failures=[f.model_dump() for f in body.failures],
+    )
+    logger.info("suite board: run %s recorded (%s, %s passed / %s failed%s)",
+                run_id, body.source, body.passed, body.failed,
+                ", dirty tree" if body.dirty else "")
+    return {"id": run_id}
+
+
+@router.get("/suite/runs")
+async def suite_list_runs(
+    limit: int = Query(default=30, ge=1, le=200),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """The board's rows, newest first."""
+    from adapters.storage.suite_runs import summarise
+    runs = await platform_db.list_suite_runs(limit=limit)
+    return {"items": [{**r, **summarise(r)} for r in runs], "count": len(runs)}
+
+
+@router.get("/suite/runs/{run_id}")
+async def suite_get_run(
+    run_id: int,
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """One run and every failure in it, each carrying the bracket: the
+    run it was first seen in, and the commit of the last run that passed
+    it."""
+    run = await platform_db.get_suite_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    from adapters.storage.suite_runs import summarise
+    return {**run, **summarise(run)}
+
+
+@router.get("/suite/failures")
+async def suite_failure_history(
+    nodeid: str = Query(max_length=500),
+    limit: int = Query(default=20, ge=1, le=100),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Every run that saw this test fail — "red since Tuesday" or "red
+    since an hour ago", which is the question a board exists to answer."""
+    return {"items": await platform_db.suite_failure_history(nodeid, limit=limit),
+            "nodeid": nodeid}
+
+
 @router.get("/security/candidates")
 async def security_candidates(
     hours: int = Query(default=24 * 7, ge=1, le=24 * 90),
@@ -2520,7 +2618,14 @@ async def system_plans_stripe_check(
     """
     from capabilities.platform.billing.setup_check import check_stripe_setup
     rows = await platform_db.list_plans()
-    return await check_stripe_setup(rows, provider=_billing_provider_name())
+    try:
+        latest = await platform_db.latest_invoice()
+    except Exception:
+        # the receipt row degrades to "nothing billed yet" rather than
+        # taking the whole card down with it
+        logger.exception("stripe-check: could not read the latest invoice")
+        latest = None
+    return await check_stripe_setup(rows, provider=_billing_provider_name(), latest_invoice=latest)
 
 
 @router.post("/plans", status_code=201)

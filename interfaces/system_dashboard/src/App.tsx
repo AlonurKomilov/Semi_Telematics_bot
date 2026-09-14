@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList, ShieldAlert, BookOpenCheck } from 'lucide-react';
+import { Building2, Receipt, Layers, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList, ShieldAlert, BookOpenCheck, FlaskConical } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -11,6 +11,7 @@ import HealthPage from './pages/Health';
 import UsersPage from './pages/Users';
 import ErrorsPage from './pages/Errors';
 import SecurityPage from './pages/Security';
+import SuitePage from './pages/Suite';
 import AIFeedbackPage from './pages/AIFeedback';
 import RetentionPage from './pages/Retention';
 import VendorDirectoryPage from './pages/VendorDirectory';
@@ -112,6 +113,7 @@ export default function App() {
             <Route path="/users" element={<UsersPage />} />
             <Route path="/errors" element={<ErrorsPage />} />
             <Route path="/security" element={<SecurityPage />} />
+            <Route path="/suite" element={<SuitePage />} />
             <Route path="/ai-feedback" element={<AIFeedbackPage />} />
             <Route path="/retention" element={<RetentionPage />} />
             <Route path="/vendor-directory" element={<VendorDirectoryPage />} />
@@ -169,6 +171,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },
       { to: '/knowledge', label: 'Knowledge review', icon: BookOpenCheck },
       { to: '/scheduler', label: 'Scheduler', icon: CalendarClock },
+        { to: '/suite', label: 'Test board', icon: FlaskConical },
     ],
   },
   {
