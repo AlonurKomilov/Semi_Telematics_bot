@@ -31,6 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import require_system_owner, require_suite_token, get_platform_db
+from interfaces.api.rate_limit import limiter
 from adapters.storage.models import ACCOUNT_KINDS, ACCOUNT_SECURITY
 
 logger = logging.getLogger(__name__)
@@ -1839,11 +1840,17 @@ class SuiteRunIn(BaseModel):
     skipped: int = Field(default=0, ge=0)
     errors: int = Field(default=0, ge=0)
     duration_s: float | None = None
-    failures: list[SuiteFailureIn] = Field(default_factory=list, max_length=2000)
+    # A run with more than this many DISTINCT failures is a catastrophe,
+    # not a report — the worst real day on this suite was twelve. The cap
+    # is what a leaked token can write per request, so it is sized for
+    # the honest case and the reporter says when it truncated.
+    failures: list[SuiteFailureIn] = Field(default_factory=list, max_length=500)
 
 
 @router.post("/suite/runs")
+@limiter.limit("10/minute")
 async def suite_ingest_run(
+    request: Request,
     body: SuiteRunIn,
     _reporter: dict = Depends(require_suite_token),
     platform_db=Depends(get_platform_db),
@@ -1854,6 +1861,14 @@ async def suite_ingest_run(
     pytest process, which has no session and no operator. It carries a
     shared secret instead, compared in constant time. That is why this
     route is the one exception the route-gate guard lists by name.
+
+    The token is the whole wall — the route is reachable from the
+    internet like every other — so the blast radius of losing it is
+    bounded here rather than assumed away. Ten posts a minute (a real
+    reporter sends one per run, and a run takes minutes), five hundred
+    failures each, and nothing readable: every read on this board is
+    behind ``require_system_owner``, so a stolen token writes noise and
+    learns nothing.
     """
     run_id = await platform_db.record_suite_run(
         started_at=body.started_at, source=body.source, actor=body.actor,

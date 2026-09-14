@@ -127,8 +127,12 @@ def pytest_sessionfinish(session, exitstatus):
         "duration_s": round(time.monotonic() - _state["t0"], 2),
         **counts,
         # Deduped: xdist can log the same nodeid twice when a worker
-        # crashes and the controller re-reports it.
-        "failures": list({f["nodeid"]: f for f in _state["failures"]}.values()),
+        # crashes and the controller re-reports it.  Capped at what the
+        # ingest accepts, and the count above still says the true total —
+        # so a catastrophic run reads as "800 failed" with 500 named,
+        # never as 500.
+        "failures": list({f["nodeid"]: f
+                          for f in _state["failures"]}.values())[:500],
     }
     _send(payload)
 
