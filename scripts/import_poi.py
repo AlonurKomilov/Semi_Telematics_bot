@@ -63,18 +63,26 @@ async def show_status(db) -> int:
     counts = await db.count_poi_points()
     runs = await db.poi_layer_imports()
     width = max(len(name) for name in POI_OVERPASS_QUERIES)
-    print(f"\n{'layer'.ljust(width)}  {'points':>7}  {'last good import':<22}  last run")
-    print("-" * (width + 60))
+    # TWO DATES, because they answer different questions and an operator
+    # reading one of them for the other is the bug this column was added
+    # to end: "we ran" is always recent, "the data" can be a season old.
+    print(f"\n{'layer'.ljust(width)}  {'points':>7}  {'we imported':<22}"
+          f"  {'OSM extract':<22}  last run")
+    print("-" * (width + 82))
     for layer in POI_OVERPASS_QUERIES:
         run = runs.get(layer) or {}
         when = run.get("imported_at") or "—  never"
+        # Unknown until a run records one — the layers imported before
+        # the column existed have none, and none prints as none.
+        base = run.get("osm_base") or "— unknown"
         if run.get("ok") == 1:
             outcome = "ok"
         elif run:
             outcome = f"FAILED — {(run.get('note') or '')[:60]}"
         else:
             outcome = "—"
-        print(f"{layer.ljust(width)}  {counts.get(layer, 0):>7}  {when:<22}  {outcome}")
+        print(f"{layer.ljust(width)}  {counts.get(layer, 0):>7}  {when:<22}"
+              f"  {base:<22}  {outcome}")
     print()
     missing = [l for l in POI_OVERPASS_QUERIES if not counts.get(l)]
     if missing:
@@ -103,9 +111,19 @@ async def main_async(args: argparse.Namespace) -> int:
         r = await import_layer(db, args.layer)
         print(f"  {r['layer']}: {r['points']} points, ok={r['ok']}"
               f"{'  — ' + r['note'] if r['note'] else ''}")
-    elif args.all:
-        print(f"Importing {len(POI_OVERPASS_QUERIES)} layers — this takes a while…")
-        for r in await import_all(db):
+    elif args.all or args.missing:
+        todo = list(POI_OVERPASS_QUERIES)
+        if args.missing:
+            # A layer that already has a good import does not need one
+            # today, and re-doing it spends clock the missing ones need.
+            runs = await db.poi_layer_imports()
+            todo = [l for l in todo if not (runs.get(l) or {}).get("imported_at")]
+            if not todo:
+                print("Every layer already has a good import — nothing to do.")
+                await close_http_session()
+                return await show_status(db)
+        print(f"Importing {len(todo)} layer(s) — this takes a while…")
+        for r in await import_all(db, only=todo):
             print(f"  {r['layer']}: {r['points']} points, ok={r['ok']}"
                   f"{'  — ' + r['note'] if r['note'] else ''}")
     # aiohttp shouts two ERROR lines about an unclosed session when a
@@ -122,9 +140,11 @@ def main() -> int:
     )
     p.add_argument("--layer", help="import ONE layer (see the status table for names)")
     p.add_argument("--all", action="store_true", help="import every built-in layer")
+    p.add_argument("--missing", action="store_true",
+                   help="import only the layers with no good import yet")
     args = p.parse_args()
-    if args.layer and args.all:
-        p.error("--layer and --all are alternatives")
+    if sum(bool(x) for x in (args.layer, args.all, args.missing)) > 1:
+        p.error("--layer, --all and --missing are alternatives")
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s")
     return asyncio.run(main_async(args))
