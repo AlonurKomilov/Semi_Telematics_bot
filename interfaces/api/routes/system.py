@@ -2578,11 +2578,33 @@ async def system_put_plan(
             stripe_price_id = made.get("stripe_price_id", "")
             stripe_product_id = made.get("stripe_product_id") or None
             archived = made.get("archived") or ""
+    # The per-extra-truck Price, by the same rule: a changed amount, or an
+    # amount with no Price yet, makes one on the plan's Product before the
+    # row is written.  One env-wide Price used to serve every plan.
+    stripe_extra_price_id = None
+    archived_extra = ""
+    extra_cents = body.extra_vehicle_cents
+    if extra_cents is not None and (extra_cents != int(before.get("extra_vehicle_cents") or 0)
+                                    or (extra_cents > 0 and not before.get("stripe_extra_price_id"))):
+        from capabilities.platform.billing import get_provider
+        # the base call above may have just made the Product: hand it on
+        before_for_extra = {**before, **({"stripe_product_id": stripe_product_id} if stripe_product_id else {})}
+        try:
+            made_x = await get_provider().create_extra_price(
+                tier=tier, label=label, cents=int(extra_cents), before=before_for_extra)
+        except Exception as e:
+            logger.exception("plan %s: the provider could not create an extras price for %s cents", tier, extra_cents)
+            raise HTTPException(status_code=502, detail=f"The billing provider could not create the extras price: {e}")
+        if not made_x.get("skipped"):
+            stripe_extra_price_id = made_x.get("stripe_extra_price_id", "")
+            stripe_product_id = made_x.get("stripe_product_id") or stripe_product_id
+            archived_extra = made_x.get("archived") or ""
     row = await platform_db.upsert_plan(
         tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor,
         price_monthly_cents=body.price_monthly_cents, base_vehicles=body.base_vehicles,
         extra_vehicle_cents=body.extra_vehicle_cents,
         stripe_price_id=stripe_price_id, stripe_product_id=stripe_product_id,
+        stripe_extra_price_id=stripe_extra_price_id,
         public=body.public, sort=body.sort, trial_default=body.trial_default)
     invalidate_plans()
     # A plan that becomes public has no private offers left to keep:
@@ -2602,11 +2624,11 @@ async def system_put_plan(
             except Exception:
                 logger.exception("platform audit write failed for offers withdrawn on %s", tier)
             logger.info("system: plan %s made public — %d offer(s) withdrawn by %s", tier, withdrawn, actor)
-    if archived and archived != row.get("stripe_price_id"):
-        from capabilities.platform.billing import get_provider
-        provider = get_provider()
-        if hasattr(provider, "archive_plan_price"):
-            await provider.archive_plan_price(archived)
+    from capabilities.platform.billing import get_provider
+    provider = get_provider()
+    for gone, kept in ((archived, row.get("stripe_price_id")), (archived_extra, row.get("stripe_extra_price_id"))):
+        if gone and gone != kept and hasattr(provider, "archive_plan_price"):
+            await provider.archive_plan_price(gone)
     counts = await platform_db.count_accounts_by_tier()
     await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))
     logger.info("system: plan %s saved by %s (%d account(s))", tier, actor, counts.get(tier, 0))

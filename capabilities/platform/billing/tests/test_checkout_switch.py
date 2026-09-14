@@ -50,8 +50,8 @@ class _FakeStripe:
 @pytest.mark.asyncio
 async def test_a_live_subscriber_switches_in_place_and_a_new_account_checks_out(db, monkeypatch):
     monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extra")
-    await db.upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_pro", public=True)
-    await db.upsert_plan("starter", label="Starter", included=["*"], stripe_price_id="price_starter", public=True)
+    await db.upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_pro", public=True, stripe_extra_price_id="price_extra")
+    await db.upsert_plan("starter", label="Starter", included=["*"], stripe_price_id="price_starter", public=True, stripe_extra_price_id="price_extra")
     acct = await db.create_account("Switch Co", tier="starter")
     await db.get_or_create_subscription(acct.id)
     await db.update_subscription(acct.id, tier="starter", provider="stripe", provider_customer_id="cus_1",
@@ -101,8 +101,8 @@ def _live(sub_id="sub_live", base="price_starter"):
 @pytest.mark.asyncio
 async def test_each_switch_is_its_own_stripe_action_and_a_stale_replay_writes_nothing(db, monkeypatch):
     monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extra")
-    await db.upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_pro", public=True)
-    await db.upsert_plan("starter", label="Starter", included=["*"], stripe_price_id="price_starter", public=True)
+    await db.upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_pro", public=True, stripe_extra_price_id="price_extra")
+    await db.upsert_plan("starter", label="Starter", included=["*"], stripe_price_id="price_starter", public=True, stripe_extra_price_id="price_extra")
     # A→B, B→A, A→B on one day: three different idempotency keys, never the first one replayed
     acct = await _live_account(db, "Flip Co", "sub_flip")
     fake = _FakeStripe(_live("sub_flip"))
@@ -138,8 +138,8 @@ async def test_the_webhook_reconciles_a_subscription_stripe_moved_to_a_plan_our_
     resolver follow Stripe."""
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
     monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extra")
-    await db.upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_pro", public=True)
-    await db.upsert_plan("starter", label="Starter", included=["*"], stripe_price_id="price_starter", public=True)
+    await db.upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_pro", public=True, stripe_extra_price_id="price_extra")
+    await db.upsert_plan("starter", label="Starter", included=["*"], stripe_price_id="price_starter", public=True, stripe_extra_price_id="price_extra")
     acct = await _live_account(db, "Reconcile Co", "sub_rec")
     event = {"id": "evt_rec_1", "type": "customer.subscription.updated",
              "data": {"object": {"id": "sub_rec", "customer": "cus_1", "status": "active",

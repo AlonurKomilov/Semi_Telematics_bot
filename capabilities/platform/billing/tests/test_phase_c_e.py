@@ -20,6 +20,14 @@ import sys
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
+
+
+async def _plan_extras(db, tier, price_id, cents=None):
+    """Give the seeded plan its own extras Price (every plan carries one
+    now; the env-wide one only recognises subscriptions from before)."""
+    row = await db.get_plan(tier)
+    await db.upsert_plan(tier, label=row["label"], included=row["included"], quotas=row["quotas"],
+                         stripe_extra_price_id=price_id, extra_vehicle_cents=cents)
 from tests._repo import REPO as _REPO  # sentinel-anchored, not depth-counted
 
 
@@ -975,6 +983,7 @@ class TestStripeTwoLineSubscription:
         )
         db = pg_db
         acct = await db.create_account("CheckoutCo")
+        await _plan_extras(db, "starter", "price_extras_test")
         await db.get_or_create_subscription(acct.id, tier="starter")   # 10 included
         for i in range(13):                                            # → 3 extras
             await db.add_vehicle(acct.id, unit_number=f"C{i}")
@@ -1002,6 +1011,7 @@ class TestStripeTwoLineSubscription:
         )
         db = pg_db
         acct = await db.create_account("SmallCheckoutCo")
+        await _plan_extras(db, "starter", "price_extras_test")
         await db.get_or_create_subscription(acct.id, tier="starter")
         for i in range(4):
             await db.add_vehicle(acct.id, unit_number=f"S{i}")
@@ -1012,7 +1022,7 @@ class TestStripeTwoLineSubscription:
         assert captured["line_items"] == [{"price": "price_starter_test", "quantity": 1}]
 
     @pytest.mark.asyncio
-    async def test_checkout_single_line_when_extras_unset(self, pg_db, monkeypatch):
+    async def test_checkout_single_line_when_the_plan_bills_no_extra_truck(self, pg_db, monkeypatch):
         from capabilities.platform.billing.stripe_client import StripeBillingProvider
         monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter_test")
         monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
@@ -1032,6 +1042,7 @@ class TestStripeTwoLineSubscription:
         )
         db = pg_db
         acct = await db.create_account("SingleLineCo")
+        await _plan_extras(db, "starter", "", cents=0)     # this plan bills no extra truck
         await db.get_or_create_subscription(acct.id)
         await StripeBillingProvider().create_checkout_session(
             acct.id, db, "starter", "ok", "cancel",

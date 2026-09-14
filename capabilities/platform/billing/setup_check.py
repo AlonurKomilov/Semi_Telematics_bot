@@ -80,9 +80,10 @@ def _check_extras_price(stripe, mode: str) -> dict:
     label = "Per-extra-truck price"
     pid = (os.getenv("STRIPE_PRICE_EXTRA_VEHICLE") or "").strip()
     if not pid:
-        return _check("extras_price", label, _PROBLEM,
-                      "STRIPE_PRICE_EXTRA_VEHICLE is empty — subscriptions go out "
-                      "single-line and no extra truck is ever billed.")
+        # each plan carries its own extras Price now (checked per plan
+        # below); the env one only recognises subscriptions made before
+        return _check("extras_price", label, _OK,
+                      "No env-wide extras price — each plan carries its own (see Stripe price per plan).")
     if pid.startswith("prod_"):
         return _check("extras_price", label, _PROBLEM,
                       f"{pid} is a Product id, not a Price id. Open the product in "
@@ -110,7 +111,9 @@ def _check_extras_price(stripe, mode: str) -> dict:
     amount = f"${(price.unit_amount or 0) / 100:.2f}/month"
     if wrong:
         return _check("extras_price", label, _PROBLEM, f"{amount} — but it is {', '.join(wrong)}.")
-    return _check("extras_price", label, _OK, f"{amount} per extra truck, per unit")
+    return _check("extras_price", label, _OK,
+                  f"{amount} per extra truck, per unit — legacy: subscriptions made before "
+                  "per-plan extras prices; the rollout moves them")
 
 
 def _check_webhook(stripe) -> dict:
@@ -211,6 +214,15 @@ def _check_plan_prices(plans: list[dict], mode: str) -> dict:
     if without:
         return _check("plan_prices", label, _PROBLEM,
                       f"No Stripe price yet for {', '.join(sorted(without))} — "
+                      "press Create Stripe price on each of them below.")
+    # a plan that bills extra trucks needs the extras Price too, or its
+    # checkout refuses rather than bill at another plan's amount
+    no_extra = [p["tier"] for p in sellable
+                if int(p.get("extra_vehicle_cents") or 0) > 0
+                and not (p.get("stripe_extra_price_id") or "").strip()]
+    if no_extra:
+        return _check("plan_prices", label, _PROBLEM,
+                      f"No Stripe price for the extra truck on {', '.join(sorted(no_extra))} — "
                       "press Create Stripe price on each of them below.")
     return _check("plan_prices", label, _OK,
                   f"{len(sellable)} public plan{'s' if len(sellable) != 1 else ''} "

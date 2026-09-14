@@ -125,6 +125,13 @@ class BillingProvider(Protocol):
         "archived"}``.  Stub: ``{"skipped": "stub"}`` and nothing touched."""
         ...
 
+    async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
+        """The per-extra-truck twin of ``create_plan_price``: a Price on
+        the plan's Product for *cents* per truck above the included
+        count.  Returns ``{"stripe_extra_price_id", "stripe_product_id",
+        "archived"}``; stub: ``{"skipped": "stub"}``."""
+        ...
+
     async def rollout_preview(self, db, tier: str) -> dict:
         """What a price rollout would do, from our tables alone."""
         ...

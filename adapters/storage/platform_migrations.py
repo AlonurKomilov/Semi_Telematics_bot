@@ -242,6 +242,7 @@ async def run_all(conn) -> None:
     await migrate_plan_requests(conn)
     await migrate_plan_offers(conn)
     await migrate_live_map_key_rename(conn)
+    await migrate_plan_extra_price(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -5073,6 +5074,23 @@ async def migrate_live_map_key_rename(conn) -> None:
     if changed:
         logger.info(
             "Migration: %d role_permissions row(s) rewritten from %s to %s", changed, OLD, NEW)
+
+
+async def migrate_plan_extra_price(conn) -> None:
+    """A plan's per-extra-truck Price becomes the plan row's, made on
+    save on the plan's Product like the base one.  Until now ONE Price
+    from the environment served every plan, so a plan whose row said
+    $4.99 per extra truck was billed by Stripe at the env Price's
+    amount.  ADD COLUMN IF NOT EXISTS; no index.  Idempotent.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_extra_price_id TEXT NOT NULL DEFAULT ''")
+    except Exception:
+        # Boot must not fail for this: without the column the plan
+        # parser reads '' and checkout refuses a priced extras line
+        # under Stripe — the safe side.
+        logger.exception("plans.stripe_extra_price_id migration failed")
 
 
 async def migrate_google_signin(conn) -> None:

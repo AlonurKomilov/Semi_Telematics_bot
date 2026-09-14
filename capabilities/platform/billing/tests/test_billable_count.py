@@ -18,6 +18,14 @@ from __future__ import annotations
 
 import pytest
 
+
+async def _plan_extras(db, tier, price_id, cents=None):
+    """Give the seeded plan its own extras Price (every plan carries one
+    now; the env-wide one only recognises subscriptions from before)."""
+    row = await db.get_plan(tier)
+    await db.upsert_plan(tier, label=row["label"], included=row["included"], quotas=row["quotas"],
+                         stripe_extra_price_id=price_id, extra_vehicle_cents=cents)
+
 from tests._repo import REPO
 
 
@@ -331,6 +339,7 @@ async def test_the_sync_opens_an_extras_line_the_checkout_never_created(pg_db, m
     db = pg_db
     monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
     acct = await db.create_account("GrewLaterCo")
+    await _plan_extras(db, "starter", "price_extras_test")
     await db.get_or_create_subscription(acct.id, tier="starter")     # 10 included
     await db.update_subscription(
         acct.id, provider="stripe", provider_subscription_id="sub_X",
@@ -372,6 +381,7 @@ async def test_no_extras_line_is_opened_for_an_account_that_owes_none(pg_db, mon
     db = pg_db
     monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
     acct = await db.create_account("StillSmallCo")
+    await _plan_extras(db, "starter", "price_extras_test")
     await db.get_or_create_subscription(acct.id, tier="starter")
     await db.update_subscription(
         acct.id, provider="stripe", provider_subscription_id="sub_X",
@@ -402,6 +412,7 @@ async def test_a_stripe_refusal_at_checkout_is_not_an_internal_error(pg_db, monk
     monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
     db = pg_db
     acct = await db.create_account("RefusedCo")
+    await _plan_extras(db, "starter", "price_extras_test")   # the refusal under test is Stripe's, not ours
     await db.get_or_create_subscription(acct.id, tier="free")
 
     class _Refusing:

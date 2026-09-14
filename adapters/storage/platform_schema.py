@@ -628,6 +628,10 @@ async def create_tables(conn) -> None:
             trial_default       INTEGER NOT NULL DEFAULT 0,
             -- the Stripe Product this plan's Prices hang off (made on first use)
             stripe_product_id   TEXT    NOT NULL DEFAULT '',
+            -- the per-extra-truck Price on that Product, made on save like
+            -- the base one: what Stripe charges per truck above the plan's
+            -- included count. Was ONE env-wide Price for every plan.
+            stripe_extra_price_id TEXT  NOT NULL DEFAULT '',
             updated_at  TEXT NOT NULL,
             updated_by  TEXT NOT NULL DEFAULT ''
         );

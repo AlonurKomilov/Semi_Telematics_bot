@@ -93,6 +93,38 @@ def ensure_plan_price(stripe, *, tier: str, label: str, cents: int, before: dict
     return {"stripe_price_id": price["id"], "stripe_product_id": product_id, "archived": old_price}
 
 
+def ensure_extra_price(stripe, *, tier: str, label: str, cents: int, before: dict) -> dict:
+    """Make Stripe hold the per-extra-truck Price for *cents* on this
+    plan's Product — the extras twin of ``ensure_plan_price``.
+
+    Returns ``{"stripe_extra_price_id", "stripe_product_id", "archived"}``.
+    Zero cents means no extras line at all: the id is cleared and the
+    one it had is handed back to be archived.  The Price carries
+    ``metadata.kind = "extra"`` so a subscription item on it is known
+    for what it is even after the Price is archived by a later save —
+    the window a rollout leaves not-yet-moved subscribers in.
+    """
+    product_id = (before or {}).get("stripe_product_id") or ""
+    old_price = (before or {}).get("stripe_extra_price_id") or ""
+    if int(cents) <= 0:
+        return {"stripe_extra_price_id": "", "stripe_product_id": product_id, "archived": old_price}
+    if not product_id:
+        product = stripe.Product.create(
+            name=label or tier.title(), metadata={"tier": tier},
+            idempotency_key=f"plan-product:{tier}",
+        )
+        product_id = product["id"]
+    stamp = str((before or {}).get("updated_at") or "")
+    price = stripe.Price.create(
+        product=product_id, unit_amount=int(cents), currency="usd",
+        recurring={"interval": "month"}, nickname=f"{label or tier} — per extra truck",
+        lookup_key=f"4truck_{tier}_extra", transfer_lookup_key=True,
+        metadata={"tier": tier, "kind": "extra"},
+        idempotency_key=f"plan-extra-price:{tier}:{int(cents)}:{stamp}",
+    )
+    return {"stripe_extra_price_id": price["id"], "stripe_product_id": product_id, "archived": old_price}
+
+
 def archive_price(stripe, price_id: str) -> bool:
     """Best-effort: an old Price is archived, never deleted (invoices
     reference it).  A failure here is logged and changes nothing."""
@@ -116,6 +148,7 @@ async def preview(db, tier: str) -> dict:
         raise RolloutRefused(f"No plan named '{tier}'")
     subs = await db.subscriptions_on_tier(tier)
     to_price = plan.get("stripe_price_id") or ""
+    to_extra = plan.get("stripe_extra_price_id") or ""
     on_new = sum(1 for s in subs if (s.get("provider_base_price_id") or "") == to_price)
     open_rollout = await db.open_price_rollout(tier)
     items = await db.rollout_items(open_rollout["id"]) if open_rollout else []
@@ -123,6 +156,11 @@ async def preview(db, tier: str) -> dict:
         "tier": tier,
         "to_price_id": to_price,
         "to_cents": int(plan.get("price_monthly_cents") or 0),
+        # the extras Price the same move carries subscribers onto; '' when
+        # the plan bills no extra truck.  Which subscribers still sit on
+        # another extras Price is only known from Stripe, at move time.
+        "to_extra_price_id": to_extra,
+        "to_extra_cents": int(plan.get("extra_vehicle_cents") or 0),
         "candidates": len(subs),
         "already_on_new_price": on_new,
         "to_move": len(subs) - on_new,
@@ -159,6 +197,14 @@ async def execute(stripe, db, tier: str, *, actor: str, limit: int = BATCH) -> d
     if not to_price or to_cents <= 0:
         raise RolloutRefused("The plan has no Stripe price to roll out — set a price and save it first")
     _check_price(stripe, to_price, to_cents)
+    # the extras Price rides the same rollout: a plan that bills extra
+    # trucks must hold one, and it must say what the row says
+    to_extra = plan.get("stripe_extra_price_id") or ""
+    to_extra_cents = int(plan.get("extra_vehicle_cents") or 0)
+    if to_extra_cents > 0 and not to_extra:
+        raise RolloutRefused("The plan bills extra trucks but has no Stripe price for them — save the plan again")
+    if to_extra:
+        _check_price(stripe, to_extra, to_extra_cents)
 
     await db.abort_stale_rollouts(tier)
     open_rollout = await db.open_price_rollout(tier)
@@ -181,12 +227,14 @@ async def execute(stripe, db, tier: str, *, actor: str, limit: int = BATCH) -> d
     if not await db.claim_rollout(rollout_id, token):
         raise RolloutBusy("A batch of this rollout is running right now — try again in a moment")
     try:
-        return await _run_batch(stripe, db, tier, rollout_id, to_price, to_cents, limit=limit)
+        return await _run_batch(stripe, db, tier, rollout_id, to_price, to_cents,
+                                to_extra=to_extra, limit=limit)
     finally:
         await db.release_rollout(rollout_id, token)
 
 
-async def _run_batch(stripe, db, tier: str, rollout_id: int, to_price: str, to_cents: int, *, limit: int) -> dict:
+async def _run_batch(stripe, db, tier: str, rollout_id: int, to_price: str, to_cents: int, *,
+                     to_extra: str = "", limit: int) -> dict:
     done = {int(i["account_id"]) for i in await db.rollout_items(rollout_id)}
     candidates = await db.subscriptions_on_tier(tier)
     counts: dict[str, int] = {}
@@ -201,7 +249,7 @@ async def _run_batch(stripe, db, tier: str, rollout_id: int, to_price: str, to_c
             break
         sub_id = sub.get("provider_subscription_id") or ""
         try:
-            outcome, effective_at = await _move_one(stripe, db, account_id, sub_id, to_price)
+            outcome, effective_at = await _move_one(stripe, db, account_id, sub_id, to_price, to_extra)
             await db.record_rollout_item(rollout_id, account_id, subscription_id=sub_id,
                                          outcome=outcome, effective_at=effective_at)
             consecutive = 0
@@ -230,8 +278,12 @@ async def _run_batch(stripe, db, tier: str, rollout_id: int, to_price: str, to_c
             "finished": aborted or remaining == 0}
 
 
-async def _move_one(stripe, db, account_id: int, sub_id: str, to_price: str) -> tuple[str, str]:
-    """One subscription: retrieve, decide, modify only the base item."""
+async def _move_one(stripe, db, account_id: int, sub_id: str, to_price: str,
+                    to_extra: str = "") -> tuple[str, str]:
+    """One subscription: retrieve, decide, modify the base item — and
+    the extras item when the plan holds an extras Price it is not on
+    (a subscription from before per-plan extras Prices sits on the
+    env-wide one).  Both moves go in ONE modify, no proration."""
     s = stripe.Subscription.retrieve(sub_id, expand=["items"])
     status = str(s.get("status") or "")
     if status in STRIPE_DEAD:
@@ -242,9 +294,16 @@ async def _move_one(stripe, db, account_id: int, sub_id: str, to_price: str) -> 
         return "has_schedule", ""
     slots = _slots(s)
     base = slots["base"]
+    extra = slots["extra"]
     if not base.get("id"):
         return "no_base_item", ""
-    if (base.get("price_id") or "") == to_price:
+    items = []
+    if (base.get("price_id") or "") != to_price:
+        items.append({"id": base["id"], "price": to_price, "quantity": 1})
+    extra_moves = bool(to_extra and extra.get("id") and (extra.get("price_id") or "") != to_extra)
+    if extra_moves:
+        items.append({"id": extra["id"], "price": to_extra, "quantity": int(extra.get("quantity") or 1)})
+    if not items:
         amt = _monthly_usd(base)
         await db.update_subscription(
             account_id, provider_base_item_id=base["id"], provider_base_price_id=to_price,
@@ -252,15 +311,24 @@ async def _move_one(stripe, db, account_id: int, sub_id: str, to_price: str) -> 
         return "already", _period_end(s)
     modified = stripe.Subscription.modify(
         sub_id,
-        items=[{"id": base["id"], "price": to_price, "quantity": 1}],
+        items=items,
         proration_behavior="none",
-        idempotency_key=f"rollout:{account_id}:{to_price}",
+        # the key names every price the move carries; a plan with no
+        # extras Price keeps the key it always had
+        idempotency_key=f"rollout:{account_id}:{to_price}" + (f":{to_extra}" if extra_moves else ""),
     )
-    after = _slots(modified)["base"]
+    after_slots = _slots(modified)
+    after = after_slots["base"]
     if (after.get("price_id") or "") != to_price:
         raise RuntimeError("Stripe returned the subscription still on the old price")
+    if extra_moves and (after_slots["extra"].get("price_id") or "") != to_extra:
+        raise RuntimeError("Stripe returned the extras line still on the old price")
     amt = _monthly_usd(after)
-    await db.update_subscription(
-        account_id, provider_base_item_id=after["id"] or base["id"], provider_base_price_id=to_price,
-        **({"monthly_base_usd": amt} if amt is not None else {}))
+    updates = {"provider_base_item_id": after["id"] or base["id"], "provider_base_price_id": to_price,
+               **({"monthly_base_usd": amt} if amt is not None else {})}
+    if extra_moves:
+        x_amt = _monthly_usd(after_slots["extra"])
+        if x_amt is not None:
+            updates["extra_vehicle_cents"] = x_amt
+    await db.update_subscription(account_id, **updates)
     return "changed", _period_end(modified)

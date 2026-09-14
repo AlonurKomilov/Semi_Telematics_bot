@@ -40,6 +40,9 @@ interface Plan {
   base_vehicles: number;
   extra_vehicle_cents: number;
   stripe_price_id: string;
+  // the per-extra-truck Price on the same Product, made on save like the
+  // base one — what Stripe charges per truck above the included count
+  stripe_extra_price_id: string;
   public: boolean;
   sort: number;
   trial_default: boolean;
@@ -431,6 +434,9 @@ export default function PlansPage() {
         ? `\nThe offer to ${(p.offered_to ?? []).map((o) => o.account_name).join(', ')} is withdrawn — every customer has this plan now. Anyone already subscribed to it stays on it.`
         : '',
       cat.trial_default && !p.trial_default ? '\nNew self-serve signups start their trial on this plan from now on.' : '',
+      cat.extra_vehicle_cents !== p.extra_vehicle_cents
+        ? `\nExtra truck: $${dollars(p.extra_vehicle_cents)} → $${dollars(cat.extra_vehicle_cents)} per month. ${data?.billing_provider === 'stripe' ? 'A Stripe price is created for it; existing subscribers move with Roll out.' : ''}`
+        : '',
       cat.price_monthly_cents !== p.price_monthly_cents
         ? `\nPrice: $${dollars(p.price_monthly_cents)} → $${dollars(cat.price_monthly_cents)} per month. ${data?.billing_provider === 'stripe' ? 'A Stripe price is created now; new checkouts use it at once. Accounts already on the plan keep paying the old price until you roll it out.' : 'New checkouts only.'}` : '',
     ];
@@ -763,12 +769,19 @@ export default function PlansPage() {
               ))}
               <tr className="border-t border-slate-800/70">
                 <td className="px-3 py-1.5 text-slate-300">
-                  Stripe price
-                  <span className="ml-2 text-[11px] text-slate-500">created on save; existing subscribers move with Roll out</span>
+                  Stripe prices
+                  <span className="ml-2 text-[11px] text-slate-500">base and per extra truck, created on save; existing subscribers move with Roll out</span>
                 </td>
                 {shown.map((p) => (
                   <td key={p.tier} className="px-3 py-1.5 text-center align-top">
                     <div className="text-[11px] text-slate-500 break-all">{p.stripe_price_id || '—'}</div>
+                    {/* A plan that bills extra trucks needs this one too, or its
+                        checkout refuses rather than bill at another plan's amount */}
+                    {p.extra_vehicle_cents > 0 && (
+                      <div className={`text-[11px] break-all ${p.stripe_extra_price_id ? 'text-slate-500' : 'text-warn'}`}>
+                        extra truck: {p.stripe_extra_price_id || 'no price yet'}
+                      </div>
+                    )}
                     {data.billing_provider === 'stripe' && p.stripe_price_id && (
                       <Button
                         variant="warn"
@@ -797,7 +810,8 @@ export default function PlansPage() {
                   // this the page told the operator to press Save and handed
                   // them a disabled "No changes".
                   const needsPrice = data.billing_provider === 'stripe'
-                    && p.price_monthly_cents > 0 && !p.stripe_price_id;
+                    && ((p.price_monthly_cents > 0 && !p.stripe_price_id)
+                        || (p.extra_vehicle_cents > 0 && !p.stripe_extra_price_id));
                   const armed = dirty || needsPrice;
                   return (
                     <td key={p.tier} className="px-3 py-2 text-center align-top">

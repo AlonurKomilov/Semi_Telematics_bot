@@ -32,16 +32,21 @@ def _item(item_id, price_id, amount, interval="month", count=1, currency="usd"):
 
 
 class FakeStripe:
-    def __init__(self, subs: dict, price: dict | None = None):
+    def __init__(self, subs: dict, price: dict | None = None, prices: dict | None = None):
         self.subs = subs                       # sub_id → subscription object
         self.price = price or {"id": "price_new", "active": True, "unit_amount": 5900, "currency": "usd",
                                "recurring": {"interval": "month", "interval_count": 1}}
+        # other Prices Stripe knows, by id (the plan's extras Price); the
+        # default answers for anything else, as before
+        self.prices = prices or {}
         self.calls: list = []
         fake = self
 
         class Price:
             @staticmethod
-            def retrieve(pid): fake.calls.append(("Price.retrieve", pid)); return fake.price
+            def retrieve(pid):
+                fake.calls.append(("Price.retrieve", pid))
+                return fake.prices.get(pid, fake.price)
             @staticmethod
             def create(**kw): fake.calls.append(("Price.create", kw)); return {"id": "price_created"}
             @staticmethod
@@ -63,9 +68,20 @@ class FakeStripe:
             def modify(sid, **kw):
                 fake.calls.append(("Subscription.modify", sid, kw))
                 s = dict(fake.subs[sid])
-                new_items = [_item(kw["items"][0]["id"], kw["items"][0]["price"], fake.price["unit_amount"])]
+                # every item named in the call moves to its price, at that
+                # price's amount; the rest stay as they were
+                moved = {it["id"]: it for it in kw["items"]}
+                new_items = []
                 for it in s["items"]["data"]:
-                    if it["id"] != kw["items"][0]["id"]:
+                    if it["id"] in moved:
+                        target = moved[it["id"]]["price"]
+                        amount = fake.prices.get(target, fake.price)["unit_amount"]
+                        meta = fake.prices.get(target, {}).get("metadata")
+                        new = _item(it["id"], target, amount)
+                        if meta:
+                            new["price"]["metadata"] = meta
+                        new_items.append(new)
+                    else:
                         new_items.append(it)
                 s["items"] = {"data": new_items}
                 fake.subs[sid] = s
@@ -274,3 +290,60 @@ async def test_preview_counts_from_our_tables_and_names_the_open_rollout():
     assert p["open_rollout"] is None
     with pytest.raises(R.RolloutRefused):
         await R.preview(db, "nope")
+
+
+# ── the extras Price rides the rollout ────────────────────
+
+X_PRICE = {"id": "price_x_new", "active": True, "unit_amount": 349, "currency": "usd",
+           "recurring": {"interval": "month", "interval_count": 1}, "metadata": {"tier": "starter", "kind": "extra"}}
+PLAN_X = {**PLAN, "extra_vehicle_cents": 349, "stripe_extra_price_id": "price_x_new"}
+
+
+def test_the_extras_price_is_made_on_the_same_product_and_says_what_it_is():
+    st = FakeStripe({})
+    out = R.ensure_extra_price(st, tier="starter", label="Starter", cents=349, before=PLAN)
+    assert out == {"stripe_extra_price_id": "price_created", "stripe_product_id": "prod_1", "archived": ""}
+    assert [c[0] for c in st.calls] == ["Price.create"], "the Product the base Price hangs off is reused"
+    kw = st.calls[0][1]
+    assert kw["product"] == "prod_1" and kw["unit_amount"] == 349 and kw["recurring"] == {"interval": "month"}
+    assert kw["metadata"] == {"tier": "starter", "kind": "extra"}, "the item is known for what it is, even archived"
+    assert kw["lookup_key"] == "4truck_starter_extra"
+    assert kw["idempotency_key"] == "plan-extra-price:starter:349:2026-09-11T10:00:00+00:00"
+    # a second save at another amount hands the old one back to be archived
+    out2 = R.ensure_extra_price(FakeStripe({}), tier="starter", label="Starter", cents=399, before=PLAN_X)
+    assert out2["archived"] == "price_x_new"
+    # no extra truck billed: no Price, and the one it had goes
+    assert R.ensure_extra_price(FakeStripe({}), tier="starter", label="Starter", cents=0, before=PLAN_X) == \
+        {"stripe_extra_price_id": "", "stripe_product_id": "prod_1", "archived": "price_x_new"}
+
+
+@pytest.mark.asyncio
+async def test_a_subscriber_on_the_env_wide_extras_price_moves_both_items_in_one_call():
+    """The rule that keeps existing subscribers from carrying the
+    mismatch forever: a rollout moves the extras item too, onto the
+    plan's own Price, in the SAME modify as the base, with no proration."""
+    db = FakeDB(PLAN_X, [_sub_row(1, "sub_1"), _sub_row(2, "sub_2", price_id="price_new")])
+    st = FakeStripe({
+        "sub_1": _stripe_sub(),                                          # base old, extras on the env Price → both move
+        "sub_2": {"id": "sub_2", "status": "active", "current_period_end": 1800000000,
+                  "items": {"data": [_item("si_base", "price_new", 5900),
+                                     {**_item("si_extra", "price_x_new", 349), "quantity": 12}]}},
+    }, prices={"price_x_new": X_PRICE})
+    st.subs["sub_2"]["items"]["data"][1]["price"]["metadata"] = X_PRICE["metadata"]
+    out = await R.execute(st, db, "starter", actor="tg:1")
+    assert out["counts"] == {"changed": 1, "already": 1}, out
+    mods = [c for c in st.calls if c[0] == "Subscription.modify"]
+    assert len(mods) == 1 and mods[0][1] == "sub_1"
+    kw = mods[0][2]
+    assert kw["items"] == [{"id": "si_base", "price": "price_new", "quantity": 1},
+                           {"id": "si_extra", "price": "price_x_new", "quantity": 1}]
+    assert kw["proration_behavior"] == "none"
+    assert kw["idempotency_key"] == "rollout:1:price_new:price_x_new"
+    assert db.subs[1]["provider_base_price_id"] == "price_new" and db.subs[1]["extra_vehicle_cents"] == 349
+    # and the extras Price is checked against the row like the base one
+    db2 = FakeDB({**PLAN_X, "stripe_extra_price_id": ""}, [_sub_row(1, "sub_1")])
+    with pytest.raises(R.RolloutRefused, match="extra trucks but has no Stripe price"):
+        await R.execute(FakeStripe({"sub_1": _stripe_sub()}), db2, "starter", actor="tg:1")
+    wrong = FakeStripe({"sub_1": _stripe_sub()}, prices={"price_x_new": {**X_PRICE, "unit_amount": 299}})
+    with pytest.raises(R.RolloutRefused, match="save the plan again"):
+        await R.execute(wrong, FakeDB(PLAN_X, [_sub_row(1, "sub_1")]), "starter", actor="tg:1")

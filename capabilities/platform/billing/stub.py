@@ -81,6 +81,9 @@ class StubBillingProvider:
         """No Stripe here: the row keeps whatever id it has; nothing is created."""
         return {"skipped": "stub"}
 
+    async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
+        return {"skipped": "stub"}
+
     async def archive_plan_price(self, price_id: str) -> bool:
         return False
 

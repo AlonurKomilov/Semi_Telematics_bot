@@ -45,8 +45,28 @@ def _tier_price_id(tier: str) -> str:
 
 
 def _extra_vehicle_price_id() -> str:
-    """The per-extra-vehicle Stripe price id (shared by all tiers)."""
+    """The env-wide per-extra-vehicle Price — LEGACY.  Every plan now
+    carries its own (``plans.stripe_extra_price_id``, made on save);
+    this one is kept only to recognise the extras item of a subscription
+    made before that, so the rollout can move it."""
     return os.getenv("STRIPE_PRICE_EXTRA_VEHICLE", "")
+
+
+def _plan_extras_price(plan: dict) -> str:
+    """The extras Price a checkout or a switch attaches for *plan*: the
+    row's own.  Empty when the plan bills no extra truck.  A plan that
+    DOES bill one but holds no Price is refused rather than billed at
+    someone else's amount — the operator saves the plan once and the
+    Price exists."""
+    cents = int((plan or {}).get("extra_vehicle_cents") or 0)
+    price_id = ((plan or {}).get("stripe_extra_price_id") or "").strip()
+    if cents <= 0:
+        return ""
+    if not price_id:
+        raise ValueError(
+            f"Plan '{plan.get('tier')}' bills ${cents / 100:.2f} per extra truck but has no Stripe "
+            "price for it yet — save the plan on the Plans page to create one.")
+    return price_id
 
 
 async def _off_loop(fn, /, *args, **kwargs):
@@ -176,10 +196,11 @@ class StripeBillingProvider:
             )
 
         # Two-line subscription: base tier (fixed quantity 1) + extras
-        # (one per truck above the plan's included count).  When
-        # STRIPE_PRICE_EXTRA_VEHICLE isn't configured we fall back to
-        # single-line so older deploys keep working — the dashboard hides
-        # the extras footer in that case.
+        # (one per truck above the plan's included count), on the PLAN's
+        # extras Price — made on save beside the base one.  A plan that
+        # bills no extra truck sends no extras line.  One env-wide Price
+        # used to serve every plan here, so a plan whose row said $4.99
+        # was billed at the env Price's amount.
         #
         # The quantity is the account's REAL extras count, read now.
         # This line used to go out as quantity 0, to be nudged later by
@@ -188,7 +209,7 @@ class StripeBillingProvider:
         # real checkout answered 500.  The fakes accepted it, which is
         # why it shipped.  An account with no extras yet sends no extras
         # line at all, and the sync opens one when it first needs it.
-        extras_price_id = _extra_vehicle_price_id()
+        extras_price_id = _plan_extras_price(plan)
         line_items: list[dict] = [{"price": base_price_id, "quantity": 1}]
         if extras_price_id:
             try:
@@ -232,11 +253,22 @@ class StripeBillingProvider:
         new plan at once.  Returns the page's own URL: nothing to redirect
         to, the change is done."""
         sub_id = sub["provider_subscription_id"]
+        # the target plan's extras Price: refused here, before Stripe is
+        # touched, when the plan bills extra trucks and holds none
+        target_extra = _plan_extras_price(await db.get_plan(tier) or {})
         live = await _off_loop(stripe.Subscription.retrieve, sub_id, expand=["items"])
         slots = self._extract_items(live)
         base = slots["base"]
         if not base.get("id"):
             raise ValueError("The Stripe subscription has no base item to switch; contact support.")
+        items = [{"id": base["id"], "price": base_price_id, "quantity": 1}]
+        # the extras line follows the plan it is now under — one modify,
+        # one proration set, never a moment where the base is on Pro and
+        # the trucks are still priced like Starter
+        extra = slots["extra"]
+        extra_moves = bool(target_extra and extra.get("id") and (extra.get("price_id") or "") != target_extra)
+        if extra_moves:
+            items.append({"id": extra["id"], "price": target_extra, "quantity": int(extra.get("quantity") or 1)})
         # The idempotency key is one per ACTION, not per target: a nonce.
         # Keyed on the target alone, an A→B→A→B day would hand the last
         # switch Stripe's cached first response — the row would say B
@@ -244,7 +276,7 @@ class StripeBillingProvider:
         # second modify to the same price is a no-op in Stripe.
         await _off_loop(stripe.Subscription.modify,
             sub_id,
-            items=[{"id": base["id"], "price": base_price_id, "quantity": 1}],
+            items=items,
             proration_behavior="create_prorations",
             metadata={"account_id": str(account_id), "tier": tier},
             idempotency_key=f"switch:{account_id}:{sub_id}:{uuid.uuid4().hex}",
@@ -256,6 +288,8 @@ class StripeBillingProvider:
         after = self._extract_items(fresh)
         if (after["base"].get("price_id") or "") != base_price_id:
             raise ProviderError("Stripe did not move the subscription to the new plan; nothing was changed on our side.")
+        if extra_moves and (after["extra"].get("price_id") or "") != target_extra:
+            raise ProviderError("Stripe moved the plan but not its extras line; nothing was changed on our side.")
         pricing = await db.pricing_for(tier)
         updates = {"tier": tier, **self._priced_updates(tier, pricing, after),
                    "provider_base_price_id": base_price_id}
@@ -522,8 +556,14 @@ class StripeBillingProvider:
         PRICE behind each — id, unit amount, interval, currency — as
         Stripe carries it on an expanded item.
 
-        The extras item is the one whose price id matches
-        STRIPE_PRICE_EXTRA_VEHICLE; the first other item is the base.
+        The extras item is the one whose Price says so — ``metadata.kind
+        == "extra"``, written when the plan's extras Price is made on
+        save — or, for a subscription from before per-plan extras
+        Prices, the one on the env-wide STRIPE_PRICE_EXTRA_VEHICLE.  The
+        first other item is the base.  Metadata rather than a lookup of
+        every plan's current id: a rollout leaves not-yet-moved
+        subscribers on an extras Price a later save has archived, and
+        that item must still read as extras, not be demoted to base.
         A slot we cannot match is ``{"id": ""}`` — callers treat a blank
         id as "not configured yet" and skip the corresponding sync.
         """
@@ -547,8 +587,12 @@ class StripeBillingProvider:
                 "interval": (rec.get("interval") if isinstance(rec, dict) else None),
                 "interval_count": (rec.get("interval_count") if isinstance(rec, dict) else None),
                 "currency": price.get("currency"),
+                "quantity": item.get("quantity"),
             }
-            if extras_price and slot["price_id"] == extras_price:
+            meta = price.get("metadata") or {}
+            is_extra = (isinstance(meta, dict) and meta.get("kind") == "extra") \
+                or (bool(extras_price) and slot["price_id"] == extras_price)
+            if is_extra and not slots["extra"]["id"]:
                 slots["extra"] = slot
             elif not slots["base"]["id"]:
                 # First non-extras item is the base.  Robust to either
@@ -613,6 +657,13 @@ class StripeBillingProvider:
         from capabilities.platform.billing import rollout as _rollout
         return await _off_loop(
             _rollout.ensure_plan_price, _stripe(),
+            tier=tier, label=label, cents=cents, before=before,
+        )
+
+    async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
+        from capabilities.platform.billing import rollout as _rollout
+        return await _off_loop(
+            _rollout.ensure_extra_price, _stripe(),
             tier=tier, label=label, cents=cents, before=before,
         )
 
@@ -813,8 +864,17 @@ class StripeBillingProvider:
         The first time it gains one there is nothing for the sync to
         PATCH, so the line has to be created.
         """
-        extras_price_id = _extra_vehicle_price_id()
         sub_id = sub.get("provider_subscription_id") or ""
+        plan = await db.get_plan(sub.get("tier") or "") or {}
+        try:
+            extras_price_id = _plan_extras_price(plan)
+        except ValueError as e:
+            # the plan bills extra trucks and holds no Price: nothing is
+            # opened at a wrong amount; the wiring check on the Plans page
+            # says the same thing in red until the plan is saved
+            _obs.record_sync_billing_quantity("no_extras_price")
+            logger.warning("sync_billing_quantity: account=%s — %s", account_id, e)
+            return {"skipped": "no_extras_price", "account_id": account_id}
         if not extras_price_id or not sub_id:
             _obs.record_sync_billing_quantity("no_extras_item")
             return {"skipped": "no_extras_item", "account_id": account_id}

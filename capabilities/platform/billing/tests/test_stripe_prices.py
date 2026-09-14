@@ -129,3 +129,27 @@ async def test_when_stripe_cannot_be_read_the_row_answers_and_updated_backfills(
     await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
     sub = await db.get_subscription(acct.id)
     assert (sub["provider_base_item_id"], sub["monthly_base_usd"]) == ("si_b2", 10900)
+
+
+def test_an_extras_item_is_known_by_its_prices_metadata_and_legacy_ones_by_the_env_id(monkeypatch):
+    """Every plan carries its own extras Price now.  The item on it says
+    ``kind=extra`` in the Price's metadata — so it is still extras after a
+    later save archives that Price and no plan row names it any more
+    (the window a rollout leaves not-yet-moved subscribers in).  A
+    subscription from before per-plan Prices sits on the env-wide one,
+    with no metadata: that id keeps telling it apart."""
+    x = _item("si_x", "price_x_gold", 499)
+    x["price"]["metadata"] = {"tier": "gold", "kind": "extra"}
+    x["quantity"] = 12
+    monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
+    slots = P._extract_items({"items": {"data": [x, _item("si_b", "price_gold", 15000)]}})
+    assert slots["extra"]["id"] == "si_x" and slots["extra"]["quantity"] == 12
+    assert slots["base"]["id"] == "si_b"
+    # the legacy subscription: env id, no metadata
+    monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extra")
+    legacy = P._extract_items({"items": {"data": [_item("si_b", "price_pro", 9900), _item("si_x", "price_extra", 299)]}})
+    assert (legacy["base"]["id"], legacy["extra"]["id"]) == ("si_b", "si_x")
+    # with neither signal, nothing is guessed to be extras — the first item is the base
+    monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
+    bare = P._extract_items({"items": {"data": [_item("si_1", "price_a", 100), _item("si_2", "price_b", 200)]}})
+    assert bare["base"]["id"] == "si_1" and bare["extra"] == {"id": ""}

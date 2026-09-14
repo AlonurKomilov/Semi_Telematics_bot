@@ -22,10 +22,14 @@ the other Stripe mode, and a Product id pasted where a Price id belongs.
   `customer.subscription.deleted`, `invoice.payment_succeeded`,
   `invoice.payment_failed`. Paste its signing secret into
   `STRIPE_WEBHOOK_SECRET`. The API refuses unsigned webhooks in stripe mode.
-- **The per-extra-truck Price**: one recurring monthly USD Price (today
-  $2.99, quantity-based) — create it by hand and put its id in
-  `STRIPE_PRICE_EXTRA_VEHICLE`. Without it every subscription is single-line
-  and extra trucks are never billed.
+- **The per-extra-truck Price**: nothing to make by hand. Each plan's
+  extras Price is created on Save beside its base Price, on the same
+  Product, from the plan's "Extra truck ($/month)" — a plan that bills
+  no extra truck sends no extras line. (`STRIPE_PRICE_EXTRA_VEHICLE` is
+  legacy: one env-wide Price used to serve every plan, so a plan whose
+  row said $4.99 was billed at that Price's amount. Keep it set only
+  while subscriptions made under it exist — it lets the rollout
+  recognise their extras item and move it.)
 - **Customer Portal**: enable it (Billing → Customer portal) so "Manage
   payment" works. Plan switching is done in-app, not in the portal — leave
   the portal's "switch plan" off so there is one path. (The webhook does
@@ -36,8 +40,7 @@ the other Stripe mode, and a Product id pasted where a Price id belongs.
 ## 2. `.env`
 
 `BILLING_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_EXTRA_VEHICLE` (the Price id — `price_…`, not the `prod_…`
-above it), and `DASHBOARD_BASE_URL` — the host that SERVES the dashboard,
+and `DASHBOARD_BASE_URL` — the host that SERVES the dashboard,
 because that is where Stripe returns the customer. The apex answers 404
 for `/billing`, so an `AUTH_BASE_URL` pointing there used to hand a
 paying customer an error page; `DASHBOARD_BASE_URL` now wins over it.
@@ -95,7 +98,7 @@ a sandbox Price and Stripe would refuse it. Before swapping the keys:
    ```sql
    -- plans: forget the sandbox Product/Price ids so the next Save
    -- creates live ones (a Save creates a Price when the row has none)
-   UPDATE plans SET stripe_price_id = '', stripe_product_id = '';
+   UPDATE plans SET stripe_price_id = '', stripe_product_id = '', stripe_extra_price_id = '';
    -- dry-run subscriptions: nothing in live Stripe knows these ids
    UPDATE subscriptions
       SET provider = 'stub', provider_customer_id = '',
@@ -108,13 +111,16 @@ a sandbox Price and Stripe would refuse it. Before swapping the keys:
    The dry-run account keeps the tier the test checkout gave it; move it
    back from its console page (allowed now that Stripe no longer bills
    it). Rollout history rows from the dry run are just history.
-3. In the live account: the extras Price (new id), the API key
-   (`sk_live_…`), a NEW webhook endpoint (its own `whsec_…`), the
-   Customer Portal switched on for live too.
+3. In the live account: the API key (`sk_live_…`), a NEW webhook
+   endpoint (its own `whsec_…`), the Customer Portal switched on for
+   live too. No Price to make by hand — step 5 makes them.
 4. `.env` → the live values; restart `4truck-api` (the plan cache is
    rebuilt at boot).
-5. Plans page → Save each priced plan once more: the row has no id, so
-   the Save creates the live Product and Price.
+5. Plans page → Save each priced plan once more ("Create Stripe price"
+   is lit on each): the row has no ids, so the Save creates the live
+   Product, the base Price and the extras Price. Until a plan is saved,
+   its checkout refuses rather than bill at another plan's amount, and
+   the wiring card says which plan is waiting.
 6. One real checkout on your own account with a real card, then refund
    it from the Stripe dashboard — that is the live proof.
 
@@ -156,8 +162,9 @@ made on the plan is untouched (`capabilities/platform/billing/offers.py`).
 
 ## 5. Known limits, decided
 
-- One extras Price for every plan (per-tier extras would need a
-  `stripe_extra_price_id` column).
+- A subscription made before per-plan extras Prices stays on the
+  env-wide one until the next rollout of its plan moves it (no
+  proration; the new amount bills from its next period).
 - Feature changes to a plan apply to its accounts at once (~2 minutes
   across workers), not at the period end.
 - No tax, no coupons wired (comp accounts are a local overlay).

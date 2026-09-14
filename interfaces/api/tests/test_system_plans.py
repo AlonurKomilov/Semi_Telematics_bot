@@ -254,6 +254,9 @@ def _fake_stripe(subs=None, price_amount=12900):
     subs = subs or {}
     price = {"id": "price_new", "active": True, "unit_amount": price_amount, "currency": "usd",
              "recurring": {"interval": "month", "interval_count": 1}}
+    # the plan's extras Price, made on the same save; Stripe answers for it by id
+    x_price = {"id": "price_x_new", "active": True, "unit_amount": 299, "currency": "usd",
+               "recurring": {"interval": "month", "interval_count": 1}, "metadata": {"kind": "extra"}}
 
     class _S:
         class Product:
@@ -261,9 +264,13 @@ def _fake_stripe(subs=None, price_amount=12900):
             def create(**kw): calls.append(("Product.create", kw)); return {"id": "prod_new"}
         class Price:
             @staticmethod
-            def create(**kw): calls.append(("Price.create", kw)); return {"id": "price_new"}
+            def create(**kw):
+                calls.append(("Price.create", kw))
+                return {"id": "price_x_new" if (kw.get("metadata") or {}).get("kind") == "extra" else "price_new"}
             @staticmethod
-            def retrieve(pid): calls.append(("Price.retrieve", pid)); return price
+            def retrieve(pid):
+                calls.append(("Price.retrieve", pid))
+                return x_price if pid == "price_x_new" else price
             @staticmethod
             def modify(pid, **kw): calls.append(("Price.modify", pid, kw)); return {"id": pid}
         class Subscription:
@@ -272,9 +279,16 @@ def _fake_stripe(subs=None, price_amount=12900):
             @staticmethod
             def modify(sid, **kw):
                 calls.append(("Subscription.modify", sid, kw))
-                s = dict(subs[sid]); base = kw["items"][0]
-                s["items"] = {"data": [{"id": base["id"], "price": {"id": base["price"], "unit_amount": price_amount, "currency": "usd",
-                                                                    "recurring": {"interval": "month", "interval_count": 1}}}]}
+                s = dict(subs[sid])
+                moved = {it["id"]: it["price"] for it in kw["items"]}
+                data = []
+                for it in s["items"]["data"]:
+                    if it["id"] in moved:
+                        pr = x_price if moved[it["id"]] == "price_x_new" else price
+                        data.append({"id": it["id"], "price": {**pr, "id": moved[it["id"]]}})
+                    else:
+                        data.append(it)
+                s["items"] = {"data": data}
                 subs[sid] = s
                 return s
     _S.calls = calls
@@ -318,33 +332,40 @@ async def test_in_stripe_mode_the_save_makes_the_price_and_the_rollout_moves_the
         await s["db"].get_or_create_subscription(acct.id)
         await s["db"].update_subscription(acct.id, tier="pro", provider="stripe", provider_subscription_id=sub_id,
                                           status="active", provider_base_price_id=base_price)
+        # sub_2 is on the new base AND the new extras Price already; sub_1 on the old base and the env extras
+        x_id, x_meta = ("price_x_new", {"kind": "extra"}) if base_price == "price_new" else ("price_extra", {})
         subs[sub_id] = {"id": sub_id, "status": "active", "current_period_end": 1800000000,
                         "items": {"data": [{"id": f"si_{sub_id}", "price": {"id": base_price, "unit_amount": 9900 if base_price == "price_old" else 12900,
                                                                             "currency": "usd", "recurring": {"interval": "month", "interval_count": 1}}},
-                                           {"id": f"si_x_{sub_id}", "price": {"id": "price_extra", "unit_amount": 299, "currency": "usd",
+                                           {"id": f"si_x_{sub_id}", "price": {"id": x_id, "unit_amount": 299, "currency": "usd", "metadata": x_meta,
                                                                               "recurring": {"interval": "month", "interval_count": 1}}}]}}
     fake = _fake_stripe(subs)
     monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: fake)
     # the save: Stripe first, then the row; the ids land on the row; the old price is archived
     await s["db"].upsert_plan("pro", label="Pro", included=["*"], stripe_price_id="price_old")
     r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
-                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900})
+                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900,
+                                    "extra_vehicle_cents": 299})
     assert r.status_code == 200, r.text
     p = r.json()["plan"]
     assert (p["price_monthly_cents"], p["stripe_price_id"], p["stripe_product_id"]) == (12900, "price_new", "prod_new")
+    assert p["stripe_extra_price_id"] == "price_x_new", "the extras Price is made on the same save, on the same Product"
     assert r.json()["subscribers_on_old_price"] == 1
     names = [c[0] for c in fake.calls]
-    assert names[:2] == ["Product.create", "Price.create"] and ("Price.modify", "price_old", {"active": False}) in fake.calls
+    assert names[:3] == ["Product.create", "Price.create", "Price.create"] and ("Price.modify", "price_old", {"active": False}) in fake.calls
     assert fake.calls[1][1]["unit_amount"] == 12900 and fake.calls[1][1]["idempotency_key"].startswith("plan-price:pro:12900:")
+    assert fake.calls[2][1]["unit_amount"] == 299 and fake.calls[2][1]["product"] == "prod_new"
+    assert fake.calls[2][1]["metadata"] == {"tier": "pro", "kind": "extra"}
     # a pasted price id is refused in Stripe mode — the Price is made on save, never set by hand
     r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
                               json={"label": "Pro", "included": ["*"], "quotas": {}, "stripe_price_id": "price_pasted"})
     assert r.status_code == 400 and "cannot be set by hand" in r.json()["detail"]
     assert (await s["db"].get_plan("pro"))["stripe_price_id"] == "price_new"
-    # saving again with the SAME price creates nothing
+    # saving again with the SAME prices creates nothing
     n_before = len(fake.calls)
     r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
-                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900})
+                              json={"label": "Pro", "included": ["*"], "quotas": {}, "price_monthly_cents": 12900,
+                                    "extra_vehicle_cents": 299})
     assert r.status_code == 200 and len(fake.calls) == n_before
     # preview, then the rollout: the old-price subscriber moves with no proration; the other is "already"
     pv = (await s["client"].get("/api/system/plans/pro/rollout", headers=s["op"])).json()
@@ -355,7 +376,9 @@ async def test_in_stripe_mode_the_save_makes_the_price_and_the_rollout_moves_the
     assert out["counts"] == {"changed": 1, "already": 1} and out["remaining"] == 0 and out["finished"] is True
     mods = [c for c in fake.calls if c[0] == "Subscription.modify"]
     assert len(mods) == 1 and mods[0][1] == "sub_1"
-    assert mods[0][2]["items"] == [{"id": "si_sub_1", "price": "price_new", "quantity": 1}]
+    # the extras item, on the env-wide Price from before, moves in the same call
+    assert mods[0][2]["items"] == [{"id": "si_sub_1", "price": "price_new", "quantity": 1},
+                                   {"id": "si_x_sub_1", "price": "price_x_new", "quantity": 1}]
     assert mods[0][2]["proration_behavior"] == "none"
     moved = [x for x in await s["db"].subscriptions_on_tier("pro") if x["provider_subscription_id"] == "sub_1"][0]
     assert moved["provider_base_price_id"] == "price_new" and moved["monthly_base_usd"] == 12900
