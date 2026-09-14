@@ -822,8 +822,21 @@ export default function LiveMap() {
       </div>
 
       {/* Side panel */}
-      <Card padding="none" className="w-80 overflow-y-auto shrink-0">
-        <div className="p-4 border-b border-border space-y-3">
+      {/* A COLUMN, NOT A SCROLLING BOX.
+
+          The whole card used to scroll, so the search field and the
+          status filters — the two controls you reach for WHILE reading
+          the list — left the screen as soon as you started reading it.
+          Finding a truck meant scrolling back to the top to type, then
+          scrolling down again to see the result.
+
+          Header pinned, body scrolls.  `min-h-0` on both is what makes
+          it work: a flex child's automatic minimum size is its CONTENT,
+          so without it the body refuses to shrink, the card grows past
+          the row, and nothing scrolls at all — the same rule that let
+          the entrance wrapper stretch this page (10f14ed4). */}
+      <Card padding="none" className="w-80 shrink-0 flex flex-col min-h-0">
+        <div className="p-4 border-b border-border space-y-3 shrink-0">
           <h2 className="font-semibold">Vehicles ({filtered.length})</h2>
           <input
             type="text"
@@ -880,6 +893,8 @@ export default function LiveMap() {
           )}
         </div>
 
+        {/* The one elastic region — see the card's note. */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
         {selected ? (
           <div className="p-4 space-y-3 text-sm">
             <button
@@ -1152,6 +1167,7 @@ export default function LiveMap() {
             })}
           </div>
         )}
+        </div>
       </Card>
     </div>
   );
