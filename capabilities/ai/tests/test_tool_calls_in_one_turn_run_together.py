@@ -137,3 +137,19 @@ async def test_progress_events_fire_in_call_order_and_skip_blocked(monkeypatch):
     await _dispatch(_calls("first", "denied", "second"), event_callback=_emit)
 
     assert events == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_keeps_travelling(_allow_all, monkeypatch):
+    """``gather`` hands back every exception; the serial loops caught
+    only ``Exception``.  Anything outside it is control flow, and
+    turning it into a result string would strand a cancelled request
+    as a finished answer."""
+    async def _tool(name, args, client, **kw):
+        if name == "cancelled":
+            raise asyncio.CancelledError()
+        return {"tool": name}
+
+    monkeypatch.setattr(intel, "_execute_tool", _tool)
+    with pytest.raises(asyncio.CancelledError):
+        await _dispatch(_calls("cancelled", "fine"), event_callback=None)

@@ -808,6 +808,14 @@ async def _dispatch_tool_calls(
     )
     by_index: dict[int, dict] = {}
     for (i, _name, _args), outcome in zip(runnable, executed):
+        if (isinstance(outcome, BaseException)
+                and not isinstance(outcome, Exception)):
+            # The serial loops caught ``Exception``; ``gather`` hands
+            # back everything.  What lies outside Exception —
+            # CancelledError above all — is control flow, not a tool
+            # that failed, and turning it into a result string would
+            # strand a cancelled request as a finished answer.
+            raise outcome
         by_index[i] = (
             {"error": f"Tool execution failed: {outcome}"}
             if isinstance(outcome, BaseException) else outcome

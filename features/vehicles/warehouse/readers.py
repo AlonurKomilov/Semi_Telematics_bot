@@ -337,6 +337,25 @@ async def get_safety_events(
     # the pipe.  Pipe health for this sparse feed is the watchdog's
     # job (expect_rows=False + the ingest ledger).
     if not rows and samsara_fallback is not None:
+        # Empty means "the warehouse is cold" only for an UNFILTERED
+        # read.  When the caller narrowed — one truck, one event type,
+        # one driver — empty is the same kind of fact as age: that
+        # truck was clean.  Re-fetching the whole account live on that
+        # answer is slower than the read it replaces and is exactly
+        # what the narrowing existed to avoid; the common case (the
+        # truck you asked about had no events) would pay the most.
+        #
+        # One COUNT settles which it is, and it errs toward falling
+        # back: a count we cannot take must never become a clean week.
+        if vehicle_id or event_type or driver_id:
+            try:
+                warm = await tenant.count_safety_events_in_window(
+                    account_id, days=days,
+                )
+            except Exception:
+                warm = 0
+            if warm:
+                return rows
         return await samsara_fallback()
     return rows
 
