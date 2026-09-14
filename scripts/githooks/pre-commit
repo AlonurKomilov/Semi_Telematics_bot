@@ -256,13 +256,15 @@ for f in deleted_py:
 # ── Rule 3 — secrets never enter a commit ────────────────────────
 SECRET_NAMES = (".env", "id_rsa", "id_ed25519")
 SECRET_SUFFIX = (".pem", ".key", ".p12", ".keystore")
-#: The one .env.* the repo TRACKS: the template every deployment copies
-#: and fills in.  Blocking it blocked DOCUMENTING a new setting, which
-#: is the opposite of what this rule wants — an undocumented setting is
-#: how a real key ends up pasted somewhere worse.  So it passes on its
-#: content rather than its name: placeholders and plain defaults are
-#: what a template is for, a real-looking credential is not.
-TEMPLATE_ENV = ".env.example"
+#: The .env.* files the repo TRACKS: the templates a deployment copies
+#: and fills in — the live one, and the TEST side's (sandbox keys, test
+#: bots, a test database; .env.test.example says what it is).  Blocking
+#: them blocked DOCUMENTING a new setting, which is the opposite of what
+#: this rule wants — an undocumented setting is how a real key ends up
+#: pasted somewhere worse.  So they pass on their content rather than
+#: their name: placeholders and plain defaults are what a template is
+#: for, a real-looking credential is not.
+TEMPLATE_ENVS = (".env.example", ".env.test.example")
 SECRETISH_KEY = re.compile(
     r"(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|_KEY|^KEY)", re.I)
 #: What a value looks like when it is standing IN for a credential
@@ -325,7 +327,7 @@ for p in paths:
         problems.append(
             f"{p}: a service-account private key, whatever it is named")
         continue
-    if base == TEMPLATE_ENV:
+    if base in TEMPLATE_ENVS:
         leaked = _template_secrets(staged_blob(p) or "")
         if leaked:
             problems.append(

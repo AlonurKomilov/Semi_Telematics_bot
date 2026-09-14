@@ -46,6 +46,12 @@ set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 set +a
+# Which file this run read, first — a TEST file's report must never be
+# mistaken for the live one's (.env.test.example explains the split).
+_dim "env file: $ENV_FILE"
+case "${STRIPE_SECRET_KEY:-}" in
+    sk_test_*) _warn "TEST keys (sk_test_…) — no real money moves; every customer's Upgrade opens a test checkout" ;;
+esac
 
 # ── BILLING_PROVIDER ───────────────────────────────────────────
 provider="${BILLING_PROVIDER:-stub}"
@@ -163,4 +169,4 @@ if [[ $warn_count -gt 0 ]]; then
     printf "${YELLOW}billing pre-flight: 0 failures, %d warning(s) — proceed with care${RST}\n" "$warn_count"
     exit 0
 fi
-printf "${GREEN}billing pre-flight: all checks passed${RST}\n"
+printf "${GREEN}billing pre-flight: all checks passed${RST} ${DIM}(%s)${RST}\n" "$ENV_FILE"

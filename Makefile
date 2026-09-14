@@ -20,7 +20,7 @@ LOG_FILE = bot.log
 .DEFAULT_GOAL := help
 
 .PHONY: help start stop restart restart-clean restart-dry \
-       restart-api restart-bot restart-queue status logs install sudo-preflight prep-banner \
+       restart-api restart-bot restart-queue status logs install sudo-preflight preflight-test prep-banner \
        clean clean-frontend clean-all \
        start-queue stop-queue \
        test test-cov test-fast test-watch \
@@ -359,6 +359,10 @@ prep-banner:
 ## acts when sudo is already cached, so on the old ordering it ALWAYS
 ## skipped with "no sudo session" and nginx config changes never got
 ## applied by `make restart` at all.
+preflight-test:
+	@# the TEST environment's billing config, read-only (.env.test.example says what goes there)
+	@BILLING_PREFLIGHT_ENV=.env.test ./scripts/billing_preflight.sh
+
 sudo-preflight:
 	@if sudo -n true 2>/dev/null; then \
 		echo "🔑 sudo: already authorised for this terminal"; \

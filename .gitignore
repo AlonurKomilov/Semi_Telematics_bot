@@ -111,6 +111,8 @@ interfaces/browser_extension/dist/
 # — it reads CONTENT, so a renamed key is caught too — and this is the
 # belt that keeps the file out of `git status` in the first place.
 .env.*
+# the committed TEST template (the filled .env.test above stays ignored)
+!.env.test.example
 !.env.example
 *service-account*.json
 *service_account*.json

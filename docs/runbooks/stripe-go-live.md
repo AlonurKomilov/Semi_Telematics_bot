@@ -160,6 +160,22 @@ pressing Upgrade, and from then on the subscription row is the truth.
 The × beside "only for …" withdraws the offer; a subscription already
 made on the plan is untouched (`capabilities/platform/billing/offers.py`).
 
+## 4e. `.env.test` — where the TEST side's keys live
+
+`.env.test.example` (committed) lists every value the test side of the
+platform needs — Stripe's sandbox key and webhook secret, test bots, a
+test database, test hosts — with the word TEST on it so a value copied
+into `.env` by mistake is recognisable at a glance. Copy it to
+`.env.test` (gitignored) and fill it. Nothing loads that file on its
+own: `make restart` reads `.env` and only `.env`. Its two uses:
+
+- `make preflight-test` — the billing preflight, read-only, against the
+  test file: is the sandbox configuration whole?
+- the configuration a STAGING server would run from — its own database
+  (the live `plans` rows hold live Price ids a test key cannot use) and
+  its own hosts. Without a staging server, a real test after go-live is
+  section 4b's step 6: a real card, then a refund.
+
 ## 5. Known limits, decided
 
 - A subscription made before per-plan extras Prices stays on the
