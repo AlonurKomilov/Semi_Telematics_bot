@@ -9534,3 +9534,55 @@ async def migrate_poi_view_follows_the_map(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("211_live_map_flag_rename")
+async def migrate_live_map_flag_rename(conn) -> None:
+    """The live map's flag was renamed (``can_view_location`` →
+    ``can_view_live_map``, cae597b8) and the rows already on disk kept the
+    old key.  Read-time, the alias folds it onto the new one; this makes
+    the rows say it themselves, so the alias layer can die without taking
+    every owner's revocation of the map with it.
+
+    Per row: only rows carrying the old key are touched.  The new key
+    becomes the OR of both spellings when both are present — the same
+    fold the resolver applies on read, so nothing an owner sees shifts —
+    and the old key is dropped.  The two keys are spelled here as
+    literals on purpose: the alias table is meant to go, and this
+    migration must not go with it.  Idempotent: a second run finds no row
+    with the old key.  Tier keys (``admin__manager``) and company-scoped
+    rows are just rows.
+
+    Mirrors ``migrate_live_map_key_rename`` on the platform side — the
+    table exists in both schemas.  A missed row degrades to the alias
+    fold on read, which gives the same answer for as long as the alias
+    lives.
+    """
+    import json as _json
+    OLD, NEW = "can_view_location", "can_view_live_map"
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        touched = 0
+        for r in await cur.fetchall():
+            row = dict(r)
+            try:
+                perms = _json.loads(row.get("permissions") or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(perms, dict) or OLD not in perms:
+                continue
+            old_value = bool(perms.pop(OLD))
+            perms[NEW] = bool(perms.get(NEW, False) or old_value)
+            await conn.execute(
+                "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                (_json.dumps(perms), row["id"]),
+            )
+            touched += 1
+        await conn.commit()
+        logger.info("Migration 211: %d stored roles rewritten from %s to %s", touched, OLD, NEW)
+    except Exception as e:
+        logger.error("Migration 211 live map flag rename failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

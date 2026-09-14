@@ -241,6 +241,7 @@ async def run_all(conn) -> None:
     await migrate_poi_points(conn)
     await migrate_plan_requests(conn)
     await migrate_plan_offers(conn)
+    await migrate_live_map_key_rename(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -5023,6 +5024,54 @@ async def migrate_backfill_alerts_grant(conn) -> None:
             "Migration: backfilled can_view_alerts from stored vehicle "
             "visibility in %d role_permissions row(s)", changed,
         )
+
+
+async def migrate_live_map_key_rename(conn) -> None:
+    """The live map's flag was renamed (``can_view_location`` →
+    ``can_view_live_map``, cae597b8) and the rows already on disk kept the
+    old key.  Read-time, the alias folds it onto the new one; this makes
+    the rows say it themselves, so the alias layer can die without taking
+    every owner's revocation of the map with it.
+
+    Per row: only rows carrying the old key are touched.  The new key
+    becomes the OR of both spellings when both are present — the same
+    fold the resolver applies on read, so nothing an owner sees shifts —
+    and the old key is dropped.  The two keys are spelled here as
+    literals on purpose: the alias table is meant to go, and this
+    migration must not go with it.  Idempotent: a second run finds no row
+    with the old key.  Tier keys (``admin__manager``) and company-scoped
+    rows are just rows.
+    """
+    import json as _json
+    OLD, NEW = "can_view_location", "can_view_live_map"
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        rows = await cur.fetchall()
+    except Exception as e:
+        logger.info("Migration: role_permissions not present — %s", e)
+        return
+    changed = 0
+    for row in rows:
+        row_id, raw = row[0], row[1]
+        try:
+            perms = _json.loads(raw or "{}")
+        except (ValueError, TypeError):
+            logger.warning(
+                "Migration: role_permissions row %s has unparseable JSON, skipped", row_id)
+            continue
+        if not isinstance(perms, dict) or OLD not in perms:
+            continue
+        old_value = bool(perms.pop(OLD))
+        perms[NEW] = bool(perms.get(NEW, False) or old_value)
+        await conn.execute(
+            "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+            (_json.dumps(perms), row_id),
+        )
+        changed += 1
+    await conn.commit()
+    if changed:
+        logger.info(
+            "Migration: %d role_permissions row(s) rewritten from %s to %s", changed, OLD, NEW)
 
 
 async def migrate_google_signin(conn) -> None:
