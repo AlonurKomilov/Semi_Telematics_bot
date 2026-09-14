@@ -22,6 +22,7 @@ import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { apiFetch, apiJSON } from '@/api/client';
 import { POI_LAYERS, esc } from './layers';
+import { planFor, readHeld, writeHeld } from './held';
 import type { PoiLayerDef, PoiFeature, PoiIconSpec } from './layers';
 import { MARKER_GLYPH, MARKER_HALO, MARKER_SHADOW, POI_DEF_BADGE, POPUP } from '@/config/mapColors';
 import type L from 'leaflet';
@@ -492,6 +493,24 @@ export function usePoiLayers(
   // Last rendered bboxKey per layer (for moveend re-renders)
   const lastBbox = useRef<Record<string, string>>({});
 
+  // ── the layers we hold ENTIRE ────────────────────────────────────────
+  //
+  // A built-in layer is a few thousand points that do not move and are
+  // re-imported weekly.  Asking the server for a box of it on every pan
+  // is the wrong trade: cheaper per request, dearer per session.  So it
+  // is fetched once, kept, and every pan after that is a local filter.
+  // The five-rung ladder above stays exactly as it is for the layers
+  // that cannot be held — custom layers and the repair-shop directory,
+  // which have no import behind them and never will.
+  /** layer id → every point in it. */
+  const whole = useRef<Record<string, PoiFeature[]>>({});
+  /** Layers proven NOT holdable — they use the viewport ladder, as before. */
+  const settled = useRef<Set<string>>(new Set());
+  /** One /map/poi-versions for all of them. */
+  const versionsReq = useRef<Promise<Record<string, string | null>> | null>(null);
+  /** One download per layer, however many callers ask at once. */
+  const wholeReq = useRef<Map<string, Promise<void>>>(new Map());
+
   // Per-layer in-flight fetch tracking.  Stores AbortController per
   // `${id}::${bboxKey}` so we can:
   //   1. dedupe concurrent fetches for the same bbox (existing behaviour)
@@ -691,7 +710,101 @@ export function usePoiLayers(
   //   4. localStorage superset      → filter + instant render; same freshness logic
   //   5. network fetch              → show spinner only if no cached data was shown
 
+  /**
+   * The best list we already hold for this view.
+   *
+   * The layer ENTIRE beats every box we could have cached of it, and it
+   * covers any view at any zoom.  Every reader comes through here — the
+   * chip press, the zoom redraw, the fetch — so one function knows about
+   * the hold and all of them do.
+   */
+  const heldForView = useCallback((
+    id: string, s: number, w: number, n: number, e: number,
+  ): PoiFeature[] | null => {
+    const entire = whole.current[id];
+    if (entire) return filterToView(entire, s, w, n, e);
+    return heldFor(cache.current[id], s, w, n, e);
+  }, []);
+
+  /** When each built-in layer last imported.  Asked once; a failure
+   *  costs the shortcut, not the layers — every one of them then falls
+   *  back to the viewport ladder it has always used. */
+  const serverVersions = useCallback(() => {
+    versionsReq.current ??= apiJSON<{ versions?: Record<string, string | null> }>(
+      '/map/poi-versions',
+    ).then((d) => d.versions ?? {}).catch(() => ({}));
+    return versionsReq.current;
+  }, []);
+
+  /**
+   * Settle this layer: held entire, or proven per-viewport.
+   *
+   * Runs at most once per layer per mount — after it, the layer is
+   * either in `whole` (every pan is local) or in `settled` (unchanged
+   * behaviour).  Version-and-replace rather than a delta, because the
+   * weekly import sweeps with a hard DELETE: a delta would have to carry
+   * tombstones or a held copy would keep a truck stop that shut.
+   *
+   * EVERY failure path ends in the viewport endpoint, never in an empty
+   * draw.  "This layer has nothing here" and "I could not ask" are
+   * different sentences, and only one of them is true.
+   */
+  const ensureWhole = useCallback((id: string): Promise<void> => {
+    if (whole.current[id] || settled.current.has(id)) return Promise.resolve();
+    const pending = wholeReq.current.get(id);
+    if (pending) return pending;
+    const req = (async () => {
+      const known = await serverVersions();
+      if (whole.current[id] || settled.current.has(id)) return;
+      const serverVersion = known[id] ?? null;
+      const cached = serverVersion ? await readHeld(id) : null;
+      const plan = planFor(cached?.version, serverVersion);
+
+      if (plan === 'per-view') { settled.current.add(id); return; }
+      if (plan === 'hold' && cached) {
+        whole.current[id] = cached.features;
+        // Only ever SET, like the viewport path: a layer that reported
+        // no extract date must not erase one another layer reported.
+        if (cached.sourceAsOf) setSourceAsOf(cached.sourceAsOf);
+        return;
+      }
+
+      // The download.  Rare — once per layer per import, so about once a
+      // week — and the spinner is honest about it.
+      setLoading((prev) => ({ ...prev, [id]: true }));
+      try {
+        const data = await apiJSON<{
+          version?: string; source_as_of?: string | null; features?: PoiFeature[];
+        }>(`/map/poi-set?type=${encodeURIComponent(id)}`, {}, 90_000);
+        const version = data.version ?? serverVersion;
+        if (!version) { settled.current.add(id); return; }
+        const features = data.features ?? [];
+        whole.current[id] = features;
+        // The EXTRACT's date, not the import's.  The line under the
+        // layer list reads "OpenStreetMap · N old", so showing when we
+        // fetched would answer a question nobody asked.
+        if (data.source_as_of) setSourceAsOf(data.source_as_of);
+        // A store that refuses the write costs nothing but the next
+        // session's download — the layer is held in memory either way.
+        void writeHeld(id, { version, features, sourceAsOf: data.source_as_of ?? null });
+      } catch {
+        // 409 (never imported), 404 (not a built-in), offline: all of
+        // them mean the same thing here.
+        settled.current.add(id);
+      } finally {
+        setLoading((prev) => ({ ...prev, [id]: false }));
+      }
+    })().finally(() => { wholeReq.current.delete(id); });
+    wholeReq.current.set(id, req);
+    return req;
+  }, [serverVersions]);
+
   const fetchAndRender = useCallback(async (id: string) => {
+    if (!leafletMap.current) return;
+    // Free after the first call, and it may fetch — so the view is read
+    // AFTERWARDS, or a download would be drawn against the box the map
+    // was showing when it started.
+    await ensureWhole(id);
     const map = leafletMap.current;
     if (!map) return;
 
@@ -703,7 +816,7 @@ export function usePoiLayers(
     // 1-2. In memory, exact or wider (a zoom-in is always free: the
     // current view sits inside a box we already fetched).  Nothing is
     // written back — see `heldFor`.
-    const held = heldFor(cache.current[id], s, w, n, e);
+    const held = heldForView(id, s, w, n, e);
     if (held) {
       if (enabledRef.current[id]) renderLayer(id, held);
       lastBbox.current[id] = key;
@@ -807,7 +920,7 @@ export function usePoiLayers(
       fetchingRef.current.delete(fetchKey);
       if (showSpinner) setLoading((prev) => ({ ...prev, [id]: false }));
     }
-  }, [leafletMap, renderLayer]);
+  }, [leafletMap, renderLayer, ensureWhole, heldForView]);
 
   // ── toggle ─────────────────────────────────────────────────────────────────
 
@@ -862,8 +975,8 @@ export function usePoiLayers(
       // from the wider box it sits inside rather than filed under a key
       // of its own.
       const b = map.getBounds();
-      const features = heldFor(cache.current[l.id],
-                               b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+      const features = heldForView(l.id,
+                                   b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
       if (features) renderLayer(l.id, features);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -918,10 +1031,20 @@ export function usePoiLayers(
       moveTimer = setTimeout(() => {
         moveTimer = null;
         const key = bboxKey(map);
+        const b = map.getBounds();
+        const s = b.getSouth(), w = b.getWest(), n = b.getNorth(), e = b.getEast();
         layersRef.current.forEach((l) => {
-          if (enabledRef.current[l.id] && lastBbox.current[l.id] !== key) {
-            fetchAndRender(l.id);
+          if (!enabledRef.current[l.id]) return;
+          // A layer we hold entire redraws on EVERY pan: it costs a
+          // filter and nothing else.  The grid key only changes at a
+          // degree boundary, so keying the redraw to it would leave the
+          // points a half-degree pan just revealed undrawn.
+          if (whole.current[l.id]) {
+            const features = heldForView(l.id, s, w, n, e);
+            if (features) renderLayer(l.id, features);
+            return;
           }
+          if (lastBbox.current[l.id] !== key) fetchAndRender(l.id);
         });
       }, 400);
     };
@@ -933,8 +1056,8 @@ export function usePoiLayers(
       const b = map.getBounds();
       layersRef.current.forEach((l) => {
         if (!enabledRef.current[l.id]) return;
-        const cached = heldFor(cache.current[l.id],
-                               b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
+        const cached = heldForView(l.id,
+                                   b.getSouth(), b.getWest(), b.getNorth(), b.getEast());
         if (cached) renderLayer(l.id, cached);
       });
     };
