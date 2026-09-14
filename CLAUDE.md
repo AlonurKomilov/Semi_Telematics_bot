@@ -85,9 +85,14 @@ repo-root `tests/` (that is how a test gets orphaned from the code it
 guards). All five layers follow this — 48 packages.
 
 The root `tests/` keeps only what belongs to no single package:
-repo-wide structural guards, and tests that cross layers.
+repo-wide structural guards, and tests that cross layers. **A guard
+lives with the package that OWNS the rule.** Judge by what the test
+imports and calls — never by what its docstring says the consequence
+is. "The consequence crosses layers" is not "the test crosses layers";
+that misreading put fifteen single-package tests at the root before
+rule 5 made it a checkable fact.
 
-**Four rules, enforced by `tests/test_test_layout.py`:**
+**Five rules, enforced by `tests/test_test_layout.py`:**
 
 1. Every package `tests/` dir sits under a `testpaths` entry in
    `pytest.ini`. A tests directory outside `testpaths` is *invisible* —
@@ -96,7 +101,7 @@ repo-wide structural guards, and tests that cross layers.
    files were silently skipping while CI reported green.
 2. Every package `tests/` dir has an `__init__.py`. Without it two files
    named `test_service.py` in different packages collide on module name.
-3. No loose `test_*.py` beside package source — the subdirectory form is
+3. No loose `test_*.py`, `*_test.py` or `conftest.py` beside package source — the subdirectory form is
    what the guards can see. Vendored `tests/` dirs under `node_modules`
    are excluded: `interfaces/*/node_modules` carries 14 of them (zod,
    redux-toolkit, …) and they are not packages of ours.
@@ -104,6 +109,11 @@ repo-wide structural guards, and tests that cross layers.
    the build-context root, so it excludes the root suite and nothing
    else — package-owned tests then ship inside the production image
    (274 files, 3MB, confirmed with a build probe).
+5. A root `tests/` file can say why it is at the root: it imports from
+   two or more packages, or scans the tree through `tests._repo.REPO`,
+   or carries `# repo-wide: <why>` in its first lines (a bare marker is
+   refused — the reason is the point). Anything else is a single
+   package's test and the guard names the directory it belongs in.
 
 **How the machinery works** — the database fixtures, what isolation
 every test gets for free, what `--dist loadfile` does and does not

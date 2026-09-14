@@ -1,3 +1,5 @@
+# repo-wide: guards the SUITE's own isolation machinery (conftest's registry
+# snapshot/restore), which no single package owns.
 """Guard: a test that registers a tool cannot leave it behind.
 
 The AI tool registry is process-global module state, and four separate
