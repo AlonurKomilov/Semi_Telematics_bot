@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections import defaultdict, deque
 from typing import Optional
@@ -819,9 +820,22 @@ def _is_internal_kb_path(value: str) -> bool:
     """
     if not value:
         return False
-    if value.startswith("http://") or value.startswith("https://"):
+    # A path has no scheme.  This used to say "anything that is not
+    # http(s) is ours" — which let ``javascript:``, ``data:`` and their
+    # tab-split spellings skip the allowlist validator and reach an
+    # href on the operator console as stored.  A scheme-less test is
+    # the shape the docstring always described; whitespace and control
+    # characters are refused outright because a browser strips them
+    # INSIDE a scheme (``java\tscript:``) and no stored path has any.
+    if any(ch.isspace() or ord(ch) < 0x20 for ch in value):
+        return False
+    if _URL_SCHEME_RE.match(value) or value.startswith("//"):
         return False
     return True
+
+
+#: RFC 3986 scheme: a letter, then letters/digits/+/-/. up to a colon
+_URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 
 
 @router.post("/upload")

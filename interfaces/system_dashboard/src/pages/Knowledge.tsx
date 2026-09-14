@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
 import type { ReviewArticle, ReviewList } from '../types';
 
+/** Only a real https URL may become a link; everything else a tenant
+ *  stored in media_url is a path into our own store (or an attempt at
+ *  something else) and is rendered as text. */
+const isExternalHttps = (value: string): boolean => /^https:\/\//i.test(value);
+
 /** Compact timestamp — the format Scans and Retention use, so date
  *  columns line up across the console. */
 function fmtTs(iso: string): string {
@@ -114,7 +119,12 @@ function ArticleCard({
             {a.description || <span className="text-slate-600 italic">No body text.</span>}
           </p>
           {a.tags && <div className="mt-2 text-xs text-slate-500 font-mono">{a.tags}</div>}
-          {a.media_url && (
+          {/* A tenant wrote this value.  Only an https URL becomes a link
+              — the same test the customer page makes — and an internal
+              upload path is shown as text: the operator is reviewing the
+              submission, not opening its file, and an href built from a
+              stored string is exactly where a `javascript:` would land. */}
+          {a.media_url && (isExternalHttps(a.media_url) ? (
             <a
               href={a.media_url}
               target="_blank"
@@ -123,7 +133,9 @@ function ArticleCard({
             >
               attachment: {a.media_url}
             </a>
-          )}
+          ) : (
+            <p className="mt-2 text-xs text-slate-500 break-all">attachment (uploaded file): {a.media_url}</p>
+          ))}
         </div>
       )}
 
