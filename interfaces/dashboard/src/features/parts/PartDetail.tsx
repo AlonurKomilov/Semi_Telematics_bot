@@ -43,6 +43,8 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
+import { useScaledPx } from '@/lib/scaledLength';
 function money(v: unknown, digits = 0): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: digits, maximumFractionDigits: digits,
@@ -54,6 +56,8 @@ function money(v: unknown, digits = 0): string {
 const FAST_REPEAT_DAYS = 45;
 
 export default function PartDetail() {
+  const gutter52 = useScaledPx(52, 'text');
+  const chartMs = useChartMotionMs();
   const { id } = useParams();
   const partId = Number(id);
   const navigate = useNavigate();
@@ -609,7 +613,7 @@ export default function PartDetail() {
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                         <XAxis dataKey="date" tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)" />
                         <YAxis tick={{ fontSize: CHART_FONT_SM }} stroke="var(--muted-foreground)"
-                          tickFormatter={(v: number) => `$${v}`} width={52} />
+                          tickFormatter={(v: number) => `$${v}`} width={gutter52} />
                         <ChartTooltip
                           formatter={(value: unknown, _n: unknown, entry: { payload?: { vendor?: string } }) => [
                             money(Number(value), 2),
@@ -620,7 +624,7 @@ export default function PartDetail() {
                             borderRadius: 'var(--radius)', color: 'var(--foreground)', fontSize: CHART_FONT_MD,
                           }}
                         />
-                        <Line type="monotone" dataKey="price" stroke={chartColor(0)}
+                        <Line {...chartMotion(chartMs)} type="monotone" dataKey="price" stroke={chartColor(0)}
                           strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>

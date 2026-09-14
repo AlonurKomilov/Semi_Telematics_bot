@@ -109,15 +109,23 @@ const RULES: readonly Rule[] = [
     axis: 'motion',
     what: 'a chart series that never names a duration, so it animates at the '
       + "library's hardcoded 1500ms while every control around it scales",
-    pin: 22,
-    find: /<(?:Bar|Line|Area|Pie|Radar)\b/g,
-    control: ['<Bar dataKey="x" />', '<BarChart>'],
+    // The FIRST version of this rule counted every series, which is not
+    // what its own sentence says — it could never have reached zero, and
+    // a rule that cannot improve is a rule nobody will ever fix. It
+    // counts the ones that do NOT carry the motion spread.
+    pin: 0,
+    find: /<(?:Bar|Line|Area|Pie|Radar)\b(?!\s*\{\.\.\.chartMotion)/g,
+    control: ['<Bar dataKey="x" />', '<Bar {...chartMotion(ms)} />'],
   },
   {
     axis: 'size',
     what: 'a frozen box on a chart — the text inside scales with the Size axis '
       + 'and the box does not, so raising Size shows LESS',
-    pin: 15,
+    // 15 when the audit measured it. Seven chart boxes and four axis
+    // gutters now read the live multiplier through `useScaledPx`; the
+    // four left are an SVG defs holder (0×0) and hand-drawn glyphs in
+    // the KPI board, which are icons rather than lengths.
+    pin: 4,
     find: /(?:height|width)=\{\d+\}/g,
     control: ['height={220}', 'height={size}'],
   },

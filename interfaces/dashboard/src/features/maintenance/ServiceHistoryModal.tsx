@@ -18,6 +18,7 @@ import { CHART_FONT_XS } from "@/lib/chartText";
 import { scaledPx } from '@/lib/scaledLength';
 import { useRadiusPx } from '@/lib/radius';
 import { RoundedBar } from '@/components/charts/RoundedBar';
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
 // and we backfill empty months with zero so the gap pattern is honest
@@ -78,6 +79,7 @@ export function ServiceHistoryModal({
   vehicleName: string;
   onClose: () => void;
 }) {
+  const chartMs = useChartMotionMs();
   const tz = useTimezone();
   // SSOT task labels (see useTaskLabels) — the cell no longer carries
   // a built-in map, so the caller supplies the display name.
@@ -225,7 +227,7 @@ export function ServiceHistoryModal({
                         }}
                         formatter={(v: unknown) => [String(v), 'services']}
                       />
-                      <Bar dataKey="count" fill={chartColor(1)} shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
+                      <Bar {...chartMotion(chartMs)} dataKey="count" fill={chartColor(1)} shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

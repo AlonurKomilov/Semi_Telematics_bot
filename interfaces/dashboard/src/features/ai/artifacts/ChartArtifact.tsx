@@ -15,7 +15,11 @@ import { registerArtifact } from './registry';
 import { isChart, type Artifact } from './types';
 
 import { CHART_FONT_SM } from "@/lib/chartText";
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
+import { useScaledPx } from '@/lib/scaledLength';
 function ChartArtifactView({ artifact }: { artifact: Artifact }) {
+  const chartH220 = useScaledPx(220);
+  const chartMs = useChartMotionMs();
   const radiusPx = useRadiusPx();
   if (!isChart(artifact)) return null;
   const { chart, data, xKey, series, title } = artifact;
@@ -24,7 +28,7 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
       {title && (
         <div className="mb-1 text-2xs font-medium text-muted-foreground">{title}</div>
       )}
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={chartH220}>
         {chart === 'line' ? (
           <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -33,7 +37,7 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
             <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (
-              <Line key={s.key} type="monotone" dataKey={s.key} name={s.label ?? s.key}
+              <Line {...chartMotion(chartMs)} key={s.key} type="monotone" dataKey={s.key} name={s.label ?? s.key}
                     stroke={chartColor(i + 1)} strokeWidth={2} dot={false} />
             ))}
           </LineChart>
@@ -45,7 +49,7 @@ function ChartArtifactView({ artifact }: { artifact: Artifact }) {
             <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
             {series.length > 1 && <Legend />}
             {series.map((s, i) => (
-              <Bar key={s.key} dataKey={s.key} name={s.label ?? s.key} fill={chartColor(i + 1)} shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
+              <Bar {...chartMotion(chartMs)} key={s.key} dataKey={s.key} name={s.label ?? s.key} fill={chartColor(i + 1)} shape={<RoundedBar corners="top" radiusPx={radiusPx} />} />
             ))}
           </BarChart>
         )}

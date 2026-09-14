@@ -41,6 +41,8 @@ import { Badge } from '@/components/ui/badge';
 import { CHART_FONT_2XS, CHART_FONT_MD, CHART_FONT_SM, CHART_FONT_XS } from "@/lib/chartText";
 import { useRadiusPx } from '@/lib/radius';
 import { RoundedBar } from '@/components/charts/RoundedBar';
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
+import { useScaledPx } from '@/lib/scaledLength';
 // ── Color helpers ───────────────────────────────────────────────────
 
 // Single source of truth for score → bucket.  Thresholds are
@@ -123,6 +125,8 @@ function ScoreGauge({ score, tierLabel }: { score: number; tierLabel: string }) 
 // ── Score-distribution histogram ─────────────────────────────────────
 
 function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
+  const chartH150 = useScaledPx(150);
+  const chartMs = useChartMotionMs();
   const radiusPx = useRadiusPx();
   // Band fill follows the score tone (ok ≥ 70, warn ≥ 40, danger below)
   // so the histogram reads with the same good/attention/bad language as
@@ -138,7 +142,7 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
     count: cards.filter((c) => c.score >= b.min && c.score <= b.max).length,
   }));
   return (
-    <ResponsiveContainer width="100%" height={150}>
+    <ResponsiveContainer width="100%" height={chartH150}>
       <BarChart data={buckets} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
         <XAxis dataKey="label" tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} />
         <YAxis tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_SM }} allowDecimals={false} />
@@ -148,7 +152,7 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
             return [`${v} trucks (${pct}%)`, 'Count'];
           }}
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
-        <Bar dataKey="count" shape={<RoundedBar corners="top" radiusPx={radiusPx} />} label={{ position: 'top', fontSize: CHART_FONT_XS, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
+        <Bar {...chartMotion(chartMs)} dataKey="count" shape={<RoundedBar corners="top" radiusPx={radiusPx} />} label={{ position: 'top', fontSize: CHART_FONT_XS, fill: 'var(--muted-foreground)', formatter: (v: unknown) => Number(v) > 0 ? Number(v) : '' }}>
           {buckets.map((b) => <Cell key={b.label} fill={b.color} />)}
         </Bar>
       </BarChart>
@@ -159,6 +163,8 @@ function ScoreDistribution({ cards }: { cards: CompositeScorecard[] }) {
 // ── Top vs Bottom comparative chart ──────────────────────────────────
 
 function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
+  const gutter56 = useScaledPx(56, 'text');
+  const chartMs = useChartMotionMs();
   const radiusPx = useRadiusPx();
   // Memoise so we sort/slice only when `cards` actually changes — not on
  // every parent re-render.
@@ -175,12 +181,12 @@ function TopBottomChart({ cards }: { cards: CompositeScorecard[] }) {
       <ResponsiveContainer width="100%" height={items.length * 28 + 8}>
         <BarChart layout="vertical" data={items} margin={{ top: 0, right: 36, left: 0, bottom: 0 }}>
           <XAxis type="number" domain={[0, 100]} hide />
-          <YAxis type="category" dataKey="name" width={56} tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_MD }} />
+          <YAxis type="category" dataKey="name" width={gutter56} tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_MD }} />
           <Tooltip
             formatter={(v) => [`${v}`, 'Score']}
             contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
           <ReferenceLine x={70} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
-          <Bar dataKey="score" shape={<RoundedBar corners="right" radiusPx={radiusPx} />} label={{ position: 'right', fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }}>
+          <Bar {...chartMotion(chartMs)} dataKey="score" shape={<RoundedBar corners="right" radiusPx={radiusPx} />} label={{ position: 'right', fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }}>
             {items.map((d, i) => <Cell key={i} fill={scoreVar(d.score)} />)}
           </Bar>
         </BarChart>
@@ -213,6 +219,8 @@ interface MergedHistoryPoint {
 }
 
 function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
+  const chartH160 = useScaledPx(160);
+  const chartMs = useChartMotionMs();
  // React Query: caches each driver's history under a
   // per-driver+days key so opening the same drawer again is instant.
   // The four pillar variants fan out in parallel inside one ``queryFn``.
@@ -260,7 +268,7 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
   // Option-C rollout.  All-new tenants skip the marker entirely.
   const showPillarMarker = pillarStartDate != null && pillarStartDate !== points[0].date;
   return (
-    <ResponsiveContainer width="100%" height={160}>
+    <ResponsiveContainer width="100%" height={chartH160}>
       <LineChart data={points} margin={{ top: 6, right: 8, left: -10, bottom: 0 }}>
         <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
         <XAxis dataKey="date" tick={{ fill: 'var(--muted-foreground)', fontSize: CHART_FONT_XS }}
@@ -270,17 +278,17 @@ function HistoryChart({ driverId, days }: { driverId: string; days: number }) {
           contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--foreground)' }} />
         {/* Faded pillar lines underneath the bold total — categorical
             series, so they ride the chart-token palette. */}
-        <Line type="monotone" dataKey="safety"     name="🛡 Safety"
+        <Line {...chartMotion(chartMs)} type="monotone" dataKey="safety"     name="🛡 Safety"
               stroke={chartColor(1)} strokeWidth={1.25} strokeOpacity={0.55}
               dot={false} connectNulls={false} isAnimationActive={false} />
-        <Line type="monotone" dataKey="efficiency" name="⚡ Efficiency"
+        <Line {...chartMotion(chartMs)} type="monotone" dataKey="efficiency" name="⚡ Efficiency"
               stroke={chartColor(2)} strokeWidth={1.25} strokeOpacity={0.55}
               dot={false} connectNulls={false} isAnimationActive={false} />
-        <Line type="monotone" dataKey="compliance" name="🛠 Compliance"
+        <Line {...chartMotion(chartMs)} type="monotone" dataKey="compliance" name="🛠 Compliance"
               stroke={chartColor(3)} strokeWidth={1.25} strokeOpacity={0.55}
               dot={false} connectNulls={false} isAnimationActive={false} />
         {/* Bold composite total on top */}
-        <Line type="monotone" dataKey="total" name="Total"
+        <Line {...chartMotion(chartMs)} type="monotone" dataKey="total" name="Total"
               stroke="var(--foreground)" strokeWidth={2.25} dot={{ r: 2 }}
               isAnimationActive={false} />
         <ReferenceLine y={70} stroke="var(--muted-foreground)" strokeDasharray="3 3" />

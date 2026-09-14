@@ -23,6 +23,8 @@ import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { Card } from '@/components/ui/card';
 
 import { CHART_FONT_SM } from "@/lib/chartText";
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
+import { useScaledPx } from '@/lib/scaledLength';
 // Backend response envelopes for each /reports/* endpoint.
 interface SystemRow {
   system_key: string;
@@ -112,6 +114,11 @@ function moneyDetail(n: number): string {
 }
 
 export default function Reports() {
+  const gutter170 = useScaledPx(170, 'text');
+  const gutter80 = useScaledPx(80, 'text');
+  const chartH260 = useScaledPx(260);
+  const chartH280 = useScaledPx(280);
+  const chartMs = useChartMotionMs();
   const radiusPx = useRadiusPx();
   const { t } = useTranslation();
   const [days, setDays] = useState<number>(90);
@@ -445,14 +452,14 @@ export default function Reports() {
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                     <XAxis type="number" tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
-                    <YAxis type="category" dataKey="vehicle_name" width={80} tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} />
+                    <YAxis type="category" dataKey="vehicle_name" width={gutter80} tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} />
                     <Tooltip
                       formatter={(value) => [moneyDetail(Number(value)), 'Total']}
                       labelStyle={{ color: 'var(--foreground)' }}
                       itemStyle={{ color: 'var(--foreground)' }}
                       contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
-                    <Bar dataKey="total_spent" style={{ cursor: 'pointer' }} shape={<RoundedBar corners="top" radiusPx={radiusPx} />}>
+                    <Bar {...chartMotion(chartMs)} dataKey="total_spent" style={{ cursor: 'pointer' }} shape={<RoundedBar corners="top" radiusPx={radiusPx} />}>
                       {vehicleChart.map((_, i) => (
                         <Cell key={i} fill={BAR_PALETTE[i % BAR_PALETTE.length]} />
                       ))}
@@ -470,9 +477,9 @@ export default function Reports() {
               {typeChart.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No data.</p>
               ) : (
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height={chartH280}>
                   <PieChart>
-                    <Pie
+                    <Pie {...chartMotion(chartMs)}
                       data={typeChart}
                       dataKey="total_spent"
                       nameKey="label"
@@ -525,7 +532,7 @@ export default function Reports() {
                 <BarChart data={systemChart} layout="vertical"
                   margin={{ left: 8, right: 16 }}>
                   <XAxis type="number" tickFormatter={money} tick={{ fontSize: CHART_FONT_SM }} />
-                  <YAxis type="category" dataKey="system" width={170}
+                  <YAxis type="category" dataKey="system" width={gutter170}
                     tick={{ fontSize: CHART_FONT_SM }} />
                   <Tooltip
                     formatter={(value, _name, entry) => {
@@ -538,7 +545,7 @@ export default function Reports() {
                     itemStyle={{ color: 'var(--foreground)' }}
                     contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                   />
-                  <Bar dataKey="combined" style={{ cursor: 'pointer' }}
+                  <Bar {...chartMotion(chartMs)} dataKey="combined" style={{ cursor: 'pointer' }}
                     shape={<RoundedBar corners="top" radiusPx={radiusPx} />}
                     onClick={(d) => setDrillSystem(d as unknown as SystemRow)}>
                     {systemChart.map((_, i) => (
@@ -654,7 +661,7 @@ export default function Reports() {
               {(monthly.data?.rows ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">No data.</p>
               ) : (
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={chartH260}>
                   <LineChart data={monthly.data!.rows} margin={{ top: 10, right: 20, left: 8, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="month" tick={{ fontSize: CHART_FONT_SM, fill: 'var(--muted-foreground)' }} />
@@ -665,7 +672,7 @@ export default function Reports() {
                       itemStyle={{ color: 'var(--foreground)' }}
                       contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
-                    <Line
+                    <Line {...chartMotion(chartMs)}
                       type="monotone" dataKey="total_spent"
                       stroke={chartColor(1)} strokeWidth={2.5}
                       dot={{ fill: chartColor(1), r: 4 }}

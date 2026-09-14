@@ -24,6 +24,7 @@ import { SectionHeader } from '@/components/shell';
 
 import { CHART_FONT_MD, CHART_FONT_SM } from "@/lib/chartText";
 import { scaledPx } from '@/lib/scaledLength';
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
 interface TimelinePoint {
   hour_utc: string;
   miles?: number | null;
@@ -42,6 +43,7 @@ interface TimelineResponse {
 }
 
 export default function VehicleTimeline({ vehicleName, company }: VehicleSectionProps) {
+  const chartMs = useChartMotionMs();
   const archived = useArchivedCallout(vehicleName, company);
   const { data, isLoading, error } = useQuery<TimelineResponse>({
     queryKey: ['vehicle-timeline', vehicleName, company ?? ''],
@@ -94,9 +96,9 @@ export default function VehicleTimeline({ vehicleName, company }: VehicleSection
                   fontSize: CHART_FONT_MD,
                 }}
               />
-              <Line type="monotone" dataKey="miles" stroke="var(--info)" strokeWidth={2} dot={false} name="Miles" />
-              <Line type="monotone" dataKey="max_speed_mph" stroke="var(--ok)" strokeWidth={2} dot={false} name="Max mph" />
-              <Line type="monotone" dataKey="harsh_event_count" stroke="var(--danger)" strokeWidth={2} dot={false} name="Harsh" />
+              <Line {...chartMotion(chartMs)} type="monotone" dataKey="miles" stroke="var(--info)" strokeWidth={2} dot={false} name="Miles" />
+              <Line {...chartMotion(chartMs)} type="monotone" dataKey="max_speed_mph" stroke="var(--ok)" strokeWidth={2} dot={false} name="Max mph" />
+              <Line {...chartMotion(chartMs)} type="monotone" dataKey="harsh_event_count" stroke="var(--danger)" strokeWidth={2} dot={false} name="Harsh" />
             </LineChart>
           </ResponsiveContainer>
         </div>

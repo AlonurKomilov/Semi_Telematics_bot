@@ -1,4 +1,6 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { chartMotion, useChartMotionMs } from '@/lib/chartMotion';
+import { useScaledPx } from '@/lib/scaledLength';
 
 interface Props {
   moving: number;
@@ -7,10 +9,12 @@ interface Props {
 }
 
 export default function FleetStatusChart({ moving, idle, stopped }: Props) {
+  const chartH220 = useScaledPx(220);
+  const chartMs = useChartMotionMs();
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={chartH220}>
       <PieChart>
-        <Pie
+        <Pie {...chartMotion(chartMs)}
           data={[
             { name: 'Moving',  value: moving  || 0 },
             { name: 'Idle',    value: idle    || 0 },
