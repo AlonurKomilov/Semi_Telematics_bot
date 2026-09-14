@@ -24,6 +24,16 @@
  * same two forms — a named cue to override, or `false` for silence —
  * because a person moving between the two lanes should not have to
  * learn a second vocabulary.
+ *
+ * THE BARE CALLABLE IS THE EXCEPTION: it takes `cue` too, but it sounds
+ * only when asked. It carries the NEUTRAL toast — a tip, a notice — and
+ * most of those want no announcement at all. Two of its callers are not
+ * notices, though: deleting a saved tab and revealing a hidden column
+ * each open an UNDO WINDOW over a write the grid itself calls persisted
+ * per-user across devices. `undo` means exactly "a destructive action,
+ * and its window to undo" — and until this signature widened it could
+ * not be reached from the one lane those two callers use, so both
+ * windows opened, and timed out, in silence.
  */
 import { toast as sonnerToast, type ExternalToast } from 'sonner';
 import { playToastCue } from '../mods/sound/cue';
@@ -69,8 +79,12 @@ function strip(opts?: ToastOptions): ExternalToast | undefined {
 type Message = Parameters<typeof sonnerToast.success>[0];
 
 export const toast = Object.assign(
-  (message: Parameters<typeof sonnerToast>[0], opts?: ExternalToast) =>
-    sonnerToast(message, opts),
+  (message: Parameters<typeof sonnerToast>[0], opts?: ToastOptions) => {
+    // Opt-in, unlike the toned calls above: `undefined` stays silent, so
+    // every caller that does not ask keeps behaving exactly as it did.
+    if (opts?.cue) playToastCue(opts.cue);
+    return sonnerToast(message, strip(opts));
+  },
   sonnerToast,
   {
     success: (message: Message, opts?: ToastOptions) => {

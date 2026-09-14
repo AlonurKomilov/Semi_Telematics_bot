@@ -1222,6 +1222,9 @@ export default function DataGrid({
     setDefaultTab(prev => (prev === id ? '' : prev));   // don't leave a dangling default
     if (!removed) return;
     toast(`Deleted "${removed.name}"`, {
+      // The one destructive act in the grid, on a window that closes on
+      // a timer. `undo` is the cue written for it.
+      cue: 'undo',
       action: {
         label: 'Undo',
         onClick: () => {
@@ -2018,7 +2021,19 @@ export default function DataGrid({
     const copyCols = visibleColIds
       .map(id => colByKey.get(id))
       .filter((c): c is AnyColumn => Boolean(c));
-    await writeToClipboard(buildTsv(copyCols, rows));
+    // `writeToClipboard` returns whether the write landed, and this
+    // discarded it — so a copy that failed looked exactly like one that
+    // worked, and the only way to tell was to alt-tab into a
+    // spreadsheet and paste. The count is part of the answer: it says
+    // the selection was the one you thought it was.
+    const ok = await writeToClipboard(buildTsv(copyCols, rows));
+    if (!ok) {
+      toast.error(t('datagrid.copy_failed', 'Could not copy to the clipboard'));
+      return;
+    }
+    toast.success(rows.length === 1
+      ? t('datagrid.copied_one', 'Copied 1 row')
+      : t('datagrid.copied_n', 'Copied {{n}} rows', { n: rows.length }));
   };
 
   // ── Checkbox bulk-selection ──────────────────────────────────────
@@ -3112,7 +3127,9 @@ export default function DataGrid({
         pivot(rowsForPivot, pivotModel, pivotColumns, { capColumns: false }),
       );
       if (grid.length === 0) return;      // nothing configured yet
-      downloadCsv(`${tableId}-pivot-${today0}.csv`, buildCsvFromRows(grid));
+      const pivotName = `${tableId}-pivot-${today0}.csv`;
+      downloadCsv(pivotName, buildCsvFromRows(grid));
+      toast.success(t('datagrid.exported_file', 'Saved {{name}}', { name: pivotName }));
       return;
     }
     const visibleColIdsInOrder = table.getVisibleLeafColumns().map(c => c.id);
@@ -3126,7 +3143,14 @@ export default function DataGrid({
     const exportRows = flattenLeaves(sourceRows);
     const today = new Date().toISOString().slice(0, 10);
     const suffix = scope === 'all' ? (holdsPartialData ? '-loaded' : '-all') : '';
-    exportRowsAsCsv(`${tableId}${suffix}-${today}.csv`, exportCols, exportRows);
+    // The browser writes the file somewhere this app cannot show and
+    // reports nothing back. Naming it is the only confirmation there
+    // is — without it an export and a click that did nothing look the
+    // same, and the row count is what says which scope actually ran.
+    const name = `${tableId}${suffix}-${today}.csv`;
+    exportRowsAsCsv(name, exportCols, exportRows);
+    toast.success(t('datagrid.exported_rows', 'Saved {{n}} rows to {{name}}',
+      { n: exportRows.length, name }));
   };
 
   // Reset wipes every customization (filters / sort / search / column
@@ -3800,7 +3824,10 @@ export default function DataGrid({
                         many
                           ? `Showing ${searchNote.sources.length} columns`
                           : `Showing “${searchNote.sources[0].label}”`,
-                        { action: { label: 'Undo', onClick: () => setColumnVisibility(before) } },
+                        {
+                          cue: 'undo',
+                          action: { label: 'Undo', onClick: () => setColumnVisibility(before) },
+                        },
                       );
                     }}
                   >

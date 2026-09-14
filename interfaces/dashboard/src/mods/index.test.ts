@@ -69,6 +69,12 @@ const ALLOWED_DEEP = [
   // Its guard reads the packs' index for the ids it checks the files
   // against, and would inherit the same ring through the barrel.
   'test/iconLane.test.ts',
+  // The fourth sound lane, and the same reason as the three above: the
+  // barrel does not export the cue player at ALL — it exports
+  // `ModPanel` — so there is no barrel path to this function, and a
+  // provider mounted at the app root would pull the whole mods panel
+  // into its init graph to reach one call.
+  'features/ai/AssistantContext.tsx',
 ];
 
 describe('everything outside mods/ comes through the barrel', () => {

@@ -56,6 +56,14 @@ vi.mock('../../preferences', async () => {
       const [value, setValue] = useState(fallback);
       return { value, setValue };
     },
+    // The Undo toast below now names a cue, so raising it walks into
+    // `playToastCue`, which reads the gate straight off this module.
+    // Without this the whole factory is the module, the property is
+    // `undefined`, and the click throws — the reveal never happens and
+    // the failure reads as a broken grid rather than a short mock.
+    // `false` keeps the lane silent: what it sounds is held in
+    // `test/toastLane.test.ts`, not here.
+    preferences: { get: () => false },
   };
 });
 

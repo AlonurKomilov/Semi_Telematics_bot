@@ -103,3 +103,105 @@ describe('every toast comes through lib/toast', () => {
     }
   });
 });
+
+/**
+ * An undo window has to announce itself.
+ *
+ * The tone cannot pick this cue and never could. A toast that opens an
+ * undo window is raised as `success` — "something was saved" — while
+ * the moment actually means "and here are your few seconds to take it
+ * back". `lib/undoable.ts` says exactly that in a comment and passes
+ * the override. Two call sites in the grid did not, and one of them
+ * used the BARE callable, which had no `cue` in its type at all: both
+ * windows opened, counted down and closed without a sound, over writes
+ * the grid's own comments call persisted per-user across devices.
+ *
+ * The rule is that the question was ANSWERED, not that the answer is
+ * `undo`. `cue: false` is legitimate for a caller that already sounded
+ * the moment itself — which is what `stagedAction.tsx` does. What is
+ * not legitimate is leaving it to the default, because for this one
+ * shape the default is known to be wrong.
+ */
+describe('a toast that offers an Undo names a cue', () => {
+  /**
+   * Brackets inside a quoted string are text, not structure. Blanked so
+   * a message like `'Deleted (3)'` cannot unbalance the scan, and
+   * length-preserving so every offset still points where it did.
+   */
+  const neutralise = (src: string) =>
+    src.replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/g,
+      (s) => s.replace(/[()[\]{}]/g, '_'));
+
+  /** Comments are not code. A commented-out example must not be read as
+   *  a call site — only line comments that OWN their line are stripped,
+   *  so a `https://` inside a string survives. */
+  const decomment = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+
+  /** Every `toast…(…)` call in a file, as its own source text. */
+  const toastCalls = (src: string): string[] => {
+    const code = decomment(src);
+    const flat = neutralise(code);
+    const out: string[] = [];
+    for (const m of flat.matchAll(/\btoast(?:\.\w+)?\(/g)) {
+      const from = m.index ?? 0;
+      let depth = 0;
+      let i = from + m[0].length - 1;
+      for (; i < flat.length; i++) {
+        if (flat[i] === '(') depth++;
+        else if (flat[i] === ')' && --depth === 0) break;
+      }
+      if (depth !== 0) continue;            // unreadable — do not guess
+      out.push(code.slice(from, i + 1));
+    }
+    return out;
+  };
+
+  const undoCalls = (src: string) =>
+    toastCalls(src).filter((c) => /label:\s*'Undo'/.test(c));
+
+  const silentUndo = (file: string, src: string) =>
+    undoCalls(src)
+      .filter((c) => !/\bcue:/.test(c))
+      .map((c) => `${file}: ${c.replace(/\s+/g, ' ').slice(0, 72)}…`);
+
+  const files = walk(SRC).filter((f) => !f.includes('.test.'));
+
+  it('and that scan can fail', () => {
+    const action = "action: { label: 'Undo', onClick: f }";
+    expect(silentUndo('x.tsx', `toast('Deleted', { ${action} });`)).toHaveLength(1);
+    expect(silentUndo('x.tsx', `toast('Deleted', { cue: 'undo', ${action} });`))
+      .toHaveLength(0);
+    // Already sounded by the caller — an answered question, so not an
+    // offender. If this ever reads as one, `stagedAction.tsx` goes red
+    // for doing the right thing.
+    expect(silentUndo('x.tsx', `toast.success('Deleted', { cue: false, ${action} });`))
+      .toHaveLength(0);
+    // A parenthesis in the MESSAGE must not swallow the rest of the
+    // file and find somebody else's `cue:`.
+    expect(silentUndo('x.tsx',
+      `toast('Deleted (3)', { ${action} });\nconst cue: number = 1;`)).toHaveLength(1);
+    // A toast with no Undo is none of this rule's business.
+    expect(silentUndo('x.tsx', "toast('Tip: right-click a tab.');")).toHaveLength(0);
+    // And a commented-out example is not a call site.
+    expect(silentUndo('x.tsx', `// toast('Deleted', { ${action} });`)).toHaveLength(0);
+  });
+
+  it('there are undo windows in the tree to check', () => {
+    // Zero would make the rule below green forever. The scan going
+    // blind looks exactly like the codebase being clean.
+    const n = files.reduce(
+      (a, f) => a + undoCalls(readFileSync(join(SRC, f), 'utf8')).length, 0);
+    expect(n, 'no Undo toasts found — the rule below is checking nothing')
+      .toBeGreaterThanOrEqual(3);
+  });
+
+  it('and every one of them answers the question', () => {
+    const offenders = files.flatMap(
+      (f) => silentUndo(f, readFileSync(join(SRC, f), 'utf8')));
+    expect(offenders,
+      'an Undo toast that names no cue takes the tone\'s — "saved", over a window '
+      + 'that is about to close — or, from the bare callable, nothing at all')
+      .toEqual([]);
+  });
+});

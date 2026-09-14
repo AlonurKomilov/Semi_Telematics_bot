@@ -21,6 +21,7 @@ import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
 import PoiIcon from './poi/PoiIcon';
 import { Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
+import { toast } from '../../lib/toast';
 import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
 import { Card } from '@/components/ui/card';
 
@@ -750,6 +751,14 @@ export default function LiveMap() {
     setRouteLoading(false);
 
     if (!routeDrawn) {
+      // SAY SO. The fallback below is `weight 3, dashArray '12, 8'` and
+      // a real route is `weight 4, dashArray '10, 6'` — on a busy map
+      // those read as the same line, and they do not mean the same
+      // thing: one is the distance a truck drives, the other is a
+      // straight line over whatever happens to be in between. Drawing
+      // the second while it looks like the first is the map answering a
+      // question it did not actually answer.
+      toast.warning('Road route unavailable — this is a direct line, not driving distance.');
       // Fallback: straight dashed line when OSRM is unreachable
       const line = Leaf.polyline(
         [selectedPos, poiLatLng],

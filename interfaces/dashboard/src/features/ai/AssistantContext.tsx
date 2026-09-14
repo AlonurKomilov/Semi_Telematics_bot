@@ -13,8 +13,9 @@
  * whether the slide-over is visible and carries an optional prefill
  * string across the open.
  */
-import { createContext, useContext, useState, useCallback, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { usePreference } from '../../preferences';
+import { playUiCue } from '../../mods/sound/cue';
 
 /** Coarse run state the chat publishes so surfaces OUTSIDE the chat (the
  *  docked launcher chip) can show progress while the panel is hidden.
@@ -151,7 +152,21 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   /** Equality-bailing setter — streaming models call this per thinking
    *  chunk with the same label; bailing keeps the chip from re-rendering
    *  hundreds of times per answer. */
+  /**
+   * The phase the cue below has already announced.
+   *
+   * A ref and not state: the edge has to be read and written inside the
+   * same call, and the sound must stay OUT of the updater — React is
+   * free to run an updater twice, and a cue is not idempotent.
+   */
+  const soundedPhase = useRef<AssistantRunPhase>('idle');
   const setRunState = useCallback((phase: AssistantRunPhase, label = '') => {
+    // An answer finishing is the app answering a question asked minutes
+    // ago and then looked away from — the launcher already assumes
+    // exactly that, which is why it renders a done-dot for a panel
+    // nobody is watching. Nothing in this feature made a sound before.
+    if (phase === 'done' && soundedPhase.current !== 'done') playUiCue('success');
+    soundedPhase.current = phase;
     setRun((prev) => (prev.phase === phase && prev.label === label ? prev : { phase, label }));
   }, []);
 

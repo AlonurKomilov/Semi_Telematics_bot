@@ -170,3 +170,58 @@ describe('the gate and the floor', () => {
     expect(heard()).toHaveLength(2);
   });
 });
+
+/**
+ * The bare callable — the neutral toast, and the two windows it opens.
+ *
+ * `toast(...)` carries the notices: a tip, a "showing 3 columns". Most
+ * of those want no announcement, so it sounds nothing BY DEFAULT and
+ * every one of its existing callers keeps behaving exactly as it did.
+ *
+ * But two of its callers are not notices. Deleting a saved tab and
+ * revealing a hidden column each open an UNDO WINDOW over a write the
+ * grid's own comments call persisted per-user across devices — and
+ * until this signature widened, `cue` was not even in its type, so both
+ * windows opened, ran their timer out and closed in silence.
+ */
+describe('the neutral toast sounds only when asked', () => {
+  it('stays silent by default, as all 318 of its callers expect', () => {
+    toast('Tip: right-click a tab to rename it.', { duration: 6000 });
+    expect(playCue, 'the neutral toast started announcing itself')
+      .not.toHaveBeenCalled();
+    expect(sonner).toHaveBeenCalledWith(
+      'Tip: right-click a tab to rename it.', { duration: 6000 });
+  });
+
+  it('and sounds the undo window that asks for it', () => {
+    const action = { label: 'Undo', onClick: () => {} };
+    toast('Deleted "Urgent"', { cue: 'undo', action });
+    expect(playCue).toHaveBeenCalledWith(pack().cues.undo, 1);
+  });
+
+  /** Same law as the toned calls: `cue` is ours, sonner must never see
+   *  it. A wrapper that sounds correctly and hands sonner an unknown
+   *  key is one console warning away from being reverted. */
+  it('without letting `cue` reach sonner', () => {
+    const action = { label: 'Undo', onClick: () => {} };
+    toast('Deleted "Urgent"', { cue: 'undo', duration: 9000, action });
+    expect(sonner).toHaveBeenCalledWith('Deleted "Urgent"', { duration: 9000, action });
+  });
+
+  it('and `false` is still silence, not a cue named false', () => {
+    toast('already announced', { cue: false });
+    expect(playCue).not.toHaveBeenCalled();
+    expect(sonner, 'silencing the cue silenced the toast').toHaveBeenCalled();
+  });
+
+  /** `playToastCue` spends the 400ms floor on every call it reaches, so
+   *  a neutral toast that consulted it would swallow the NEXT real cue —
+   *  a bug you hear once and can never reproduce. It must not be asked
+   *  at all, which is why the check is `if (opts?.cue)` and not a
+   *  default tone. */
+  it('and a silent one does not spend the floor the next toast needs', () => {
+    toast('Tip: right-click a tab.');
+    toast.success('this one must be heard');
+    expect(playCue).toHaveBeenCalledWith(pack().cues.success, 1);
+  });
+});
