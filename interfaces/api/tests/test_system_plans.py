@@ -398,3 +398,28 @@ async def test_accounts_on_a_plan_with_no_row_are_named(system_app):
     await s["db"].update_account_tier(s["pro"].id, "legacy_gold")
     g = (await s["client"].get("/api/system/plans", headers=s["op"])).json()
     assert g["accounts_without_plan"] == {"legacy_gold": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_save_against_the_other_modes_ids_says_which_runbook_step_fixes_it(system_app, monkeypatch):
+    """Live keys, sandbox ids on the row (the SQL step skipped): Stripe
+    answers "No such product".  The operator must read the cause and the
+    fix — as a 409 the console shows, not a 502 nginx may replace."""
+    s = system_app
+    monkeypatch.setenv("BILLING_PROVIDER", "stripe")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    import capabilities.platform.billing as _b
+    monkeypatch.setattr(_b, "_provider", None)
+    fake = _fake_stripe()
+    def _no_such_product(**kw):
+        raise RuntimeError("No such product: 'prod_sandbox'")
+    fake.Price.create = staticmethod(_no_such_product)
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: fake)
+    await s["db"].upsert_plan("pro", label="Pro", included=["*"], price_monthly_cents=9900,
+                              stripe_price_id="price_sandbox", stripe_product_id="prod_sandbox")
+    r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
+                              json={"label": "Pro", "included": ["*"], "quotas": {},
+                                    "price_monthly_cents": 9900, "extra_vehicle_cents": 299})
+    assert r.status_code == 409, r.text
+    assert "other Stripe mode" in r.json()["detail"] and "4b step 2" in r.json()["detail"]
+    assert (await s["db"].get_plan("pro"))["stripe_extra_price_id"] == "", "nothing was written"
