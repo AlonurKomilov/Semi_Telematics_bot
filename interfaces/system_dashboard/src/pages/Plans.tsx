@@ -43,6 +43,7 @@ interface Plan {
   // the per-extra-truck Price on the same Product, made on save like the
   // base one — what Stripe charges per truck above the included count
   stripe_extra_price_id: string;
+  stripe_extra_product_id: string;
   public: boolean;
   sort: number;
   trial_default: boolean;

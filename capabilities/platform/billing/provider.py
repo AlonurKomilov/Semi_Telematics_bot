@@ -132,6 +132,11 @@ class BillingProvider(Protocol):
         "archived"}``; stub: ``{"skipped": "stub"}``."""
         ...
 
+    async def rename_plan_products(self, *, label: str, base_product_id: str, extra_product_id: str) -> list[str]:
+        """Carry a plan's new label onto the Stripe Products a customer
+        reads on a checkout page and an invoice.  Stub: ``[]``."""
+        ...
+
     async def rollout_preview(self, db, tier: str) -> dict:
         """What a price rollout would do, from our tables alone."""
         ...

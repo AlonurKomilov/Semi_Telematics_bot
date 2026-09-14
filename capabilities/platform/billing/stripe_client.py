@@ -681,6 +681,13 @@ class StripeBillingProvider:
             tier=tier, label=label, cents=cents, before=before,
         )
 
+    async def rename_plan_products(self, *, label: str, base_product_id: str, extra_product_id: str) -> list[str]:
+        from capabilities.platform.billing import rollout as _rollout
+        return await _off_loop(
+            _rollout.rename_products, _stripe(),
+            label=label, base_product_id=base_product_id, extra_product_id=extra_product_id,
+        )
+
     async def archive_plan_price(self, price_id: str) -> bool:
         from capabilities.platform.billing import rollout as _rollout
         return await _off_loop(_rollout.archive_price, _stripe(), price_id)

@@ -632,6 +632,11 @@ async def create_tables(conn) -> None:
             -- the base one: what Stripe charges per truck above the plan's
             -- included count. Was ONE env-wide Price for every plan.
             stripe_extra_price_id TEXT  NOT NULL DEFAULT '',
+            -- the Stripe Product the extras Price hangs off. Its OWN, not
+            -- the base one's: Stripe Checkout and every invoice name a line
+            -- after its Product, so sharing made a bill read "Gold ×1" and
+            -- "Gold ×102" with nothing saying which was the trucks.
+            stripe_extra_product_id TEXT NOT NULL DEFAULT '',
             updated_at  TEXT NOT NULL,
             updated_by  TEXT NOT NULL DEFAULT ''
         );

@@ -261,7 +261,11 @@ def _fake_stripe(subs=None, price_amount=12900):
     class _S:
         class Product:
             @staticmethod
-            def create(**kw): calls.append(("Product.create", kw)); return {"id": "prod_new"}
+            def create(**kw):
+                calls.append(("Product.create", kw))
+                return {"id": "prod_x_new" if (kw.get("metadata") or {}).get("kind") == "extra" else "prod_new"}
+            @staticmethod
+            def modify(pid, **kw): calls.append(("Product.modify", pid, kw)); return {"id": pid, **kw}
         class Price:
             @staticmethod
             def create(**kw):
@@ -349,13 +353,18 @@ async def test_in_stripe_mode_the_save_makes_the_price_and_the_rollout_moves_the
     assert r.status_code == 200, r.text
     p = r.json()["plan"]
     assert (p["price_monthly_cents"], p["stripe_price_id"], p["stripe_product_id"]) == (12900, "price_new", "prod_new")
-    assert p["stripe_extra_price_id"] == "price_x_new", "the extras Price is made on the same save, on the same Product"
+    assert p["stripe_extra_price_id"] == "price_x_new", "the extras Price is made on the same save"
+    assert p["stripe_extra_product_id"] == "prod_x_new", "and on a Product of its own, so the bill reads right"
     assert r.json()["subscribers_on_old_price"] == 1
     names = [c[0] for c in fake.calls]
-    assert names[:3] == ["Product.create", "Price.create", "Price.create"] and ("Price.modify", "price_old", {"active": False}) in fake.calls
+    # the base pair, then the extras pair — the extras line is named after
+    # a Product of its own so a bill does not print "Pro" twice
+    assert names[:4] == ["Product.create", "Price.create", "Product.create", "Price.create"]
+    assert ("Price.modify", "price_old", {"active": False}) in fake.calls
     assert fake.calls[1][1]["unit_amount"] == 12900 and fake.calls[1][1]["idempotency_key"].startswith("plan-price:pro:12900:")
-    assert fake.calls[2][1]["unit_amount"] == 299 and fake.calls[2][1]["product"] == "prod_new"
-    assert fake.calls[2][1]["metadata"] == {"tier": "pro", "kind": "extra"}
+    assert fake.calls[2][1]["name"] == "Pro — extra trucks"
+    assert fake.calls[3][1]["unit_amount"] == 299 and fake.calls[3][1]["product"] == "prod_x_new"
+    assert fake.calls[3][1]["metadata"] == {"tier": "pro", "kind": "extra"}
     # a pasted price id is refused in Stripe mode — the Price is made on save, never set by hand
     r = await s["client"].put("/api/system/plans/pro", headers=s["op"],
                               json={"label": "Pro", "included": ["*"], "quotas": {}, "stripe_price_id": "price_pasted"})
@@ -423,3 +432,31 @@ async def test_a_save_against_the_other_modes_ids_says_which_runbook_step_fixes_
     assert r.status_code == 409, r.text
     assert "other Stripe mode" in r.json()["detail"] and "4b step 2" in r.json()["detail"]
     assert (await s["db"].get_plan("pro"))["stripe_extra_price_id"] == "", "nothing was written"
+
+
+@pytest.mark.asyncio
+async def test_renaming_a_plan_carries_the_new_name_onto_the_customers_invoice(system_app, monkeypatch):
+    """The words on a checkout page and an invoice live on the Stripe
+    Product.  A plan renamed here kept its old name there — the customer
+    paid for "Gold" long after the console said "Premier"."""
+    s = system_app
+    monkeypatch.setenv("BILLING_PROVIDER", "stripe")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    import capabilities.platform.billing as _b
+    monkeypatch.setattr(_b, "_provider", None)
+    fake = _fake_stripe()
+    monkeypatch.setattr("capabilities.platform.billing.stripe_client._stripe", lambda: fake)
+    await s["db"].upsert_plan("gold", label="Gold", included=["*"], price_monthly_cents=15000,
+                              extra_vehicle_cents=499, stripe_price_id="price_g",
+                              stripe_product_id="prod_g", stripe_extra_price_id="price_gx",
+                              stripe_extra_product_id="prod_gx")
+    r = await s["client"].put("/api/system/plans/gold", headers=s["op"],
+                              json={"label": "Premier", "included": ["*"], "quotas": {}})
+    assert r.status_code == 200, r.text
+    renames = [(c[1], c[2]["name"]) for c in fake.calls if c[0] == "Product.modify"]
+    assert renames == [("prod_g", "Premier"), ("prod_gx", "Premier — extra trucks")]
+    # saving without changing the label renames nothing
+    n = len([c for c in fake.calls if c[0] == "Product.modify"])
+    await s["client"].put("/api/system/plans/gold", headers=s["op"],
+                          json={"label": "Premier", "included": ["*"], "quotas": {}})
+    assert len([c for c in fake.calls if c[0] == "Product.modify"]) == n

@@ -55,6 +55,8 @@ class FakeStripe:
         class Product:
             @staticmethod
             def create(**kw): fake.calls.append(("Product.create", kw)); return {"id": "prod_created"}
+            @staticmethod
+            def modify(pid, **kw): fake.calls.append(("Product.modify", pid, kw)); return {"id": pid, **kw}
 
         class Subscription:
             @staticmethod
@@ -296,25 +298,50 @@ async def test_preview_counts_from_our_tables_and_names_the_open_rollout():
 
 X_PRICE = {"id": "price_x_new", "active": True, "unit_amount": 349, "currency": "usd",
            "recurring": {"interval": "month", "interval_count": 1}, "metadata": {"tier": "starter", "kind": "extra"}}
-PLAN_X = {**PLAN, "extra_vehicle_cents": 349, "stripe_extra_price_id": "price_x_new"}
+PLAN_X = {**PLAN, "extra_vehicle_cents": 349, "stripe_extra_price_id": "price_x_new",
+          "stripe_extra_product_id": "prod_x_1"}
 
 
-def test_the_extras_price_is_made_on_the_same_product_and_says_what_it_is():
+def test_the_extras_price_gets_a_product_of_its_own_that_says_what_the_line_is():
+    """Stripe names a checkout line and an invoice line after its
+    PRODUCT.  Sharing the plan's Product printed the plan's name twice —
+    "Gold x1 $150.00" over "Gold x102 $4.99 each" — with nothing saying
+    which one was the trucks."""
     st = FakeStripe({})
     out = R.ensure_extra_price(st, tier="starter", label="Starter", cents=349, before=PLAN)
-    assert out == {"stripe_extra_price_id": "price_created", "stripe_product_id": "prod_1", "archived": ""}
-    assert [c[0] for c in st.calls] == ["Price.create"], "the Product the base Price hangs off is reused"
-    kw = st.calls[0][1]
-    assert kw["product"] == "prod_1" and kw["unit_amount"] == 349 and kw["recurring"] == {"interval": "month"}
+    assert out == {"stripe_extra_price_id": "price_created",
+                   "stripe_extra_product_id": "prod_created", "archived": ""}
+    assert [c[0] for c in st.calls] == ["Product.create", "Price.create"], "its own Product, not the base one's"
+    prod_kw, kw = st.calls[0][1], st.calls[1][1]
+    assert prod_kw["name"] == "Starter — extra trucks", "the words the customer reads on their bill"
+    assert prod_kw["metadata"] == {"tier": "starter", "kind": "extra"}
+    assert prod_kw["idempotency_key"] == "plan-extra-product:starter"
+    assert kw["product"] == "prod_created" and kw["unit_amount"] == 349 and kw["recurring"] == {"interval": "month"}
     assert kw["metadata"] == {"tier": "starter", "kind": "extra"}, "the item is known for what it is, even archived"
     assert kw["lookup_key"] == "4truck_starter_extra"
     assert kw["idempotency_key"] == "plan-extra-price:starter:349:2026-09-11T10:00:00+00:00"
-    # a second save at another amount hands the old one back to be archived
-    out2 = R.ensure_extra_price(FakeStripe({}), tier="starter", label="Starter", cents=399, before=PLAN_X)
-    assert out2["archived"] == "price_x_new"
+    # a plan that already has an extras Product reuses it
+    st2 = FakeStripe({})
+    out2 = R.ensure_extra_price(st2, tier="starter", label="Starter", cents=399, before=PLAN_X)
+    assert out2["archived"] == "price_x_new" and out2["stripe_extra_product_id"] == "prod_x_1"
+    assert [c[0] for c in st2.calls] == ["Price.create"]
     # no extra truck billed: no Price, and the one it had goes
     assert R.ensure_extra_price(FakeStripe({}), tier="starter", label="Starter", cents=0, before=PLAN_X) == \
-        {"stripe_extra_price_id": "", "stripe_product_id": "prod_1", "archived": "price_x_new"}
+        {"stripe_extra_price_id": "", "stripe_extra_product_id": "prod_x_1", "archived": "price_x_new"}
+
+
+def test_a_renamed_plan_carries_the_new_name_onto_both_products():
+    """The name on a customer's invoice lives on the Stripe Product, so a
+    plan renamed here used to keep its old name there forever."""
+    st = FakeStripe({})
+    done = R.rename_products(st, label="Gold Plus", base_product_id="prod_1", extra_product_id="prod_x_1")
+    assert done == ["prod_1", "prod_x_1"]
+    assert [(c[0], c[1], c[2]["name"]) for c in st.calls] == [
+        ("Product.modify", "prod_1", "Gold Plus"),
+        ("Product.modify", "prod_x_1", "Gold Plus — extra trucks"),
+    ]
+    # a plan with no Products yet has nothing to rename
+    assert R.rename_products(FakeStripe({}), label="X", base_product_id="", extra_product_id="") == []
 
 
 @pytest.mark.asyncio

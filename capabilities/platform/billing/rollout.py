@@ -104,15 +104,21 @@ def ensure_extra_price(stripe, *, tier: str, label: str, cents: int, before: dic
     ``metadata.kind = "extra"`` so a subscription item on it is known
     for what it is even after the Price is archived by a later save —
     the window a rollout leaves not-yet-moved subscribers in.
+
+    It hangs off its OWN Product, named for what the line is.  Stripe
+    Checkout and every invoice name a line after its Product, so sharing
+    the plan's Product printed the plan's name twice — "Gold ×1
+    $150.00" above "Gold ×102 $4.99 each" — with nothing on the page
+    saying the second one was the trucks.
     """
-    product_id = (before or {}).get("stripe_product_id") or ""
+    product_id = (before or {}).get("stripe_extra_product_id") or ""
     old_price = (before or {}).get("stripe_extra_price_id") or ""
     if int(cents) <= 0:
-        return {"stripe_extra_price_id": "", "stripe_product_id": product_id, "archived": old_price}
+        return {"stripe_extra_price_id": "", "stripe_extra_product_id": product_id, "archived": old_price}
     if not product_id:
         product = stripe.Product.create(
-            name=label or tier.title(), metadata={"tier": tier},
-            idempotency_key=f"plan-product:{tier}",
+            name=extra_product_name(label or tier), metadata={"tier": tier, "kind": "extra"},
+            idempotency_key=f"plan-extra-product:{tier}",
         )
         product_id = product["id"]
     stamp = str((before or {}).get("updated_at") or "")
@@ -123,7 +129,37 @@ def ensure_extra_price(stripe, *, tier: str, label: str, cents: int, before: dic
         metadata={"tier": tier, "kind": "extra"},
         idempotency_key=f"plan-extra-price:{tier}:{int(cents)}:{stamp}",
     )
-    return {"stripe_extra_price_id": price["id"], "stripe_product_id": product_id, "archived": old_price}
+    return {"stripe_extra_price_id": price["id"], "stripe_extra_product_id": product_id, "archived": old_price}
+
+
+def extra_product_name(label: str) -> str:
+    """What the extras line is called on a checkout page and an invoice.
+
+    The customer is reading their own bill: the words have to say which
+    line is the plan and which is the trucks, in that order, without a
+    glossary.  "Gold — extra trucks" beside "Gold".
+    """
+    return f"{label} — extra trucks"
+
+
+def rename_products(stripe, *, label: str, base_product_id: str, extra_product_id: str) -> list[str]:
+    """Carry a plan's new label onto the Stripe Products it already has.
+
+    A plan renamed on the console kept its old name on every future
+    invoice, because the name a customer reads lives on the Product, not
+    on our row.  Best-effort per Product: one that cannot be renamed is
+    logged and the other is still tried.
+    """
+    done = []
+    for pid, name in ((base_product_id, label), (extra_product_id, extra_product_name(label))):
+        if not pid:
+            continue
+        try:
+            stripe.Product.modify(pid, name=name)
+            done.append(pid)
+        except Exception:
+            logger.warning("could not rename Stripe product %s to %r", pid, name, exc_info=True)
+    return done
 
 
 def archive_price(stripe, price_id: str) -> bool:

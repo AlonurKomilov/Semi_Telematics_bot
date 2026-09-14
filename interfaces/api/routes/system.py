@@ -2601,6 +2601,7 @@ async def system_put_plan(
     # amount with no Price yet, makes one on the plan's Product before the
     # row is written.  One env-wide Price used to serve every plan.
     stripe_extra_price_id = None
+    stripe_extra_product_id = None
     archived_extra = ""
     extra_cents = body.extra_vehicle_cents
     if extra_cents is not None and (extra_cents != int(before.get("extra_vehicle_cents") or 0)
@@ -2616,14 +2617,14 @@ async def system_put_plan(
             raise _price_creation_failed(tier, "extras price", e)
         if not made_x.get("skipped"):
             stripe_extra_price_id = made_x.get("stripe_extra_price_id", "")
-            stripe_product_id = made_x.get("stripe_product_id") or stripe_product_id
+            stripe_extra_product_id = made_x.get("stripe_extra_product_id") or None
             archived_extra = made_x.get("archived") or ""
     row = await platform_db.upsert_plan(
         tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor,
         price_monthly_cents=body.price_monthly_cents, base_vehicles=body.base_vehicles,
         extra_vehicle_cents=body.extra_vehicle_cents,
         stripe_price_id=stripe_price_id, stripe_product_id=stripe_product_id,
-        stripe_extra_price_id=stripe_extra_price_id,
+        stripe_extra_price_id=stripe_extra_price_id, stripe_extra_product_id=stripe_extra_product_id,
         public=body.public, sort=body.sort, trial_default=body.trial_default)
     invalidate_plans()
     # A plan that becomes public has no private offers left to keep:
@@ -2648,6 +2649,18 @@ async def system_put_plan(
     for gone, kept in ((archived, row.get("stripe_price_id")), (archived_extra, row.get("stripe_extra_price_id"))):
         if gone and gone != kept and hasattr(provider, "archive_plan_price"):
             await provider.archive_plan_price(gone)
+    # The name a customer reads on a checkout page and an invoice lives on
+    # the Stripe Product, not on our row: a renamed plan kept its old name
+    # there forever.  Best-effort — the row is already saved, and a rename
+    # that fails changes no money.
+    if label != (before.get("label") or "") and hasattr(provider, "rename_plan_products"):
+        try:
+            await provider.rename_plan_products(
+                label=label,
+                base_product_id=row.get("stripe_product_id") or "",
+                extra_product_id=row.get("stripe_extra_product_id") or "")
+        except Exception:
+            logger.exception("plan %s: renamed here but not on the provider's products", tier)
     counts = await platform_db.count_accounts_by_tier()
     await _audit_plan(platform_db, "plan.updated", tier=tier, actor=actor, before=before, row=row, accounts=counts.get(tier, 0))
     logger.info("system: plan %s saved by %s (%d account(s))", tier, actor, counts.get(tier, 0))

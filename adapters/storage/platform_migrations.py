@@ -5087,6 +5087,10 @@ async def migrate_plan_extra_price(conn) -> None:
     try:
         await conn.execute(
             "ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_extra_price_id TEXT NOT NULL DEFAULT ''")
+        # the extras line's own Product — a Stripe line is named after its
+        # Product, so sharing the base one printed the plan's name twice
+        await conn.execute(
+            "ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_extra_product_id TEXT NOT NULL DEFAULT ''")
     except Exception:
         # Boot must not fail for this: without the column the plan
         # parser reads '' and checkout refuses a priced extras line

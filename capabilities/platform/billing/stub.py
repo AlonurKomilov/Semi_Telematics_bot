@@ -84,6 +84,9 @@ class StubBillingProvider:
     async def create_extra_price(self, *, tier: str, label: str, cents: int, before: dict) -> dict:
         return {"skipped": "stub"}
 
+    async def rename_plan_products(self, *, label: str, base_product_id: str, extra_product_id: str) -> list[str]:
+        return []
+
     async def archive_plan_price(self, price_id: str) -> bool:
         return False
 

@@ -118,7 +118,10 @@ a sandbox Price and Stripe would refuse it. Before swapping the keys:
    rebuilt at boot).
 5. Plans page → Save each priced plan once more ("Create Stripe price"
    is lit on each): the row has no ids, so the Save creates the live
-   Product, the base Price and the extras Price. Until a plan is saved,
+   Product, the base Price, and a Product and Price for the extra truck
+   — its own Product because Stripe names a checkout line and an
+   invoice line after the Product, and one shared between them printed
+   the plan's name twice. Until a plan is saved,
    its checkout refuses rather than bill at another plan's amount, and
    the wiring card says which plan is waiting.
 6. One real checkout on your own account with a real card, then refund

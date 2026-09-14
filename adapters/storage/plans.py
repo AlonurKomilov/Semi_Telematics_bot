@@ -45,8 +45,10 @@ def _row(r) -> dict:
         "trial_default": bool(_int("trial_default")),
         # the Stripe Product this plan's Prices hang off
         "stripe_product_id": str(r["stripe_product_id"] or "") if "stripe_product_id" in keys else "",
-        # the per-extra-truck Price on that Product (made on save, like the base)
+        # the per-extra-truck Price, and the Product it is named after on
+        # the customer's invoice (both made on save, like the base pair)
         "stripe_extra_price_id": str(r["stripe_extra_price_id"] or "") if "stripe_extra_price_id" in keys else "",
+        "stripe_extra_product_id": str(r["stripe_extra_product_id"] or "") if "stripe_extra_product_id" in keys else "",
         "updated_at": r["updated_at"], "updated_by": r["updated_by"],
     }
 
@@ -77,7 +79,7 @@ class PlansMixin:
         extra_vehicle_cents: Optional[int] = None, stripe_price_id: Optional[str] = None,
         public: Optional[bool] = None, sort: Optional[int] = None,
         trial_default: Optional[bool] = None, stripe_product_id: Optional[str] = None,
-        stripe_extra_price_id: Optional[str] = None,
+        stripe_extra_price_id: Optional[str] = None, stripe_extra_product_id: Optional[str] = None,
     ) -> dict:
         """Create or replace a plan.  Label, included and quotas are always
         written; a catalog field left ``None`` keeps the row's value (or the
@@ -89,14 +91,15 @@ class PlansMixin:
         await self._db.execute(
             "INSERT INTO plans (tier, label, included, quotas, price_monthly_cents, base_vehicles, "
             "extra_vehicle_cents, stripe_price_id, public, sort, trial_default, stripe_product_id, "
-            "stripe_extra_price_id, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "stripe_extra_price_id, stripe_extra_product_id, updated_at, updated_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(tier) DO UPDATE SET label = excluded.label, included = excluded.included, "
             "quotas = excluded.quotas, price_monthly_cents = excluded.price_monthly_cents, "
             "base_vehicles = excluded.base_vehicles, extra_vehicle_cents = excluded.extra_vehicle_cents, "
             "stripe_price_id = excluded.stripe_price_id, public = excluded.public, sort = excluded.sort, "
             "trial_default = excluded.trial_default, stripe_product_id = excluded.stripe_product_id, "
             "stripe_extra_price_id = excluded.stripe_extra_price_id, "
+            "stripe_extra_product_id = excluded.stripe_extra_product_id, "
             "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
             (tier, label, json.dumps(list(included)), json.dumps(quotas or {}),
              int(pick(price_monthly_cents, "price_monthly_cents", 0)),
@@ -108,6 +111,7 @@ class PlansMixin:
              1 if pick(trial_default, "trial_default", False) else 0,
              str(pick(stripe_product_id, "stripe_product_id", "") or ""),
              str(pick(stripe_extra_price_id, "stripe_extra_price_id", "") or ""),
+             str(pick(stripe_extra_product_id, "stripe_extra_product_id", "") or ""),
              now, updated_by),
         )
         # one plan carries the trial: flagging this one un-flags the rest
