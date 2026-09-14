@@ -261,21 +261,10 @@ def test_every_raw_vehicles_read_declares_its_stance_on_retired_rows():
 # customer layer already owns, or take a closure the system layer hands
 # down at startup — and the second test here refuses to let an entry
 # outlive its seam.  This list only shrinks.
-#
-# One seam this guard cannot see: ``capabilities/data_lifecycle/retention``
-# names ``system.security.retention`` as a STRING contributor and imports
-# it lazily by name.  It is upward all the same; the inversion (the
-# system layer registering its contributor at startup) is owed, and a
-# guard on that registry's contents will say so when it lands.
-GRANDFATHERED_SYSTEM_IMPORTERS = {
-    "adapters/storage/applications.py":
-        "the recruiter-link resolver asks whether the account is held",
-    "adapters/storage/carrier_directory.py":
-        "the carrier-intake resolver asks whether the account is held",
-    "capabilities/notifications/service.py":
-        "delivery drops held recipients and reroutes them to the owner",
-    "features/applications/router.py":
-        "the public status check asks whether the account is held",
+GRANDFATHERED_SYSTEM_IMPORTERS: dict[str, str] = {
+    # Empty since every seam was inverted onto ``infra.policy`` slots the
+    # system layer fills at boot.  It stays a dict, not a deletion: the
+    # next upward import lands HERE with its reason, or not at all.
 }
 
 

@@ -21,10 +21,16 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
 def _fresh(monkeypatch):
-    Q.forget()
+    """The customer layers ask ``infra.policy``; the system layer fills
+    those slots at boot.  These tests exercise the hold THROUGH the
+    customer layers, so they install what the entrypoints install."""
+    from system import bootstrap
+    Q.forget(); Q.forget_account()
     monkeypatch.setenv("QUARANTINE_ENFORCEMENT_ENABLED", "1")
+    bootstrap.reset_for_tests(); bootstrap.install()
     yield
-    Q.forget()
+    bootstrap.reset_for_tests()
+    Q.forget(); Q.forget_account()
 
 
 # ── the switch ────────────────────────────────────────────────────

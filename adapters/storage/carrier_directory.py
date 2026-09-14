@@ -212,20 +212,18 @@ class CarrierDirectoryMixin(_MixinBase):
         return profile
 
     async def _carrier_account_is_held(self, account_id) -> bool:
-        """Whether this intake link's account is held.  Fails open."""
+        """Whether this link's account is held.
+
+        Asked of ``infra.policy`` — the slot the system layer fills at
+        boot — never of the system layer itself: this adapter must not
+        know its watcher's name, or it can never run without it on a
+        machine of its own.  With no system layer installed the answer
+        is "no", and the slot fails open on any fault.
+        """
         if not account_id:
             return False
-        try:
-            from system.security import quarantine
-            if not quarantine.enabled():
-                return False
-            return await quarantine.is_account_held(int(account_id))
-        except Exception:
-            import logging
-            logging.getLogger(__name__).warning(
-                "quarantine: carrier-intake check failed for account %s — "
-                "serving the link", account_id, exc_info=True)
-            return False
+        from infra import policy
+        return await policy.account_held(int(account_id))
 
     async def submit_carrier_intake(
         self, profile_id: int, *, website: str, video_url: str,

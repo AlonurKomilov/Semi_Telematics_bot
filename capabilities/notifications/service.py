@@ -296,17 +296,13 @@ async def _account_is_held(account_id: int) -> bool:
     the trucks' history of a company that may well turn out innocent —
     a cost they carry forever for a review that took an afternoon.
 
-    Fails open, like every reader of this standing.
+    Asked of ``infra.policy`` — the slot the system layer fills at boot
+    — never of the system layer itself: the spine is source-blind, and a
+    spine that knows its watcher's module name cannot run without it.
+    The slot fails open.
     """
-    try:
-        from system.security import quarantine
-        if not quarantine.enabled():
-            return False
-        return await quarantine.is_account_held(account_id)
-    except Exception:
-        logger.warning("dispatch: account hold check failed for %s — "
-                       "delivering", account_id, exc_info=True)
-        return False
+    from infra import policy
+    return await policy.account_held(account_id)
 
 
 async def _reroute_quarantined(db, account_id: int, subs: list[dict],
@@ -335,9 +331,7 @@ async def _reroute_quarantined(db, account_id: int, subs: list[dict],
     Fail-open, like every predicate in this module: a standing we cannot
     read keeps the recipient.
     """
-    from system.security import quarantine
-    if not quarantine.enabled():
-        return subs
+    from infra import policy
 
     kept: list[dict] = []
     dropped: list[int] = []
@@ -347,13 +341,9 @@ async def _reroute_quarantined(db, account_id: int, subs: list[dict],
             kept.append(s)
             continue
         uid = int(rid)
-        try:
-            if await quarantine.is_held(uid):
-                dropped.append(uid)
-                continue
-        except Exception:
-            logger.warning("dispatch: quarantine check failed for user %s "
-                           "— keeping the recipient", uid, exc_info=True)
+        if await policy.user_held(uid):          # fails open inside the slot
+            dropped.append(uid)
+            continue
         kept.append(s)
 
     if not dropped:

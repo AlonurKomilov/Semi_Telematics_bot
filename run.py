@@ -113,6 +113,11 @@ async def main():
 
     # ── 1. Platform infrastructure (always required) ─────────────
     await infra.startup.initialize()
+    # The system layer hands its hold policies and the ledger's retention
+    # rules DOWN to the customer layers here — from the entrypoint, which
+    # may import ``system``; the layers it wires may not.
+    from system import bootstrap as _system
+    _system.install()
 
     # ── Graceful shutdown wiring ─────────────────────────────────
     stop_event = asyncio.Event()

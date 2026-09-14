@@ -719,13 +719,11 @@ async def check_application_status(
     # stop — answered with the same "not found" an unknown reference
     # gets, so nobody outside learns that a review is open.
     if row is not None:
-        from system.security import quarantine
-        try:
-            if await quarantine.delivery_blocked(row.get("account_id")):
-                row = None
-        except Exception:
-            logger.warning("quarantine: status check failed for account %s — "
-                           "answering", row.get("account_id"), exc_info=True)
+        # Asked of the slot the system layer fills at boot, never of the
+        # system layer itself; fails open inside the slot.
+        from infra import policy
+        if await policy.account_held(row.get("account_id")):
+            row = None
     if not row:
         return {"found": False}
     return {"found": True, "status": row.get("status"), "submitted_at": row.get("submitted_at")}
