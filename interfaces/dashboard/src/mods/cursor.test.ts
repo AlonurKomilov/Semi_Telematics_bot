@@ -153,13 +153,21 @@ describe('the pack out-ranks the utilities it replaces', () => {
     // nobody covers is a cursor that stays the OS one while the rest
     // of the screen has changed.
     const used = new Set<string>();
+    /** Written behind a variant. The pack cannot reach these at all. */
+    const prefixed = new Set<string>();
     const walk = (d: string) => {
       for (const e of readdirSync(d)) {
         const f = join(d, e);
         if (statSync(f).isDirectory()) { walk(f); continue; }
         if (!/\.tsx?$/.test(f) || f.includes('.test.')) continue;
         const code = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-        for (const m of code.matchAll(/\bcursor-([a-z-]+)\b/g)) used.add(m[1]);
+        // NOT preceded by a variant prefix. Tailwind compiles
+        // `disabled:cursor-not-allowed` to a class token of that exact
+        // name, which `.cursor-not-allowed` cannot match — so counting
+        // it here reported a cursor as ANSWERED that the pack can never
+        // reach. That was this guard certifying its own blind spot.
+        for (const m of code.matchAll(/(^|[^\w:-])cursor-([a-z-]+)\b/g)) used.add(m[2]);
+        for (const m of code.matchAll(/[\w-]+:cursor-([a-z-]+)\b/g)) prefixed.add(m[1]);
       }
     };
     walk(SRC);
@@ -169,5 +177,29 @@ describe('the pack out-ranks the utilities it replaces', () => {
       (k) => !(CURSOR_KINDS as readonly string[]).includes(k));
     expect(uncovered.sort(), 'a cursor the app writes that no pack answers for')
       .toEqual([]);
+
+    // The blind spot, stated rather than hidden. A variant-prefixed
+    // utility is a real hole — the pack is unreachable there — and the
+    // count of them is ratcheted in `mods/coverage.test.ts` so it lives
+    // in one place. What this asserts is that the hole still EXISTS in
+    // the form we think it does: if it ever empties, the ratchet there
+    // is the thing to lower.
+    expect(prefixed.size, 'no variant-prefixed cursors found — either they were all '
+      + 'fixed (lower the pin in coverage.test.ts) or this scan stopped matching')
+      .toBeGreaterThan(0);
+  });
+
+  it('answers the arrow as a CLASS, not only by inheritance', () => {
+    // `:root` gives every element the arrow through inheritance, and an
+    // element that declares its own cursor loses it — `cursor-default`
+    // is written on thirteen elements in the product, each of them a
+    // deliberate "this is not interactive", and each was falling back
+    // to the OS pointer while everything around it wore the pack.
+    for (const pack of CUSTOM) {
+      const rules = rulesOf(pack.id);
+      expect(rules.default, `${pack.id} answers the arrow only on :root`).toBeTruthy();
+      expect(CSS, `${pack.id} has no .cursor-default rule`)
+        .toMatch(new RegExp(`:root\\[data-cursor="${pack.id}"\\] \\.cursor-default`));
+    }
   });
 });

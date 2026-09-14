@@ -11,6 +11,15 @@
   :root[data-cursor="sharp"] {
     cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Cpath d='M2 1 L2 17 L6.2 13.2 L8.8 19 L11.6 17.8 L9 12.2 L14.5 12.2 Z' stroke='%23111' stroke-width='1.5' fill='%23fff' stroke-linejoin='round'/%3E%3C/svg%3E") 2 1, auto;
   }
+  /* The SAME arrow, as a class.
+     `:root` answers the arrow by INHERITANCE, and inheritance is what an
+     element loses the moment it declares a cursor of its own — thirteen
+     sites write `cursor-default` on an element (a disabled control, a
+     non-interactive row), and every one of them was getting the OS
+     pointer back while the rest of the screen wore the pack. */
+  :root[data-cursor="sharp"] .cursor-default {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Cpath d='M2 1 L2 17 L6.2 13.2 L8.8 19 L11.6 17.8 L9 12.2 L14.5 12.2 Z' stroke='%23111' stroke-width='1.5' fill='%23fff' stroke-linejoin='round'/%3E%3C/svg%3E") 2 1, auto;
+  }
   :root[data-cursor="sharp"] .cursor-pointer {
     cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Ccircle cx='11' cy='11' r='5.5' stroke='%23111' stroke-width='1.5' fill='%23fff'/%3E%3Ccircle cx='11' cy='11' r='1.6' fill='%23111'/%3E%3C/svg%3E") 11 11, pointer;
   }

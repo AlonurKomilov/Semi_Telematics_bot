@@ -13,8 +13,8 @@
  * numbers that agrees with itself.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { WALLPAPER_AA, WALLPAPER_BASE, WALLPAPER_INK, } from './wallpaper';
 import { WALLPAPERS, WALLPAPER_IDS } from './store/items/wallpaper';
 import { assembledCss, engineCss } from '../test/stylesheet';
@@ -214,31 +214,53 @@ describe('the stylesheet answers for every pattern the list offers', () => {
 
 describe('the ground is where it can be seen', () => {
   /**
-   * The three surfaces of the chrome envelope, which AppShell's own
-   * comment names: "Sidebar, header and gutters are all `bg-sidebar` —
-   * one continuous chrome surface". Each paints the chrome colour flat,
-   * so each has to step aside for a pattern or it covers it.
+   * Every surface that paints the chrome colour, found by WALKING — not
+   * a list of two files.
    *
-   * A NAMED THREE rather than "everything that uses bg-sidebar": the
-   * assistant panel and the mobile drawer wear the same colour as
-   * panels OVER content, and making those transparent would make them
-   * see-through. The envelope is a concept, not a colour.
+   * The envelope is a concept, not a colour: AppShell's own comment
+   * names it "Sidebar, header and gutters are all `bg-sidebar` — one
+   * continuous chrome surface", and each of those must step aside with
+   * `chrome-pane` or it covers the pattern. A panel that floats OVER
+   * content wears the same colour and must NOT step aside — transparent
+   * there means see-through onto the content it is covering.
+   *
+   * So there are two right answers and the guard demands one of them.
+   * What it will not allow is a THIRD surface appearing in either
+   * bucket without anybody saying which. The old version named two
+   * files, which meant a new chrome surface anywhere else in the app
+   * was simply not looked at; the assistant dock reached the owner as
+   * "a flat slab under every wallpaper" for exactly that reason.
    *
    * This is the shape of the bug it exists for. The first version put
    * the ground UNDER the header and outside the sidebar entirely, so it
    * painted only into the 8px gutter and reached the owner as "how do I
    * see the wallpaper?".
    */
-  const CHROME = {
-    'shells/AppShell.tsx': 'the envelope and the header',
-    'components/Sidebar.tsx': 'the sidebar',
+  const OVER_CONTENT: Record<string, string> = {
+    'features/ai/AssistantPanel.tsx':
+      'the dock floats over the page, so transparency would show the page '
+      + 'through it. Its chat canvas carries `page-ground` instead, and the '
+      + 'frame half wants a `chrome-ground` of its own — not a `chrome-pane`.',
   };
 
-  it('every chrome surface steps aside for it', () => {
+  /** Every source file a chrome surface could be hiding in. */
+  const tsxFiles = (dir: string, out: string[] = []): string[] => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) {
+        if (name !== 'node_modules') tsxFiles(full, out);
+      } else if (name.endsWith('.tsx') && !name.includes('.test.')) out.push(full);
+    }
+    return out;
+  };
+
+  it('every chrome surface steps aside for it, or says why it must not', () => {
     let checked = 0;
-    for (const [file, what] of Object.entries(CHROME)) {
-      const src = readFileSync(join(__dirname, '..', file), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, '');
+    let exempted = 0;
+    const SRC = join(__dirname, '..');
+    for (const full of tsxFiles(SRC)) {
+      const rel = relative(SRC, full).split(sep).join('/');
+      const src = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
       // Each className that paints the chrome colour, on its own. The
       // three delimiters are matched separately because only the
       // delimiter ends its own value: the sidebar's class is a template
@@ -251,12 +273,21 @@ describe('the ground is where it can be seen', () => {
           "className=\\{'[^']*'\\}",
         ].join('|'), 'g',
       );
-      for (const m of src.match(CLASSNAME)?.filter((c) => /\bbg-sidebar\b/.test(c)) ?? []) {
+      // `bg-sidebar`, not `bg-sidebar-border` or `bg-sidebar-accent`.
+      // `\b` alone treats the hyphen as a boundary, so the old pattern
+      // counted a drag handle's border colour as a chrome surface.
+      const CHROME_FILL = /\bbg-sidebar(?![\w-])/;
+      for (const m of src.match(CLASSNAME)?.filter((c) => CHROME_FILL.test(c)) ?? []) {
+        if (OVER_CONTENT[rel]) { exempted++; continue; }
         checked++;
-        expect(m, `${what}: a chrome surface paints bg-sidebar and never steps aside`)
+        expect(m, `${rel}: a chrome surface paints bg-sidebar and never steps aside.\n`
+          + 'Either add `chrome-pane`, or — if it floats OVER content — add the file '
+          + 'to OVER_CONTENT above with the reason.')
           .toMatch(/\bchrome-pane\b/);
       }
     }
+    expect(exempted, 'the exemption list names a file that no longer paints the chrome')
+      .toBeGreaterThan(0);
     expect(checked, 'no chrome surfaces found — this test measures nothing')
       .toBeGreaterThanOrEqual(3);
   });
