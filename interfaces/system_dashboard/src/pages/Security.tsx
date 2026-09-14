@@ -87,6 +87,10 @@ export default function SecurityPage() {
   const [decide, setDecide] = useState<SecurityCandidate[]>([]);
   const [watching, setWatching] = useState<SecurityWatching[]>([]);
   const [watchingPeople, setWatchingPeople] = useState<SecurityWatchingPerson[]>([]);
+  /** What the detector could NOT do this pass. Kept beside the board
+   *  it qualifies: an empty 'needs a decision' from a broken detector
+   *  is not a clean one. */
+  const [detector, setDetector] = useState<{ failed: string[]; total: number }>({ failed: [], total: 0 });
   const [rules, setRules] = useState<Record<string, SecurityRule>>({});
   const [map, setMap] = useState<SecurityEndpointRow[]>([]);
   const [rows, setRows] = useState<SecurityRequestRow[]>([]);
@@ -123,6 +127,7 @@ export default function SecurityPage() {
         setDecide(b.new);
         setWatching(b.watching);
         setWatchingPeople(b.watching_people ?? []);
+        setDetector({ failed: b.failed_rules ?? [], total: b.total_rules ?? 0 });
         setRules(Object.fromEntries(ru.items.map((x) => [x.id, x])));
       })
       .catch((e: unknown) => {
@@ -299,6 +304,40 @@ export default function SecurityPage() {
 
       {err && (
         <div className="mb-3 bg-danger/10 border border-danger/40 text-danger text-sm rounded px-3 py-2">{err}</div>
+      )}
+
+      {/* The detector's own health, said where its output is read. Error
+
+          tone when nothing ran — the list below is empty because it is
+
+          broken, not clean. Warning tone when some ran — the list is real
+
+          but incomplete, and the missing rules are named by the ids the
+
+          rules panel already uses. In place, not a toast: it stays true
+
+          for as long as the rule stays broken. */}
+
+      {detector.total > 0 && detector.failed.length === detector.total && (
+
+        <div className="mb-3 bg-danger/10 border border-danger/40 text-danger text-sm rounded px-3 py-2">
+
+          The detector did not run. This list is empty because it is broken, not clean.
+
+        </div>
+
+      )}
+
+      {detector.failed.length > 0 && detector.failed.length < detector.total && (
+
+        <div className="mb-3 bg-warn/10 border border-warn/40 text-warn text-sm rounded px-3 py-2">
+
+          {detector.failed.length} of {detector.total} rules did not run
+
+          ({detector.failed.map((id) => rules[id]?.label ?? id).join(', ')}). This list is incomplete.
+
+        </div>
+
       )}
 
       {/* ── 1. Needs a decision ──────────────────────────────── */}

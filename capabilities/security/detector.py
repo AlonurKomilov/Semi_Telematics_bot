@@ -443,7 +443,53 @@ ALL_RULES = (
 )
 
 
+def _rule_id(rule) -> str:
+    """The console id of a rule function: ``rule_signup_burst`` names
+    ``RULES["signup_burst"]``.  One derivation, checked once at import,
+    so a failed rule is reported under the same name the page already
+    labels it with — never a Python function name."""
+    return rule.__name__.removeprefix("rule_")
+
+
+for _r in ALL_RULES:
+    assert _rule_id(_r) in RULES, f"{_r.__name__} has no RULES entry"
+del _r
+
+
+@dataclass(frozen=True)
+class DetectorRun:
+    """One pass of the detector, with what it could NOT do said out loud.
+
+    A rule that fails silently is how "nothing suspicious" and "the
+    detector is broken" become the same output — the first run of this
+    module returned zero candidates because every rule was raising
+    against a mistyped handle.  So the failures travel WITH the result,
+    as a return value rather than a log line, because a caller cannot
+    forget to read a return value the way it can forget to read a log.
+    """
+    candidates: list[dict]
+    failed_rules: tuple[str, ...]        # console ids, ALL_RULES order
+    total_rules: int
+
+    @property
+    def broken(self) -> bool:
+        """Every rule failed: the empty list means broken, not clean."""
+        return bool(self.failed_rules) and len(self.failed_rules) == self.total_rules
+
+    @property
+    def partial(self) -> bool:
+        """Some rules failed: the list is real but incomplete."""
+        return bool(self.failed_rules) and not self.broken
+
+
 async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
+    """The ranked candidates only.  Callers that must tell a clean
+    result from a broken detector — the nightly watch, the console page
+    — use :func:`run_detector` and read ``failed_rules``."""
+    return (await run_detector(db, hours=hours)).candidates
+
+
+async def run_detector(db, *, hours: int = 24 * 7) -> DetectorRun:
     """Run every rule, group hits into ranked candidates.
 
     Grouped by account when the signal names one; otherwise by IP, so a
@@ -465,8 +511,10 @@ async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
             # and "the detector is broken" become the same output.  The
             # first run of this module returned zero candidates because
             # all eight rules were raising against a mistyped handle, and
-            # the swallow made that look like a clean result.
-            failed.append(rule.__name__)
+            # the swallow made that look like a clean result.  The log
+            # line stays (ops read it); the RETURN carries it too, so a
+            # caller cannot mistake this pass for a clean one.
+            failed.append(_rule_id(rule))
             logger.warning("security detector: rule %s failed: %s", rule.__name__, e)
     if failed and len(failed) == len(ALL_RULES):
         logger.error(
@@ -556,7 +604,11 @@ async def find_candidates(db, *, hours: int = 24 * 7) -> list[dict]:
     cands = {k: c for k, c in cands.items() if not _ours_and_quiet(c)}
 
     ranked = sorted(cands.values(), key=lambda c: (c.weight, len(c.signals)), reverse=True)
-    return [_as_dict(c) for c in ranked]
+    return DetectorRun(
+        candidates=[_as_dict(c) for c in ranked],
+        failed_rules=tuple(failed),
+        total_rules=len(ALL_RULES),
+    )
 
 
 def _as_dict(c: Candidate) -> dict[str, Any]:

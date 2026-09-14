@@ -657,6 +657,12 @@ export interface SecurityBoard {
   watching_people: SecurityWatchingPerson[];
   count: number;
   hours: number;
+  /** Rules that could NOT run this pass, by the same ids /security/rules
+   *  labels. An empty board from a detector whose every rule failed is
+   *  broken, not clean — and a page that cannot tell the two apart
+   *  shows "nothing suspicious" on the night it matters most. */
+  failed_rules: string[];
+  total_rules: number;
 }
 
 export interface SecurityEndpointRow {

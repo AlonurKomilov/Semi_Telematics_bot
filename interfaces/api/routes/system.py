@@ -1259,6 +1259,16 @@ async def operator_set_user_security(
         told = await quarantine.tell_the_owner(
             platform_db, account_id=target.account_id,
             person=target, ended=ended)
+    elif body.security == "monitored" and previous == "normal":
+        # Closer watch on one person, by an operator's hand. The owner
+        # is told — when the switch is on, which it is not by default —
+        # because a taken-over login is something only the customer can
+        # fix quickly, and a platform that noticed and said nothing has
+        # kept a secret from the one party with standing to act. Never
+        # from the detector's hand: see owner_notice for why.
+        from capabilities.security import owner_notice
+        told = await owner_notice.tell_owner(
+            platform_db, account_id=target.account_id, person=target)
 
     logger.info(
         "system: user security user=%s %s -> %s operator_tg=%s sessions_ended=%s",
@@ -1818,11 +1828,19 @@ async def security_candidates(
     patient probe spreads over days and only reads as one story at that
     range.
     """
-    from capabilities.security.detector import board, find_candidates
-    items = await find_candidates(platform_db, hours=hours)
+    from capabilities.security.detector import board, run_detector
+    run = await run_detector(platform_db, hours=hours)
+    items = run.candidates
     arranged = board(items)
     return {
         "items": items, "count": len(items), "hours": hours,
+        # What the detector could NOT do, said with the result. An empty
+        # list from a detector whose every rule failed is broken, not
+        # clean, and a page that cannot tell the two apart shows an
+        # operator "nothing suspicious" on the night it matters most.
+        # Ids, not function names — the same ids /security/rules labels.
+        "failed_rules": list(run.failed_rules),
+        "total_rules": run.total_rules,
         # what needs a decision (bursts folded) / what the rules still say
         # about accounts already watched — the page's two questions.
         "new": arranged["new"], "watching": arranged["watching"],

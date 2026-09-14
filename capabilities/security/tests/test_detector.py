@@ -538,3 +538,51 @@ async def test_a_reset_flood_names_the_mailbox_being_flooded(seeded_db):
     assert "reset_flood" in row["rules"]
     assert (user.id, "flooded@premiertruckinggroup.com") in {
         (p["user_id"], p["email"]) for p in row["people"]}
+
+
+# ── failure travels with the result, not only in the log ─────────
+
+async def _boom(handle, hours):
+    raise RuntimeError("boom")
+
+
+async def test_a_failed_rule_is_named_in_the_result_by_its_console_id(seeded_db, monkeypatch):
+    """The page labels rules by RULES id (/security/rules); a failed one
+    must be reported under the same name, never a function name."""
+    from capabilities.security import detector as D
+    broken = _boom
+    broken.__name__ = "rule_signup_burst"
+    monkeypatch.setattr(D, "ALL_RULES", (broken, *D.ALL_RULES[1:]))
+    run = await D.run_detector(seeded_db["db"], hours=24)
+    assert run.failed_rules == ("signup_burst",)
+    assert run.total_rules == len(D.ALL_RULES)
+    assert run.partial is True and run.broken is False
+    assert isinstance(run.candidates, list)
+
+
+async def test_every_rule_failing_is_broken_in_the_result(seeded_db, monkeypatch):
+    from capabilities.security import detector as D
+    fakes = []
+    for r in D.ALL_RULES:
+        async def f(handle, hours, _n=r.__name__):
+            raise RuntimeError(_n)
+        f.__name__ = r.__name__
+        fakes.append(f)
+    monkeypatch.setattr(D, "ALL_RULES", tuple(fakes))
+    run = await D.run_detector(seeded_db["db"], hours=24)
+    assert run.broken is True and run.partial is False
+    assert run.candidates == []
+    assert set(run.failed_rules) == set(D.RULES)
+
+
+async def test_find_candidates_is_the_same_list(seeded_db):
+    from capabilities.security import detector as D
+    run = await D.run_detector(seeded_db["db"], hours=24)
+    assert await D.find_candidates(seeded_db["db"], hours=24) == run.candidates
+
+
+def test_every_rule_has_a_console_id_and_the_order_matches():
+    """The guard at import is the real one; this makes it a test that
+    fails in CI rather than an AssertionError at boot."""
+    from capabilities.security import detector as D
+    assert [D._rule_id(r) for r in D.ALL_RULES] == list(D.RULES)

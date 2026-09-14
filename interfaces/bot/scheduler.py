@@ -109,6 +109,7 @@ _JOB_META = {
     # with no section — which is the shape a reader skips.
     "machinery_watchdog":             ("Accounts & system", "Alert when a job stops stamping its heartbeat — the layer the schedulerless nights proved was missing"),
     "bot_health_daily":               ("Accounts & system", "Probe every bot's delivery path and report what a group can actually receive"),
+    "security_watch_nightly":         ("Accounts & system", "Run the security detector over the last day and Telegram the operators what is worth looking at — promotes nothing"),
     "warehouse_catalog_comments":     ("Accounts & system", "Stamp the warehouse tables with what they hold (one-shot at boot, idempotent)"),
 }
 
@@ -321,6 +322,16 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # report, and notifies the account's admins on NEW breakage only.
     # 13:35 UTC = US morning — a 2s "typing…" flicker from the topic
     # probes lands when the groups are awake anyway.
+    # Security watch: the detector, running when nobody has the page
+    # open.  06:00 UTC = the operator's morning; the message lands
+    # before the day starts rather than during it.  It never promotes
+    # anyone — that stays a person's click.
+    from capabilities.security.watch import job_security_watch
+    scheduler.add_job(
+        job_security_watch, "cron",
+        hour=6, minute=5, args=[app], id="security_watch_nightly",
+        max_instances=1, coalesce=True,
+    )
     from capabilities.notifications.bot_health import job_bot_health_daily
     scheduler.add_job(
         job_bot_health_daily, "cron",
