@@ -44,6 +44,27 @@ def _tier_price_id(tier: str) -> str:
     return os.getenv(f"STRIPE_PRICE_{tier.upper()}", "")
 
 
+def _field(obj, name: str, default=None):
+    """Read *name* off a Stripe SDK object or a plain dict.
+
+    The SDK's objects expose attributes and ``[...]`` but NOT ``.get`` —
+    ``StripeObject`` is not a dict subclass, and its ``__getattr__``
+    turns an unknown name into ``AttributeError: get``.  Every test fake
+    in this package is a dict, which does have ``.get``, so a handler
+    written with ``.get`` passed the suite and raised against real
+    Stripe: the webhook dropped every event (a customer paid and their
+    plan never moved), the rollout refused to run, and a live
+    subscriber's plan switch crashed.  One reader, used for anything
+    that came back from Stripe.
+    """
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    try:
+        return obj[name]
+    except (KeyError, TypeError, AttributeError):
+        return getattr(obj, name, default)
+
+
 def _extra_vehicle_price_id() -> str:
     """The env-wide per-extra-vehicle Price — LEGACY.  Every plan now
     carries its own (``plans.stripe_extra_price_id``, made on save);
@@ -353,9 +374,9 @@ class StripeBillingProvider:
             _obs.record_billing_webhook("unknown", "invalid_signature")
             raise ValueError("Invalid webhook signature") from e
 
-        event_id = event.get("id", "")
-        event_type = event.get("type", "")
-        data = event.get("data", {}).get("object", {})
+        event_id = _field(event, "id", "")
+        event_type = _field(event, "type", "")
+        data = _field(_field(event, "data", {}) or {}, "object", {}) or {}
 
         # Resolve account_id from the event.  Checkout sessions carry
         # ``metadata.account_id`` (we set it when creating the session);
@@ -388,14 +409,14 @@ class StripeBillingProvider:
             logger.warning(
                 "Stripe webhook %s could not be matched to an account "
                 "(customer=%s subscription=%s); acknowledging without action",
-                event_type, data.get("customer", ""), data.get("subscription", ""),
+                event_type, _field(data, "customer", ""), _field(data, "subscription", ""),
             )
             _obs.record_billing_webhook(event_type, "unmatched")
             return {"handled": False, "event_type": event_type}
 
         if event_type == "checkout.session.completed":
-            tier = (data.get("metadata") or {}).get("tier", "starter")
-            sub_id = data.get("subscription", "")
+            tier = _field(_field(data, "metadata", {}) or {}, "tier", "starter")
+            sub_id = _field(data, "subscription", "")
             pricing = await db.pricing_for(tier)
             # Pull the line-item ids so ``sync_billing_quantity`` can
             # PATCH the extras quantity later.  The checkout session
@@ -440,9 +461,9 @@ class StripeBillingProvider:
             )
 
         elif event_type == "customer.subscription.updated":
-            status = data.get("status", "active")
-            period_start = data.get("current_period_start")
-            period_end   = data.get("current_period_end")
+            status = _field(data, "status", "active")
+            period_start = _field(data, "current_period_start")
+            period_end   = _field(data, "current_period_end")
             updates = {
                 "status": status,
                 "current_period_start": str(period_start) if period_start else None,
@@ -483,7 +504,7 @@ class StripeBillingProvider:
             # be mid-write.
             if row and not (row.get("provider_extra_item_id") or ""):
                 if slots["base"]["id"] or slots["extra"]["id"]:
-                    tier = moved_to or (data.get("metadata") or {}).get("tier") or row.get("tier") or "free"
+                    tier = moved_to or _field(_field(data, "metadata", {}) or {}, "tier") or row.get("tier") or "free"
                     pricing = await db.pricing_for(tier)
                     updates.update(self._priced_updates(tier, pricing, slots))
                     if slots["base"]["id"]:
@@ -516,7 +537,7 @@ class StripeBillingProvider:
                 logger.info("Payment recovered, account=%s back to active", account_id)
                 await self._safe_notify(
                     "payment_recovered", _notify_payment_recovered,
-                    account_id, int(data.get("amount_paid", 0) or 0),
+                    account_id, int(_field(data, "amount_paid", 0) or 0),
                 )
 
         elif event_type == "invoice.payment_failed":
@@ -528,8 +549,8 @@ class StripeBillingProvider:
             await self._safe_notify(
                 "payment_failed", _notify_payment_failed,
                 account_id,
-                int(data.get("amount_due", 0) or 0),
-                data.get("hosted_invoice_url", "") or "",
+                int(_field(data, "amount_due", 0) or 0),
+                _field(data, "hosted_invoice_url", "") or "",
             )
 
         _obs.record_billing_webhook(event_type, "processed")
@@ -568,29 +589,22 @@ class StripeBillingProvider:
         id as "not configured yet" and skip the corresponding sync.
         """
         slots: dict = {"base": {"id": ""}, "extra": {"id": ""}}
-        items = (stripe_sub.get("items") or {}).get("data") if isinstance(stripe_sub, dict) else None
-        if items is None and hasattr(stripe_sub, "items"):
-            try:
-                items = stripe_sub["items"]["data"]
-            except (KeyError, TypeError):
-                items = []
+        items = _field(_field(stripe_sub, "items", {}) or {}, "data") or []
         extras_price = _extra_vehicle_price_id()
-        for item in (items or []):
-            price = item.get("price") or {}
-            if not isinstance(price, dict):
-                price = {}
-            rec = price.get("recurring") or {}
+        for item in items:
+            price = _field(item, "price", {}) or {}
+            rec = _field(price, "recurring", {}) or {}
             slot = {
-                "id": item.get("id", ""),
-                "price_id": price.get("id", ""),
-                "unit_amount": price.get("unit_amount"),
-                "interval": (rec.get("interval") if isinstance(rec, dict) else None),
-                "interval_count": (rec.get("interval_count") if isinstance(rec, dict) else None),
-                "currency": price.get("currency"),
-                "quantity": item.get("quantity"),
+                "id": _field(item, "id", ""),
+                "price_id": _field(price, "id", ""),
+                "unit_amount": _field(price, "unit_amount"),
+                "interval": _field(rec, "interval"),
+                "interval_count": _field(rec, "interval_count"),
+                "currency": _field(price, "currency"),
+                "quantity": _field(item, "quantity"),
             }
-            meta = price.get("metadata") or {}
-            is_extra = (isinstance(meta, dict) and meta.get("kind") == "extra") \
+            meta = _field(price, "metadata", {}) or {}
+            is_extra = _field(meta, "kind") == "extra" \
                 or (bool(extras_price) and slot["price_id"] == extras_price)
             if is_extra and not slots["extra"]["id"]:
                 slots["extra"] = slot
@@ -780,7 +794,7 @@ class StripeBillingProvider:
         stripe = _stripe()
         try:
             current_item = await _off_loop(stripe.SubscriptionItem.retrieve, extra_item_id)
-            current_qty = int(current_item.get("quantity", 0) or 0)
+            current_qty = int(_field(current_item, "quantity", 0) or 0)
         except Exception:
             _obs.record_sync_billing_quantity("stripe_error")
             logger.exception(
@@ -964,7 +978,7 @@ class StripeBillingProvider:
     # ── Webhook helpers ──────────────────────────────────────────
 
     @staticmethod
-    async def _resolve_account_id(data: dict, db) -> int | None:
+    async def _resolve_account_id(data, db) -> int | None:
         """Find our account_id for a Stripe event payload.
 
         Order: explicit ``metadata.account_id`` (checkout sessions) →
@@ -972,22 +986,22 @@ class StripeBillingProvider:
         customer/subscription path matters for invoice events, which
         Stripe generates without our metadata.
         """
-        meta = (data.get("metadata") or {})
-        if (raw := meta.get("account_id")):
+        meta = _field(data, "metadata", {}) or {}
+        if (raw := _field(meta, "account_id")):
             try:
                 return int(raw)
             except (TypeError, ValueError):
                 pass
-        if (cust := data.get("customer", "")):
+        if (cust := _field(data, "customer", "")):
             if (acct := await db.find_account_by_stripe_customer(cust)):
                 return acct
-        if (sub := data.get("subscription", "")):
+        if (sub := _field(data, "subscription", "")):
             if (acct := await db.find_account_by_stripe_subscription(sub)):
                 return acct
         return None
 
     @staticmethod
-    def _invoice_fields(invoice: dict) -> dict:
+    def _invoice_fields(invoice) -> dict:
         """Project a Stripe Invoice payload onto our ``billing_invoices`` schema."""
         # Stripe uses unix-epoch seconds for invoice timestamps; we
         # store ISO-8601 UTC for grep-friendliness in the dashboard.
@@ -1002,21 +1016,21 @@ class StripeBillingProvider:
         # ``period_start`` / ``period_end`` live on the invoice line items
         # for subscription invoices.  Fall back to the invoice-level
         # ``period_*`` for one-off invoices (older Stripe API versions).
-        lines = (invoice.get("lines") or {}).get("data") or []
+        lines = _field(_field(invoice, "lines", {}) or {}, "data") or []
         first_line = lines[0] if lines else {}
-        line_period = first_line.get("period") or {}
-        paid_at = (invoice.get("status_transitions") or {}).get("paid_at")
+        line_period = _field(first_line, "period", {}) or {}
+        paid_at = _field(_field(invoice, "status_transitions", {}) or {}, "paid_at")
         return {
-            "provider_invoice_id":      invoice.get("id", ""),
-            "provider_subscription_id": invoice.get("subscription", "") or "",
-            "provider_customer_id":     invoice.get("customer", "") or "",
-            "amount_due_cents":         int(invoice.get("amount_due", 0) or 0),
-            "amount_paid_cents":        int(invoice.get("amount_paid", 0) or 0),
-            "currency":                 (invoice.get("currency") or "usd").lower(),
-            "status":                   invoice.get("status", "") or "",
-            "period_start": _to_iso(line_period.get("start") or invoice.get("period_start")),
-            "period_end":   _to_iso(line_period.get("end")   or invoice.get("period_end")),
-            "hosted_invoice_url":       invoice.get("hosted_invoice_url", "") or "",
-            "invoice_pdf_url":          invoice.get("invoice_pdf", "") or "",
+            "provider_invoice_id":      _field(invoice, "id", ""),
+            "provider_subscription_id": _field(invoice, "subscription", "") or "",
+            "provider_customer_id":     _field(invoice, "customer", "") or "",
+            "amount_due_cents":         int(_field(invoice, "amount_due", 0) or 0),
+            "amount_paid_cents":        int(_field(invoice, "amount_paid", 0) or 0),
+            "currency":                 (_field(invoice, "currency") or "usd").lower(),
+            "status":                   _field(invoice, "status", "") or "",
+            "period_start": _to_iso(_field(line_period, "start") or _field(invoice, "period_start")),
+            "period_end":   _to_iso(_field(line_period, "end")   or _field(invoice, "period_end")),
+            "hosted_invoice_url":       _field(invoice, "hosted_invoice_url", "") or "",
+            "invoice_pdf_url":          _field(invoice, "invoice_pdf", "") or "",
             "paid_at":                  _to_iso(paid_at),
         }

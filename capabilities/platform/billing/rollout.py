@@ -56,7 +56,8 @@ def _monthly_usd(slot: dict):
 
 
 def _period_end(stripe_sub: Any) -> str:
-    end = stripe_sub.get("current_period_end") if hasattr(stripe_sub, "get") else None
+    from capabilities.platform.billing.stripe_client import _field
+    end = _field(stripe_sub, "current_period_end")
     return str(end) if end else ""
 
 
@@ -170,17 +171,19 @@ async def preview(db, tier: str) -> dict:
 
 
 def _check_price(stripe, price_id: str, cents: int) -> None:
+    from capabilities.platform.billing.stripe_client import _field
     p = stripe.Price.retrieve(price_id)
-    rec = p.get("recurring") or {}
-    if not p.get("active", True):
+    rec = _field(p, "recurring", {}) or {}
+    if not _field(p, "active", True):
         raise RolloutRefused("The plan's Stripe price is archived — save the plan again to create a fresh one")
-    if rec.get("interval") != "month" or int(rec.get("interval_count") or 1) != 1 \
-            or str(p.get("currency") or "").lower() != "usd":
+    from capabilities.platform.billing.stripe_client import _field as _f
+    if _f(rec, "interval") != "month" or int(_f(rec, "interval_count", 1) or 1) != 1 \
+            or str(_f(p, "currency", "") or "").lower() != "usd":
         raise RolloutRefused("The plan's Stripe price is not a plain monthly USD price")
-    if int(p.get("unit_amount") or -1) != int(cents):
+    if int(_f(p, "unit_amount", -1) or -1) != int(cents):
         raise RolloutRefused(
             f"The plan says ${cents / 100:.2f} but its Stripe price charges "
-            f"${int(p.get('unit_amount') or 0) / 100:.2f} — save the plan again")
+            f"${int(_f(p, 'unit_amount', 0) or 0) / 100:.2f} — save the plan again")
 
 
 async def execute(stripe, db, tier: str, *, actor: str, limit: int = BATCH) -> dict:
@@ -284,13 +287,14 @@ async def _move_one(stripe, db, account_id: int, sub_id: str, to_price: str,
     the extras item when the plan holds an extras Price it is not on
     (a subscription from before per-plan extras Prices sits on the
     env-wide one).  Both moves go in ONE modify, no proration."""
+    from capabilities.platform.billing.stripe_client import _field
     s = stripe.Subscription.retrieve(sub_id, expand=["items"])
-    status = str(s.get("status") or "")
+    status = str(_field(s, "status", "") or "")
     if status in STRIPE_DEAD:
         # reconcile: our row said live, Stripe says not
         await db.update_subscription(account_id, status="canceled" if status == "canceled" else status)
         return "skipped_status", ""
-    if s.get("schedule"):
+    if _field(s, "schedule"):
         return "has_schedule", ""
     slots = _slots(s)
     base = slots["base"]
