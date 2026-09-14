@@ -715,6 +715,117 @@ def _resolve_tool_rounds(model_info: dict, default: int) -> int:
         return default
 
 
+async def _dispatch_tool_calls(
+    calls: list[tuple[str, str, dict]],
+    *,
+    provider: str,
+    samsara_client,
+    account_id: int | None,
+    db,
+    user_role: str | None,
+    user_context: dict | None,
+    event_callback,
+) -> list[dict]:
+    """Run ONE turn's tool calls together; answer in the order asked.
+
+    Anthropic and the OpenAI-compat providers both hand back several
+    tool calls in a single turn — the provider's way of saying "these
+    are independent, run them all".  Both loops then awaited them one
+    at a time, so three independent reads cost three round trips of
+    latency in series for no reason.
+
+    ``calls`` is ``[(call_id, tool_name, tool_args), …]`` — whatever the
+    provider's block shape flattens to; the caller keeps the
+    provider-specific parsing (Anthropic's ``input`` dict vs the
+    OpenAI-compat JSON string) and the provider-specific reply shape.
+    Returns one ``{"id", "tool", "args", "data", "blocked"}`` per call,
+    in the SAME order, because ``ask_agent_stream`` zips the process
+    timeline's tool steps against ``tool_results`` BY POSITION.
+
+    Three orderings are deliberate and tested:
+
+    * Permission checks run together, before anything executes — a
+      denied tool must never reach its handler, not even in parallel.
+    * Progress events fire in CALL order, not completion order, and a
+      blocked call emits none (unchanged from the serial loops).
+    * One tool raising becomes that tool's error result; its siblings
+      still answer.
+
+    Safe to run concurrently: the pg proxy pool-acquires per statement
+    unless a task pinned a connection inside ``Database.transaction()``,
+    and gather gives each call its own context copy, so one tool's
+    transaction cannot capture another's queries.  The Samsara client
+    guards its session and org-id lookups with its own locks.
+    """
+    import asyncio
+
+    if not calls:
+        return []
+
+    for call_id, tool_name, tool_args in calls:
+        logger.info(
+            "AI agent (%s) calling tool: %s(%s)", provider, tool_name, tool_args,
+        )
+
+    blocks = await asyncio.gather(*(
+        _check_tool_permission(
+            tool_name, tool_args, user_role, user_context, account_id,
+        )
+        for _cid, tool_name, tool_args in calls
+    ))
+
+    if event_callback is not None:
+        for (_cid, tool_name, _args), blocked in zip(calls, blocks):
+            if blocked is not None:
+                continue
+            try:
+                await event_callback({
+                    "type": "tool",
+                    "name": tool_name,
+                    "label": _TOOL_LABELS.get(tool_name, tool_name),
+                })
+            except Exception:
+                pass
+
+    async def _run(tool_name: str, tool_args: dict):
+        return await _execute_tool(
+            tool_name, tool_args, samsara_client,
+            account_id=account_id, db=db,
+            scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+            scope_ladder=_scoped_vehicle_ladder(user_context),
+            company_codes=(user_context or {}).get("scoped_company_codes"),
+            attachment_grids=(user_context or {}).get("_attachment_grids"),
+            attachment_docs=(user_context or {}).get("_attachment_docs"),
+        )
+
+    runnable = [
+        (i, calls[i][1], calls[i][2])
+        for i, blocked in enumerate(blocks) if blocked is None
+    ]
+    executed = await asyncio.gather(
+        *(_run(name, args) for _i, name, args in runnable),
+        return_exceptions=True,
+    )
+    by_index: dict[int, dict] = {}
+    for (i, _name, _args), outcome in zip(runnable, executed):
+        by_index[i] = (
+            {"error": f"Tool execution failed: {outcome}"}
+            if isinstance(outcome, BaseException) else outcome
+        )
+
+    out: list[dict] = []
+    for i, (call_id, tool_name, tool_args) in enumerate(calls):
+        blocked = blocks[i]
+        out.append({
+            "id": call_id,
+            "tool": tool_name,
+            "args": tool_args,
+            "data": blocked if blocked is not None else by_index[i],
+            "blocked": blocked is not None,
+        })
+    return out
+
+
 async def _run_anthropic_agent(
     question: str,
     vehicle_context: dict,
@@ -941,52 +1052,28 @@ async def _run_anthropic_agent(
         # then a user message with one tool_result per tool_use.
         messages.append({"role": "assistant", "content": content_blocks})
         result_blocks: list[dict] = []
-        for tu in tool_use_blocks:
-            tool_name = tu.get("name", "")
-            tool_args = tu.get("input", {}) or {}
-            tu_id = tu.get("id", "")
-            logger.info("AI agent (anthropic) calling tool: %s(%s)", tool_name, tool_args)
-
-            blocked = await _check_tool_permission(
-                tool_name, tool_args, user_role, user_context, account_id,
-            )
-            if blocked is not None:
-                tool_results.append({"tool": tool_name, "args": tool_args, "data": blocked})
-                result_blocks.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu_id,
-                    "content": json.dumps(blocked, default=str),
-                })
-                continue
-
-            if event_callback is not None:
-                try:
-                    await event_callback({
-                        "type": "tool",
-                        "name": tool_name,
-                        "label": _TOOL_LABELS.get(tool_name, tool_name),
-                    })
-                except Exception:
-                    pass
-            try:
-                result = await _execute_tool(
-                    tool_name, tool_args, samsara_client,
-                    account_id=account_id, db=db,
-                    scope_vehicles=_scoped_vehicle_set(user_context, user_role),
-                    scope_ladder=_scoped_vehicle_ladder(user_context),
-                    company_codes=(user_context or {}).get("scoped_company_codes"),
-                    attachment_grids=(user_context or {}).get("_attachment_grids"),
-                    attachment_docs=(user_context or {}).get("_attachment_docs"),
-                )
-            except Exception as e:
-                result = {"error": f"Tool execution failed: {e}"}
-            tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
+        # Claude returns every independent call of a turn at once; run
+        # them that way.  Answers come back in the order asked.
+        for d in await _dispatch_tool_calls(
+            [(tu.get("id", ""), tu.get("name", ""), tu.get("input", {}) or {})
+             for tu in tool_use_blocks],
+            provider="anthropic",
+            samsara_client=samsara_client, account_id=account_id, db=db,
+            user_role=user_role, user_context=user_context,
+            event_callback=event_callback,
+        ):
+            tool_results.append(
+                {"tool": d["tool"], "args": d["args"], "data": d["data"]})
             result_blocks.append({
                 "type": "tool_result",
-                "tool_use_id": tu_id,
+                "tool_use_id": d["id"],
                 # model_view: staged/payload/preview-rows never re-enter
-                # the conversation — tool_results above keeps full fidelity.
-                "content": json.dumps(_model_view(result), default=str),
+                # the conversation — tool_results above keeps full
+                # fidelity.  A refusal has nothing to redact.
+                "content": json.dumps(
+                    d["data"] if d["blocked"] else _model_view(d["data"]),
+                    default=str,
+                ),
             })
         messages.append({"role": "user", "content": result_blocks})
         # Loop and call again with updated messages.
@@ -1524,56 +1611,37 @@ async def _run_openai_compat_agent(
         # endpoints emit that field but 400 when it's sent back as
         # input.  Then one tool message per call.
         messages.append({k: v for k, v in msg.items() if k != "reasoning_content"})
+        # Argument parsing stays here — this provider ships them as a
+        # JSON STRING where Anthropic ships a dict — then the turn's
+        # calls run together, answering in the order asked.
+        _parsed: list[tuple[str, str, dict]] = []
         for tc in tool_calls:
             fn = (tc.get("function") or {})
-            tool_name = fn.get("name", "")
-            tc_id = tc.get("id", "")
             try:
-                tool_args = json.loads(fn.get("arguments") or "{}")
+                _args = json.loads(fn.get("arguments") or "{}")
             except (TypeError, ValueError):
-                tool_args = {}
-            logger.info("AI agent (openai-compat) calling tool: %s(%s)", tool_name, tool_args)
+                _args = {}
+            _parsed.append((tc.get("id", ""), fn.get("name", ""), _args))
 
-            blocked = await _check_tool_permission(
-                tool_name, tool_args, user_role, user_context, account_id,
-            )
-            if blocked is not None:
-                tool_results.append({"tool": tool_name, "args": tool_args, "data": blocked})
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": json.dumps(blocked, default=str),
-                })
-                continue
-
-            if event_callback is not None:
-                try:
-                    await event_callback({
-                        "type": "tool",
-                        "name": tool_name,
-                        "label": _TOOL_LABELS.get(tool_name, tool_name),
-                    })
-                except Exception:
-                    pass
-            try:
-                result = await _execute_tool(
-                    tool_name, tool_args, samsara_client,
-                    account_id=account_id, db=db,
-                    scope_vehicles=_scoped_vehicle_set(user_context, user_role),
-                    scope_ladder=_scoped_vehicle_ladder(user_context),
-                    company_codes=(user_context or {}).get("scoped_company_codes"),
-                    attachment_grids=(user_context or {}).get("_attachment_grids"),
-                    attachment_docs=(user_context or {}).get("_attachment_docs"),
-                )
-            except Exception as e:
-                result = {"error": f"Tool execution failed: {e}"}
-            tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
+        for d in await _dispatch_tool_calls(
+            _parsed, provider="openai-compat",
+            samsara_client=samsara_client, account_id=account_id, db=db,
+            user_role=user_role, user_context=user_context,
+            event_callback=event_callback,
+        ):
+            tool_results.append(
+                {"tool": d["tool"], "args": d["args"], "data": d["data"]})
             messages.append({
                 "role": "tool",
-                "tool_call_id": tc_id,
+                "tool_call_id": d["id"],
                 # model_view: staged/payload/preview-rows never re-enter
-                # the conversation — tool_results above keeps full fidelity.
-                "content": json.dumps(_model_view(result), default=str)[:20000],
+                # the conversation — tool_results above keeps full
+                # fidelity.  A refusal has nothing to redact, and is
+                # short enough to need no cap.
+                "content": (
+                    json.dumps(d["data"], default=str) if d["blocked"]
+                    else json.dumps(_model_view(d["data"]), default=str)[:20000]
+                ),
             })
         # Loop continues — the model sees the tool results next round.
         final_reasoning_tail = text  # non-empty text alongside tool calls is rare; keep last
