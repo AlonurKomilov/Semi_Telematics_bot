@@ -40,7 +40,7 @@ import re
 
 from tests._repo import REPO
 
-_ROOTS = ("features", "capabilities", "adapters", "interfaces", "infra")
+_ROOTS = ("features", "capabilities", "adapters", "interfaces", "infra", "system")
 
 
 def _package_test_dirs() -> list:
@@ -145,7 +145,7 @@ def test_package_owned_tests_are_excluded_from_the_image():
 # a bare marker is refused for the same reason: the reason is the point.
 
 _LAYERS = ("features", "capabilities", "adapters", "interfaces", "infra",
-           "integrations")
+           "integrations", "system")
 _REPO_WIDE = re.compile(r"#\s*repo-wide:\s*(?P<why>\S.*)")
 # Reading the tree is what a structural guard does; REPO is the sanctioned
 # way to find it (never __file__), and rglob/walk are the only calls that
