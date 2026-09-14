@@ -47,13 +47,33 @@ function sources(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * Prose about a rule is not a violation of it.
+ *
+ * This file counted its own documentation. Writing `disabled:cursor-x`
+ * into a comment — to explain why a control deliberately does NOT carry
+ * one — raised the cursor count by two, and the ratchet reported new
+ * debt that existed only as an explanation of the debt. A guard that
+ * taxes writing about itself is a guard people stop writing about.
+ *
+ * BLANKED IN PLACE, never deleted: every finding here carries a line
+ * number, and removing a block comment's newlines would shift every one
+ * after it — sending the next reader to the wrong place, which is worse
+ * than not reporting a line at all. The same bargain `chrome.test.ts`
+ * and `toastLane.test.ts` already make.
+ */
+const codeOnly = (src: string) => src
+  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+  .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
+
 const FILES = sources(SRC).map((f) => ({
   rel: relative(SRC, f),
-  text: readFileSync(f, 'utf8'),
+  text: codeOnly(readFileSync(f, 'utf8')),
 }));
 
 /** Line number of an offset, so a finding can be opened. */
 const lineAt = (text: string, index: number) => text.slice(0, index).split('\n').length;
+
 
 interface Rule {
   readonly axis: string;
@@ -167,6 +187,24 @@ describe('what the mods axes still cannot reach', () => {
         .toBe(0);
     });
   }
+
+  it('and prose about a rule is not counted as a violation of it', () => {
+    // The bug this closes: writing `disabled:cursor-x` into a comment —
+    // to explain why one control deliberately does NOT carry one —
+    // raised the cursor count by two and reported new debt that existed
+    // only as an explanation of the debt.
+    expect(codeOnly('// avoid disabled:cursor-not-allowed here')).not.toMatch(/cursor-/);
+    expect(codeOnly('/* bg-popover, height={220} */')).not.toMatch(/bg-popover|height=\{/);
+    // Code is untouched — a stripper that ate code would report zero
+    // debt everywhere, which reads as a clean bill of health.
+    expect(codeOnly('className="disabled:cursor-not-allowed"'))
+      .toMatch(/disabled:cursor-not-allowed/);
+    // A URL is not a comment.
+    expect(codeOnly("const u = 'https://x.dev/a';")).toMatch(/https:\/\/x\.dev/);
+    // And the line numbers every finding carries still point somewhere
+    // true: a block comment keeps its newlines.
+    expect(codeOnly('/* a\n b */\nx').split('\n')).toHaveLength(3);
+  });
 
   it('finds a codebase to measure', () => {
     // A walk that returns nothing reports zero debt everywhere, which

@@ -22,14 +22,14 @@
 import { useOffered } from '../store/useOffered';
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw, Volume2, VolumeX } from '../../lib/icons';
+import { Play, RotateCcw, Volume2, VolumeX } from '../../lib/icons';
 import { Slider } from '../../components/ui/slider';
 import { Switch } from '../../components/ui/switch';
 import { Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { armAudio, playCue, type SoundPack } from '../sound/engine';
 import { KEY_LIMITS } from '../sound/keys';
-import { SOUND_PACKS } from '../store/items/sound';
+import { SOUND_PACKS, soundPackById } from '../store/items/sound';
 import { KEY_PACKS, keyPackById } from '../store/items/keys';
 import { AMBIENCE_PACKS, ambienceById } from '../store/items/ambience';
 import { Chip } from './Chip';
@@ -148,6 +148,9 @@ export function SoundVolume({ label: groupLabel }: { label: LabelClass }) {
 export function InterfaceSoundItem() {
   const { t } = useTranslation();
   const { value: uiSound, setValue: setUiSound } = usePreference('mods.sound.ui');
+  const { value: volume } = usePreference('mods.sound.volume');
+  const { value: soundPack } = usePreference('mods.sound.pack');
+  const pack = soundPackById(soundPack);
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
@@ -176,6 +179,62 @@ export function InterfaceSoundItem() {
         {t('mods.sound_ui_hint',
           'A short cue when the app answers — something saved, something refused, or a few seconds to undo.')}
       </p>
+      {/*
+        The two things this item could not answer.
+
+        Keyboard and Background each show their pack right here, because
+        each OWNS one. This item does not: the cue set is the category's,
+        since `playBannerCue` reads the same key as `playUiCue` — picking
+        Blip picks what an alert sounds like too. Correct, and it left
+        this page saying nothing about what the switch turns on: no name
+        for the cue set, no way to hear it, and no sign the choice lives
+        one level up. A person turned it on, did nothing that answers,
+        heard nothing, and concluded the feature was broken.
+
+        So: the pack by NAME, playable, and where it is chosen. Not a
+        second picker — one would be a second place to change a shared
+        setting, which is how two controls start disagreeing.
+      */}
+      {uiSound && pack && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+          <button
+            type="button"
+            disabled={volume <= 0}
+            onClick={() => {
+              // Same bargain as the switch above: armed from inside the
+              // click, so the first press is the one that is heard.
+              armAudio();
+              playCue(pack.cues.success, volume);
+            }}
+            aria-label={t('mods.sound_ui_try', 'Hear {{pack}}', { pack: pack.label })}
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs
+                       font-medium min-h-tap text-muted-foreground transition-colors
+                       hover:text-foreground hover:bg-muted/60
+                       disabled:opacity-50"
+          >
+            <Play className="size-3" />
+            {pack.label}
+          </button>
+          {/* No `disabled:cursor-not-allowed`: a variant-prefixed cursor
+              utility is one the cursor PACKS cannot reach — they ship
+              `.cursor-x`, which never matches the token
+              `disabled:cursor-x` — and `mods/coverage.test.ts` counts
+              every such site. The dimming and the sentence beside it
+              already say the button is refusing; a cursor shape the
+              mods engine cannot theme is not worth a 35th. */}
+          {/* The reason is VISIBLE, not a tooltip: a disabled button
+              swallows pointer events, so a tip on it never opens — and
+              this is the one state where the person most needs telling
+              why nothing happens. */}
+          <span className="text-2xs text-muted-foreground">
+            {volume <= 0
+              ? t('mods.sound_ui_silenced',
+                'Sound is silenced — raise the volume under Sound.')
+              : t('mods.sound_ui_pack_note',
+                'Shared with Live alerts — the cue set is chosen under Sound.')}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
