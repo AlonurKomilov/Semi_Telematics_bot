@@ -1946,6 +1946,20 @@ async def ask_agent(question: str, vehicle_context: dict,
                 _initial_contents, tools=tools,
             )
 
+            # The conversation so far.  Every re-call used to rebuild
+            # exactly three messages — question, the model's LATEST
+            # function call, that call's response — so on the second
+            # tool round the FIRST tool's result was gone from context:
+            # the model had decided to call a second tool because it saw
+            # the first, and then the evidence was taken away before it
+            # wrote the answer.  The Anthropic loop appends to
+            # ``messages`` and always did; this is the same contract.
+            #
+            # Built here, inside the attempt loop, so a retry starts from
+            # the question rather than inheriting the failed attempt's
+            # turns.  Growth is bounded by ``max_tool_rounds``.
+            _contents = [Content(parts=_user_parts, role="user")]
+
             for _round in range(max_tool_rounds):
                 if not response.candidates:
                     return {
@@ -2008,13 +2022,14 @@ async def ask_agent(question: str, vehicle_context: dict,
                             name=tool_name,
                             response={"result": _model_view(result)},
                         )
+                        _contents.append(candidate.content)
+                        _contents.append(
+                            Content(parts=[fn_response], role="user"))
                         response = await _call_model_with_telemetry(
-                            [
-                                Content(parts=_user_parts, role="user"),
-                                candidate.content,
-                                Content(parts=[fn_response], role="user"),
-                            ],
-                            tools=tools,
+                            # A copy: the list keeps growing after this
+                            # call, and nothing downstream should see a
+                            # request mutate under it.
+                            list(_contents), tools=tools,
                         )
                         candidate = response.candidates[0]
                         continue
@@ -2042,13 +2057,11 @@ async def ask_agent(question: str, vehicle_context: dict,
                         # keeps full fidelity for the router.
                         response={"result": _model_view(result)},
                     )
+                    _contents.append(candidate.content)
+                    _contents.append(
+                        Content(parts=[fn_response], role="user"))
                     response = await _call_model_with_telemetry(
-                        [
-                            Content(parts=_user_parts, role="user"),
-                            candidate.content,
-                            Content(parts=[fn_response], role="user"),
-                        ],
-                        tools=tools,
+                        list(_contents), tools=tools,
                     )
                 else:
                     break
