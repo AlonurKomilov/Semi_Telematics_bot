@@ -280,12 +280,17 @@ export const POI_LAYERS: PoiLayerDef[] = [
   {
     // DEF = Diesel Exhaust Fluid.  An SCR truck derates without it, so
     // this is a layer somebody opens in a hurry.
-    id: 'def_station', label: 'DEF / AdBlue', color: '#0d9488',
+    // (by chain): measured 2026-09-14, 21 of 1,318 points carry a
+    // real `fuel:adblue` tag; the other 1,297 are here because
+    // their brand usually sells DEF.  Useful, and not the claim
+    // the old label made.  The row carries the longer sentence —
+    // see POI_LAYER_NOTES on the server.
+    id: 'def_station', label: 'DEF / AdBlue (by chain)', color: '#0d9488',
     glyph: 'flask', group: 'fuel_plaza', brands: TRUCK_STOP_BRANDS,
   },
   { id: 'truck_parking', label: 'Truck parking', color: '#3b82f6',
     glyph: 'parking', group: 'fuel_plaza' },
-  { id: 'shower', label: 'Showers', color: '#ec4899',
+  { id: 'shower', label: 'Showers (by chain)', color: '#ec4899',
     glyph: 'shower', group: 'fuel_plaza' },
 
   // Two layers: OSM tags both with `amenity=weighbridge`, and 48% of

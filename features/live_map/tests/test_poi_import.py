@@ -186,10 +186,21 @@ async def test_a_source_that_comes_back_is_not_cut_off(store):
     from features.live_map.poi.layers import POI_OVERPASS_QUERIES
     dead_layer = sorted(POI_OVERPASS_QUERIES, key=importer._query_cost)[1]
 
+    # A CLAUSE IS NOT A LAYER any more.  DEF and Showers are both chain
+    # inferences and send the byte-identical brand filter, so matching on
+    # "any clause of the dead layer" killed whichever other layer shared
+    # one and the run came back with two failures instead of one.  Match
+    # on a clause that belongs to this layer ALONE.
+    own = [c for c in POI_OVERPASS_QUERIES[dead_layer]
+           if sum(c in cl for cl in POI_OVERPASS_QUERIES.values()) == 1]
+    assert own, (
+        f"{dead_layer} shares every clause it has — this test can no "
+        "longer single it out, and would pass by killing its neighbours")
+
     async def _one_bad_layer(query, **_kw):
         # Keyed on the layer's own clause rather than a call count: with
         # boxes splitting, how MANY calls a layer makes is not fixed.
-        if any(c in query for c in POI_OVERPASS_QUERIES[dead_layer]):
+        if any(c in query for c in own):
             raise RuntimeError("Overpass 504")
         return _reply(_osm(1, 41.8, -87.6))
 

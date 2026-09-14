@@ -343,3 +343,94 @@ def test_the_version_a_client_compares_is_still_the_import_time():
     raise AssertionError(
         "/poi-set no longer returns a version — without it a client cannot "
         "tell a fresh copy from a stale one and must download every time")
+
+
+# ── a prefix is not a brand ────────────────────────────────────────────
+#
+# The brand allowlists are PREFIX-anchored (`^(...)`), which is right for
+# "Petro Stopping Center" and wrong for PETRO-CANADA — a different
+# company, in a different country, that happens to start with the same
+# five letters.  Measured on the imported data 2026-09-14 it had brought
+# 539 stations into Fuel Stations and 662 into DEF, where DEF holds 1,318
+# points in total: half the layer was Canadian.
+#
+# The bbox could not have saved us.  "Clipped to the USA" is a RECTANGLE,
+# and the CONUS box runs 24.4N to 49.5N — northern Mexico at one end,
+# southern Ontario and Quebec whole at the other.
+#
+# Checked with Python's `re` rather than by asking a mirror: the pattern
+# is POSIX ERE either way for constructs this simple, and a guard that
+# needs the network is a guard that gets skipped.
+
+
+def _brand_patterns() -> list[str]:
+    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+    out = []
+    for clauses in POI_OVERPASS_QUERIES.values():
+        for c in clauses:
+            m = re.search(r'"brand"~"([^"]+)"', c)
+            if m:
+                out.append(m.group(1))
+    return out
+
+
+def test_the_brand_allowlists_admit_the_chains_they_name():
+    """The fix must not cost us the brand it was aimed at."""
+    pats = _brand_patterns()
+    assert pats, "no brand allowlist found — the query shape moved"
+    for pat in pats:
+        rx = re.compile(pat, re.IGNORECASE)
+        for good in ("Petro", "Petro Stopping Center", "Pilot Travel Center",
+                     "Flying J Travel Center", "Love's Travel Stop"):
+            assert rx.match(good), f"{pat!r} no longer admits {good!r}"
+
+
+def test_the_brand_allowlists_refuse_a_company_that_only_shares_a_prefix():
+    pats = _brand_patterns()
+    for pat in pats:
+        rx = re.compile(pat, re.IGNORECASE)
+        for foreign in ("Petro-Canada", "Petro-T"):
+            assert not rx.match(foreign), (
+                f"{pat!r} matches {foreign!r} — a prefix is not a brand, and "
+                "this one put 1,201 Canadian stations on a US truck map")
+
+
+# ── a layer's name is a promise ────────────────────────────────────────
+#
+# Two layers are CHAIN INFERENCES and could not honestly be anything
+# else, so their labels and their standing notes have to say so.
+#
+#   DEF     21 of 1,318 imported points carried `fuel:adblue=yes`.
+#   Showers the old query took every `amenity=shower` in the box — 3,532
+#           points, 24 of them within 300m of a fuel station, the rest
+#           state parks and campgrounds.  Narrowing it leaves THREE,
+#           because `amenity=truck_stop` barely exists in US OSM.
+#
+# Keeping the points and fixing the promise was the owner's call.  The
+# promise is the part a test can hold.
+
+
+def test_the_inferred_layers_carry_a_standing_note():
+    from features.live_map.poi.layers import POI_LAYER_NOTES
+    for layer in ("def_station", "shower"):
+        note = POI_LAYER_NOTES.get(layer)
+        assert note, (
+            f"{layer} is built from a brand allowlist and says nothing "
+            "about it — the row reads as a confirmed fact")
+        assert re.search(r"\b(chain|inferred)\b", note, re.I), note
+        # No counts: a number is true until the next import and then it
+        # is a lie nobody notices.
+        assert not re.search(r"\d", note), (
+            f"{layer}'s note carries a number that the next import "
+            f"invalidates: {note!r}")
+
+
+def test_the_shower_layer_no_longer_asks_for_every_shower_in_the_box():
+    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
+    clauses = POI_OVERPASS_QUERIES["shower"]
+    assert not any(c.strip() == 'node["amenity"="shower"]' for c in clauses), (
+        "the catch-everything clause is back — 99.3% of what it returns "
+        "is park, beach and campground showers")
+    assert any('"brand"~' in c for c in clauses), (
+        "without the chain clause this layer returns three points "
+        "nationwide, because US truck stops are not tagged truck_stop")

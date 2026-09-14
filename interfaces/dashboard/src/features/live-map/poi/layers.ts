@@ -283,7 +283,12 @@ export const POI_LAYERS: PoiLayerDef[] = [
     // (Pilot/FJ, Love's, TA/Petro, etc.).  Brand chips let drivers narrow
     // to a specific chain — same client-side filter as Fuel Stations.
     id: 'def_station',
-    label: 'DEF / AdBlue Stations',
+    // (BY CHAIN), because that is what the points are.  Measured
+    // 2026-09-14: 21 of 1,318 carry `fuel:adblue=yes`; the other
+    // 1,297 are here because their brand usually sells DEF.  Useful,
+    // and not the claim the old label made.  The row carries the
+    // longer sentence — see POI_LAYER_NOTES on the server.
+    label: 'DEF / AdBlue (by chain)',
     color: '#0d9488',
     icon: FlaskConical,
     defaultOn: false,
@@ -327,7 +332,13 @@ export const POI_LAYERS: PoiLayerDef[] = [
   },
   {
     id: 'shower',
-    label: 'Showers',
+    // (BY CHAIN), for the same reason DEF is.  The old query took
+    // every `amenity=shower` in the box: 3,532 points, 24 of them
+    // near a fuel station and the rest state parks and campgrounds.
+    // Narrowing it leaves three, because US truck stops are not
+    // tagged `amenity=truck_stop` — so the layer infers from the
+    // chain, and the label says so.
+    label: 'Showers (by chain)',
     color: '#ec4899',
     icon: ShowerHead,
     defaultOn: false,

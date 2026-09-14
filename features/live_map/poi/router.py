@@ -27,6 +27,7 @@ from .custom import (
     _serve_custom_layer,
 )
 from .layers import (
+    POI_LAYER_NOTES,
     POI_OVERPASS_QUERIES,
     SERVED_LAYERS,
     fetch_layer_for,
@@ -295,6 +296,10 @@ async def map_pois(
             # None until an import has recorded one, and None draws no
             # line at all.  Saying nothing is the honest unknown.
             "source_as_of": await tenant.poi_layer_source_as_of(poi_type),
+            # What this layer's points MEAN, when that needs saying —
+            # see POI_LAYER_NOTES.  A note, never an error: nothing is
+            # broken and there is nothing to retry.
+            "note": POI_LAYER_NOTES.get(poi_type),
         }
 
     bbox_key = _round_bbox(bbox)
@@ -344,7 +349,10 @@ async def map_pois(
     # my-vendors branches above deliberately do not: those come from our
     # own database and a date from the wrong source is worse than none.
     return {"type": "FeatureCollection", "features": features,
-            "source_as_of": overpass.source_as_of()}
+            "source_as_of": overpass.source_as_of(),
+            # The same standing caveat the stored branch carries: a
+            # layer means what it means whichever path answered.
+            "note": POI_LAYER_NOTES.get(poi_type)}
 
 
 # ── Custom-layer routes ───────────────────────────────────────────────────────

@@ -57,19 +57,32 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     # Tag-based filtering misses ~70% of diesel-capable stations in the US, so
     # we supplement with a brand allowlist for major chains. Brand allowlist
     # uses `node` only (not `nwr`) — the area variant times out on CONUS bbox.
+    #
+    # `Petro($| )` AND NOT `Petro`.  The alternation is prefix-anchored, so
+    # a bare `Petro` matched PETRO-CANADA — a different company in a
+    # different country — and brought 539 of its stations into this layer
+    # and 662 into DEF.  It also matched Petro-T, a Quebec chain.  The
+    # bbox cannot catch them either: "clipped to the USA" is a RECTANGLE,
+    # and the CONUS box reaches from 24.4N (northern Mexico) to 49.5N,
+    # which takes in southern Ontario and Quebec whole.
     "fuel_station": [
         'node["amenity"="fuel"]["fuel:diesel"="yes"]',
         'node["amenity"="fuel"]["hgv"="yes"]',
         'nwr["amenity"="truck_stop"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro|TravelCenters|Sapp Bros|Road Ranger|Kwik Trip|Kwik Star|Bosselman|Ambest)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger|Kwik Trip|Kwik Star|Bosselman|Ambest)",i]',
     ],
     # ── DEF / AdBlue Stations ─────────────────────────────────────────────────
     # fuel:adblue=yes has ~15-25% coverage; brand allowlist catches the rest.
+    #
+    # MEASURED, and the real number is worse: 21 of 1,318 imported points
+    # carry the tag — 1%.  The layer is a chain inference and its LABEL
+    # now says so ("DEF / AdBlue (by chain)"), which was the owner's call
+    # over serving 21 honest points and calling it a map.
     "def_station": [
         'node["amenity"="fuel"]["fuel:adblue"="yes"]',
         'nwr["amenity"="truck_stop"]["fuel:adblue"="yes"]',
-        'nwr["amenity"="truck_stop"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro|TravelCenters|Sapp Bros|Road Ranger)",i]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'nwr["amenity"="truck_stop"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger)",i]',
     ],
     # ── Truck parking ─────────────────────────────────────────────────────────
     # Node-only — way/relation queries silently timeout on large bboxes.
@@ -79,10 +92,31 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
         'node["amenity"="parking"]["access:hgv"~"yes|designated"]',
     ],
     # ── Showers ───────────────────────────────────────────────────────────────
+    #
+    # NOT `node["amenity"="shower"]`, which is what this asked for until
+    # 2026-09-14 and which took every shower in the box.  Measured on the
+    # 3,532 points it imported: 24 of them — 0.7% — were within 300m of a
+    # fuel station.  The rest were state parks, campgrounds, marinas and
+    # beaches: BC Parks, sepaq, Tobyhanna State Park, Ontario Parks, a
+    # Scout reservation, a `Lave-vélo`.  A driver who switched Showers on
+    # got a map of park bathhouses.
+    #
+    # NARROWING IT WAS THE OBVIOUS FIX AND THE WRONG ONE.  Keeping only
+    # the two truck-stop clauses leaves THREE points nationwide, because
+    # `amenity=truck_stop` barely exists in US OpenStreetMap — one node in
+    # the whole 5,394-point fuel layer.  A US truck stop is tagged
+    # `amenity=fuel` plus a brand, so the clause that looks honest finds
+    # nothing.
+    #
+    # So this is a CHAIN INFERENCE, like DEF beside it and labelled the
+    # same way: a Love's has showers, and that is a real fact about the
+    # chain even when no mapper has tagged the individual site.  597
+    # points against 3,532 — and all 597 answer the question that was
+    # asked.
     "shower": [
-        'node["amenity"="shower"]',
-        'nwr["amenity"="truck_stop"]["shower"="yes"]',
         'node["amenity"="fuel"]["shower"="yes"]',
+        'nwr["amenity"="truck_stop"]["shower"="yes"]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro($| )|TravelCenters|Sapp Bros|Road Ranger)",i]',
     ],
     # ── Rest areas ────────────────────────────────────────────────────────────
     "rest_area": [
@@ -99,6 +133,32 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     ],
 }
 
+
+
+# ── What a layer's points actually MEAN ───────────────────────────────
+#
+# A standing caveat, shown on the row whenever the layer is on.  Not a
+# fault and not per-request: a fact about how the layer is BUILT, which
+# the label alone has no room to carry.
+#
+# No numbers in these sentences.  A count is true until the next import
+# and then it is a lie nobody notices — the freshness line taught this
+# the hard way (9600d8e5).
+POI_LAYER_NOTES: dict[str, str] = {
+    # Measured 2026-09-14: 21 of 1,318 points carry `fuel:adblue=yes`.
+    # The other 1,297 are here because their BRAND is on an allowlist —
+    # which is useful (a Love's usually does sell DEF) and is not the
+    # same claim as the label was making.  The owner's call was to keep
+    # the points and fix the promise.
+    "def_station":
+        "Mostly inferred from the chain, not a confirmed DEF tag",
+    # Measured 2026-09-14: the old query took every `amenity=shower` in
+    # the box — 3,532 points, 24 of them within 300m of a fuel station.
+    # The honest clauses alone return three, so this layer is a chain
+    # inference too and says so.
+    "shower":
+        "Inferred from the chain — these stops usually have showers",
+}
 
 # ── One fetch, two layers ─────────────────────────────────────────────
 #
