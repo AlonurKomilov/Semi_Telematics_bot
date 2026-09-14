@@ -116,3 +116,22 @@ describe('the OpenStreetMap credit', () => {
     expect(controlsSrc).toMatch(/poi\.sourceAsOf && `.*old`/);
   });
 });
+
+
+describe('the overlays have their own view verb', () => {
+  // POI became a sub-feature of Live Map with `can_view_poi` of its own,
+  // so an owner can withhold it from a role that still sees the map.
+  // The server gates every POI route on it; without these two the panel
+  // offered the Map Layers card and each of its six switches answered
+  // 403 — the one shape the abilities mechanism exists to prevent.
+  it('hides the Map Layers card without the ability', () => {
+    expect(controlsSrc).toMatch(/\{p\.canViewPoi && <LayersCard/);
+  });
+
+  it('stops the hook fetching too, not just the card rendering', () => {
+    // Hiding the card alone would leave the hook restoring last
+    // session's layers in the background, collecting a 403 each.
+    expect(panelSrc).toContain("abilities.includes('poi.view')");
+    expect(panelSrc).toMatch(/usePoiLayers\(map, L, mapReady && canViewPoi\)/);
+  });
+});

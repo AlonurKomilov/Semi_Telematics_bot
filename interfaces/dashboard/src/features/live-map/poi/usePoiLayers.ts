@@ -21,6 +21,7 @@ import { iconPackId, rasterGlyph } from '@/lib/icons';
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { apiFetch, apiJSON } from '@/api/client';
+import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { POI_LAYERS, esc } from './layers';
 import { planFor, readHeld, writeHeld } from './held';
 import type { PoiLayerDef, PoiFeature, PoiIconSpec } from './layers';
@@ -419,8 +420,22 @@ function customDtoToDef(dto: CustomLayerDto): PoiLayerDef {
 
 export function usePoiLayers(
   leafletMap: React.RefObject<L.Map | null>,
-  isReady: boolean,
+  mapReady: boolean,
 ): UsePoiLayersResult {
+  // The overlays have had their own view verb since POI became a
+  // sub-feature of Live Map, so an owner can now withhold them from a
+  // role that still sees the map.  Every one of these endpoints is gated
+  // on `can_view_poi` server-side, and without this the hook restored
+  // last session's layers in the background and collected a 403 for each
+  // — while the panel beside it went on offering the switches.
+  //
+  // Gated HERE and not at the call sites: three surfaces mount this hook
+  // today (Live Map, Geofences, Routes) and a fourth will one day, and
+  // none of them should have to remember.  Hiding on a false `has` needs
+  // no `ready` wait — see useViewPermissions; it is REDIRECTING on one
+  // that would be wrong.
+  const { has } = useViewPermissions();
+  const isReady = mapReady && has('can_view_poi');
   // ── effective layer set: built-ins + custom (fetched from /map/custom-layers)
   const [customLayers, setCustomLayers] = useState<PoiLayerDef[]>([]);
   const effectiveLayers: PoiLayerDef[] = [...POI_LAYERS, ...customLayers];

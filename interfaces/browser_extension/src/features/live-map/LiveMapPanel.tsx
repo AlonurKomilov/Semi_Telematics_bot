@@ -91,6 +91,8 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
    *  server's own word, so the panel hides the control rather than
    *  offering it and answering 403 on the press. */
   const canManageEngine = abilities.includes('config.all');
+  // The overlays' own verb — see MapControls' `canViewPoi`.
+  const canViewPoi = abilities.includes('poi.view');
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const markers = useRef<Map<string, L.Marker>>(new Map());
@@ -272,7 +274,10 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
    *  the account has added.  The same endpoints and the same layer ids
    *  as the dashboard; see usePoiLayers.ts for the two things that had
    *  to differ in a 320px column. */
-  const poi = usePoiLayers(map, L, mapReady);
+  // Gated on the grant as well as the map, and BOTH are needed: hiding
+  // the card alone would leave the hook restoring last session's layers
+  // in the background and collecting a 403 for each of them.
+  const poi = usePoiLayers(map, L, mapReady && canViewPoi);
 
   // The selected truck's provider links, fetched once per truck.
   const [links, setLinks] = useState<ProviderLink[]>([]);
@@ -753,7 +758,7 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
           engineError={engineError}
           onChooseType={chooseType} onChooseEngine={chooseEngine}
           showLabels={showLabels} onToggleLabels={chooseLabels}
-          poi={poi}
+          poi={poi} canViewPoi={canViewPoi}
         />
       </div>
       {/* The selected vehicle sits BELOW the map, not over it: it grew

@@ -237,6 +237,17 @@ async def extension_me(user: dict = Depends(get_current_user)):
     abilities: list[str] = []
     if getattr(perms, "can_manage_inventory", False):
         abilities.append("inventory.write")
+    # The map's overlays.  A sub-feature of Live Map and not a feature of
+    # its own — it has no place to go to, it is drawn ON the map — so it
+    # is an ability rather than a feature id.
+    #
+    # It has to be here because the split gave POI its own verb: an owner
+    # can now withhold it from a role that still sees the map, and until
+    # the panel was told, that person got the Map Layers card with six
+    # switches that each answered 403.  Offered and then refused is the
+    # shape this file's comments have twice said to avoid.
+    if getattr(perms, "can_view_poi", False):
+        abilities.append("poi.view")
     # Aiming a role's own attention.  Named `config.role`, matching the
     # scope it rides.
     if getattr(perms, "can_manage_config_role", False):

@@ -321,8 +321,40 @@ def test_the_panel_is_told_what_it_may_do_not_which_flag_says_so():
     from interfaces.api.routes import extension
     src = inspect.getsource(extension.extension_me)
     assert '"inventory.write"' in src
+    assert '"poi.view"' in src
     body = src.split("return {", 1)[1]
     assert "can_" not in body
+
+
+def test_every_scoped_grant_the_panel_can_be_refused_on_reaches_the_panel():
+    """THE RULE THE LAST ONE WAS AN INSTANCE OF.
+
+    A grant in the scope gates a route in the list, so a person without
+    it gets a 403 from the panel.  If ``extension_me`` never mentions
+    that grant, the panel cannot know to hide the control — it offers
+    it and the press fails, which is the shape this file has now told
+    itself to avoid three times.
+
+    POI was the third: the sub-feature split gave the overlays their own
+    verb, an owner could withhold it from a role that still sees the
+    map, and the Map Layers card went on offering six switches that each
+    answered 403.  Nothing caught it because the rule lived in comments.
+    """
+    import inspect
+    from interfaces.api.auth import EXTENSION_SCOPE
+    from interfaces.api.routes import extension
+    src = inspect.getsource(extension.extension_me)
+    # The two scope NOUNS are not controls: they narrow WHICH vehicles
+    # the answers cover, they do not switch a card on or off, so there is
+    # nothing for the panel to hide and nothing to tell it.
+    not_a_control = {"can_location_map", "can_location_vehicle"}
+    missing = [f for f in EXTENSION_SCOPE
+               if f not in not_a_control and f not in src]
+    assert not missing, (
+        f"{missing} gate panel routes but never reach the panel — it will "
+        "offer the control and the server will answer 403.  Add a feature "
+        "id or an ability for each, or name it in `not_a_control` above "
+        "with the reason it switches nothing.")
 
 
 # ── The consent flow: one mint, no password in the panel ─────────────

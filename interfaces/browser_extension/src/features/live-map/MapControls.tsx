@@ -112,6 +112,14 @@ interface Props {
   drewGoogle: boolean;
   /** May this person change the account's engine? (`config.all`) */
   canManageEngine: boolean;
+  /** May this person SEE the map's overlays at all? (`poi.view`)
+   *
+   *  POI is a sub-feature with its own verb, so an owner can withhold it
+   *  from a role that still sees the map.  Without this the card was
+   *  offered anyway and each of its six switches answered 403 — offered
+   *  and then refused, which is the one shape the panel's whole
+   *  abilities mechanism exists to prevent. */
+  canViewPoi: boolean;
   /** A write is in flight — the row is not pressable twice. */
   savingEngine: boolean;
   /** What went wrong on the last engine write, if anything. */
@@ -126,7 +134,7 @@ interface Props {
 export default function MapControls(p: Props) {
   return (
     <>
-      <LayersCard poi={p.poi} />
+      {p.canViewPoi && <LayersCard poi={p.poi} />}
       <TypeCard {...p} />
     </>
   );

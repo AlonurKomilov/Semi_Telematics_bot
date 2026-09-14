@@ -80,6 +80,12 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
     effectiveLayers, refreshCustomLayers, sourceAsOf,
   } = poiHook;
   const { has } = useViewPermissions();
+  // POI is a sub-feature with its own view verb, so a role that sees the
+  // map may still be refused the overlays.  The hook stops fetching for
+  // the same reason; this stops the card being offered.  Offered and
+  // then refused is the shape the extension's abilities mechanism was
+  // built to prevent, and the dashboard owes the same.
+  const canViewPoi = has('can_view_poi');
   // Said once per render, not once per row: the extract's age is a fact
   // about the SOURCE, and thirteen rows repeating it would read as
   // thirteen problems.
@@ -114,6 +120,10 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
       alert(`Failed to delete layer: ${(e as Error).message}`);
     }
   }
+
+  // After the hooks, never before them: an early return above a hook is
+  // a different render on the second pass, and React counts them.
+  if (!canViewPoi) return null;
 
   return (
     <div

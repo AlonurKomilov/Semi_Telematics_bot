@@ -115,3 +115,23 @@ describe('the OpenStreetMap credit', () => {
     expect(code(panel)).toMatch(/<Freshness ts=\{sourceAsOf\}>/);
   });
 });
+
+describe('the overlays have their own view verb', () => {
+  // POI became a sub-feature of Live Map with `can_view_poi` of its own,
+  // which means an owner can withhold it from a role that still sees the
+  // map.  Every POI endpoint is gated on it server-side, so without a
+  // gate here that person got the card, pressed a switch, and read a
+  // 403 — six times.  Offered and then refused.
+  it('hides the card when the person may not see them', () => {
+    expect(code(panel)).toContain("has('can_view_poi')");
+    expect(code(panel)).toMatch(/if \(!canViewPoi\) return null;/);
+  });
+
+  it('stops the hook fetching too, not just the card rendering', async () => {
+    // Hiding the card alone would leave the hook restoring last
+    // session's layers in the background, collecting a 403 each.
+    const hook = (await import('./usePoiLayers.ts?raw')).default as string;
+    expect(code(hook)).toContain("has('can_view_poi')");
+    expect(code(hook)).toMatch(/mapReady && has\('can_view_poi'\)/);
+  });
+});
