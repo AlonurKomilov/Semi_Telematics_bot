@@ -24,6 +24,7 @@ This folder keeps only what belongs to NO package:
 | Warehouse | `capabilities/data_lifecycle/docs/warehouse.md` |
 | Config family | `capabilities/config/docs/ARCHITECTURE.md` |
 | Notifications spine | `capabilities/notifications/docs/ARCHITECTURE.md` |
+| Integrations (where a vendor stops) | `capabilities/integrations/docs/ARCHITECTURE.md` |
 | Persona naming | `docs/architecture/PERSONA.md` |
 | Bot topology | `interfaces/bot/docs/ARCHITECTURE.md` |
 | Vendor/parts master data | `capabilities/platform/docs/vendor-parts-master-data.md` |
