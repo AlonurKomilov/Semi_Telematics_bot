@@ -93,14 +93,8 @@ def test_every_registered_provider_can_be_asked():
         assert hasattr(get_provider(provider_id), "get_driver_hos"), provider_id
 
 
-def test_the_capability_exists_but_nothing_claims_it_yet():
-    """Declaring it on a provider renders its toggle on the
-    integration card.  Until an ingest fills the table, that toggle
-    would control nothing — the catalog's own note on the retired
-    prune capability is the precedent.  Delete this test in the commit
-    that wires the ingest."""
-    from adapters.telematics.catalog import PROVIDER_CATALOG
-
+def test_the_capability_id_is_a_stable_wire_value():
+    """It appears in ``account_integrations.feature_toggles`` rows, so
+    renaming it silently disables the feed on every account that has
+    an explicit toggle stored."""
     assert Capability.DRIVER_HOS == "driver_hos"
-    for entry in PROVIDER_CATALOG.values():
-        assert Capability.DRIVER_HOS not in entry.capabilities, entry.provider_id

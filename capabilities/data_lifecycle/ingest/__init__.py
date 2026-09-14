@@ -21,6 +21,7 @@ _CONTRIBUTORS = (
     "features.events.lifecycle",       # safety events (its own feature, not a driver component)
     "features.drivers.lifecycle",      # per-driver daily efficiency
     "features.geofencing.lifecycle",   # geofence definitions cache
+    "features.eld.lifecycle",          # hours of service, from whichever ELD
 )
 
 discover = make_discover(_CONTRIBUTORS)

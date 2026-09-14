@@ -90,6 +90,10 @@ _EXPECTED_JOB_IDS = {
     "events.safety":          "warehouse_safety_events",
     "drivers.efficiency":     "warehouse_driver_efficiency",
     "geofencing.definitions": "warehouse_geofence_definitions",
+    # No "warehouse_" prefix: the others write warehouse tables, this
+    # writes the ELD feature's own store.  A job id is a wire value the
+    # console and the scheduler snapshot key on, so it says what it is.
+    "eld.driver_hos":         "eld_driver_hos",
 }
 
 

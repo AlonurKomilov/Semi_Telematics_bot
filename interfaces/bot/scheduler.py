@@ -36,6 +36,11 @@ _JOB_META = {
     "warehouse_fleet_weather":        ("Telematics", "Ingest cabin-weather snapshots"),
     "warehouse_fleet_efficiency":     ("Telematics", "Ingest fleet-efficiency aggregates"),
     "warehouse_geofence_definitions": ("Telematics", "Sync geofence definitions"),
+    # ── ELD (hours of service) ──
+    # Its own category, like TMS: an ELD is a third kind of provider,
+    # not a telematics feed.  Deliberately does NOT name a vendor —
+    # whichever ELD the account connected is the one this pulls from.
+    "eld_driver_hos":                 ("ELD", "Ingest driver hours of service from the connected ELD"),
     "fault_cache_warmup":             ("Telematics", "Warm the vehicle-fault cache on startup"),
     # ── Datatruck (TMS) auto-sync ──
     "datatruck_sync_drivers":         ("TMS", "Sync Datatruck drivers"),

@@ -107,6 +107,7 @@ class SamsaraProvider:
         Capability.FLEET_WEATHER,
         Capability.FLEET_EFFICIENCY,
         Capability.GEOFENCE_DEFINITIONS,
+        Capability.DRIVER_HOS,
         # The snapshot/hourly/daily roll-ups are NOT advertised here — they're
         # provider-agnostic warehouse plumbing (always-on), not a Samsara
         # capability the owner toggles.  See adapters/telematics/catalog.

@@ -159,6 +159,13 @@ _SAMSARA_DEFAULTS: dict[str, dict] = {
     Capability.VEHICLE_HEALTH:          {"enabled": True, "interval_min": 5},
     Capability.VEHICLE_FAULTS:          {"enabled": True, "interval_min": 2},
     Capability.DRIVER_EFFICIENCY_DAILY: {"enabled": True, "interval_hour": 1},
+    # Hours of service.  ON by default like every other capability —
+    # and note that defaulting it OFF here would not reliably keep it
+    # off anyway: the fan-out reads a MISSING toggle as enabled, so the
+    # catalog default only seeds new rows and the dashboard display.
+    # The real gates are whether an ELD is connected at all and whether
+    # its token carries the HOS scope.
+    Capability.DRIVER_HOS:              {"enabled": True, "interval_min": 5},
     Capability.FLEET_WEATHER:           {"enabled": True, "interval_min": 10},
     Capability.FLEET_EFFICIENCY:        {"enabled": True, "interval_min": 30},
     Capability.GEOFENCE_DEFINITIONS:    {"enabled": True, "interval_hour": 6},
@@ -207,6 +214,7 @@ _SAMSARA_FEED_SPECS: tuple[FeedSpec, ...] = (
     FeedSpec(Capability.FLEET_WEATHER,           "weather_live",    "updated_at",          feature="Live Map",   component="Weather"),
     FeedSpec(Capability.FLEET_EFFICIENCY,        "efficiency_live", "updated_at",          feature="Costs",      component="Efficiency"),
     FeedSpec(Capability.GEOFENCE_DEFINITIONS,    "geofence_definitions",     "updated_at",               feature="Geofences",  component="Definitions"),
+    FeedSpec(Capability.DRIVER_HOS,              "driver_hos_live",      "updated_at",               feature="ELD",        component="Hours of service"),
 )
 
 

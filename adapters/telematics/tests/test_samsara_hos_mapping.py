@@ -140,15 +140,24 @@ async def test_no_drivers_is_an_empty_list_not_an_error():
     assert await provider.get_driver_hos() == []
 
 
-# ── Still not switched on ─────────────────────────────────────────
+# ── Switched on ───────────────────────────────────────────────────
 
-def test_the_capability_is_still_undeclared():
-    """The mapping is inert until the ingest that consumes it lands,
-    so the toggle and the feed appear on the integration card
-    together.  Delete this when the ingest ships."""
+def test_the_capability_is_declared_with_a_feed_behind_it():
+    """It was deliberately undeclared until the ingest existed; the
+    test that asserted that deleted itself when the ingest shipped.
+    What replaces it is the rule that mattered: the declaration and
+    the feed arrive together, so the toggle an owner sees always
+    controls something real."""
+    from adapters.telematics.catalog import PROVIDER_CATALOG
     from adapters.telematics.protocol import Capability
 
-    assert Capability.DRIVER_HOS not in SamsaraProvider.supported_capabilities
+    assert Capability.DRIVER_HOS in SamsaraProvider.supported_capabilities
+    entry = PROVIDER_CATALOG["samsara"]
+    assert Capability.DRIVER_HOS in entry.capabilities
+    assert any(f.capability == Capability.DRIVER_HOS for f in entry.feeds), (
+        "a capability with no feed renders a toggle over an empty "
+        "Synced data row"
+    )
 
 
 def test_the_provider_still_satisfies_the_protocol():
