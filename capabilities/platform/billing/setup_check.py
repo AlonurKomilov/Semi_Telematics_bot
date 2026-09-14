@@ -162,6 +162,41 @@ def _check_invoices(stripe, mode: str) -> dict:
                   f"The latest invoice carries a receipt link and a PDF; replies go to {support}. {manual}")
 
 
+def _check_receipt_email(latest: dict | None) -> dict:
+    """Does 4truck's own receipt email work — not "is it configured".
+
+    Configuration is half an answer; the other half is whether the last
+    invoice's receipt actually went out, which only the invoice row
+    knows.  So: off is stated plainly (Stripe's is the receipt then);
+    on with no invoice yet says what it will do; on with an invoice says
+    whether that one was sent, and when it was not, that is a problem —
+    the customer paid and heard nothing from us.
+    """
+    from capabilities.platform.billing import receipt_email
+    label = "Receipt email (ours)"
+    if not receipt_email.enabled():
+        return _check("receipt_email", label, _OK,
+                      "Off — Stripe's own receipt is what a customer gets. "
+                      "BILLING_RECEIPT_EMAIL=1 adds ours, with the invoice PDF attached.")
+    host = (os.getenv("SMTP_HOST") or "").strip()
+    envelope = f"from {receipt_email.sender()}, replies to {receipt_email.reply_to()}"
+    if not host:
+        return _check("receipt_email", label, _PROBLEM,
+                      "On, but SMTP_HOST is empty — nothing can be sent, and a paying "
+                      "customer would hear nothing from us.")
+    if not latest:
+        return _check("receipt_email", label, _OK,
+                      f"On, nothing billed yet — the first paid invoice sends one, {envelope}.")
+    when = str((latest.get("receipt_emailed_at") or "")).strip()
+    number = str(latest.get("provider_invoice_id") or "")
+    if when:
+        return _check("receipt_email", label, _OK,
+                      f"The receipt for {number} went out {when[:19].replace('T', ' ')}, {envelope}.")
+    return _check("receipt_email", label, _PROBLEM,
+                  f"The latest invoice ({number}) has no receipt from us — it was paid and the "
+                  "customer heard nothing. See the API log for the reason.")
+
+
 def _check_webhook(stripe) -> dict:
     label = "Webhook endpoint"
     secret = bool((os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip())
@@ -316,7 +351,7 @@ def _check_plan_prices(plans: list[dict], mode: str, stripe=None) -> dict:
                   f"carry a {mode}-mode Stripe price")
 
 
-def _run_checks(plans: list[dict]) -> list[dict]:
+def _run_checks(plans: list[dict], latest_invoice: dict | None = None) -> list[dict]:
     """The blocking half — Stripe's SDK is synchronous."""
     mode = stripe_mode()
     key = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
@@ -327,6 +362,7 @@ def _run_checks(plans: list[dict]) -> list[dict]:
             _check("extras_price", "Per-extra-truck price", _UNKNOWN, "Needs a key to check."),
             _check("webhook", "Webhook endpoint", _UNKNOWN, "Needs a key to check."),
             _check("invoices", "Invoices and receipts", _UNKNOWN, "Needs a key to check."),
+            _check_receipt_email(latest_invoice),
             _check_return_url(),
             _check_plan_prices(plans, mode),
         ]
@@ -341,12 +377,13 @@ def _run_checks(plans: list[dict]) -> list[dict]:
         _check_extras_price(stripe, mode),
         _check_webhook(stripe),
         _check_invoices(stripe, mode),
+        _check_receipt_email(latest_invoice),
         _check_return_url(),
         _check_plan_prices(plans, mode, stripe),
     ]
 
 
-async def check_stripe_setup(plans: list[dict], *, provider: str) -> dict:
+async def check_stripe_setup(plans: list[dict], *, provider: str, latest_invoice: dict | None = None) -> dict:
     """What the console shows under "Payment wiring".
 
     ``provider`` is the configured ``BILLING_PROVIDER``: on ``stub`` the
@@ -355,7 +392,7 @@ async def check_stripe_setup(plans: list[dict], *, provider: str) -> dict:
     is charged yet.
     """
     try:
-        checks = await asyncio.to_thread(_run_checks, plans)
+        checks = await asyncio.to_thread(_run_checks, plans, latest_invoice)
     except Exception:
         logger.exception("stripe setup check failed")
         checks = [_check("secret_key", "Secret key", _UNKNOWN,

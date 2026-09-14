@@ -37,6 +37,44 @@ def enabled() -> bool:
     return (os.getenv("BILLING_RECEIPT_EMAIL") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+#: The envelope. A receipt arrives from an address that says what it is,
+#: and a reply goes where the customer was already told to write — the
+#: Billing page prints ``billing@4truck.us`` at its foot, so a reply to a
+#: receipt must land in the same mailbox or the page is lying.
+#: ``SUPPORT_CONTACT`` is deliberately NOT used here: it holds a Telegram
+#: handle, and a handle in a Reply-To header is a malformed header.
+DEFAULT_FROM = "invoice@4truck.us"
+DEFAULT_REPLY_TO = "billing@4truck.us"
+
+
+def looks_like_email(value: str) -> bool:
+    """Enough to keep a non-address out of a header.
+
+    ``"@" in value`` is not enough: ``SUPPORT_CONTACT`` holds
+    ``@Allen_Klein``, a Telegram handle, which passes that test and
+    becomes a malformed Reply-To and an address no customer can write
+    to.  A local part, one ``@``, and a dotted domain.
+    """
+    value = (value or "").strip()
+    if value.count("@") != 1 or " " in value:
+        return False
+    local, _, domain = value.partition("@")
+    return bool(local) and "." in domain and not domain.startswith(".") and not domain.endswith(".")
+
+
+def _address(var: str, fallback: str) -> str:
+    value = (os.getenv(var) or "").strip()
+    return value if looks_like_email(value) else fallback
+
+
+def sender() -> str:
+    return _address("BILLING_INVOICE_FROM", DEFAULT_FROM)
+
+
+def reply_to() -> str:
+    return _address("BILLING_CONTACT_EMAIL", DEFAULT_REPLY_TO)
+
+
 def fetch_pdf(url: str) -> bytes | None:
     """The invoice PDF, or None — never an exception.
 
@@ -98,6 +136,10 @@ def send(*, to: str, account_name: str, invoice: dict, support: str = "") -> boo
     exception: the payment is recorded either way, and a webhook that
     raises is a webhook Stripe retries."""
     to = (to or "").strip()
+    if to and not looks_like_email(to):
+        logger.warning("receipt email: %r is not an address; invoice %s not sent",
+                       to, invoice.get("provider_invoice_id"))
+        return False
     if not to:
         logger.info("receipt email: invoice %s has no address to send to", invoice.get("provider_invoice_id"))
         return False
@@ -105,10 +147,11 @@ def send(*, to: str, account_name: str, invoice: dict, support: str = "") -> boo
     amount = int(invoice.get("amount_paid_cents") or invoice.get("amount_due_cents") or 0)
     start, end = invoice.get("period_start") or "", invoice.get("period_end") or ""
     period = f"{start[:10]} to {end[:10]}" if start and end else ""
+    contact = support if looks_like_email(support) else reply_to()
     subject, body = compose(
         account_name=account_name, number=number, amount_cents=amount,
         currency=str(invoice.get("currency") or "usd"), period=period,
-        hosted_url=str(invoice.get("hosted_invoice_url") or ""), support=support)
+        hosted_url=str(invoice.get("hosted_invoice_url") or ""), support=contact)
     pdf = fetch_pdf(str(invoice.get("invoice_pdf_url") or ""))
     attachments = [(f"4truck-invoice-{number or 'latest'}.pdf", pdf, "application/pdf")] if pdf else None
     if not pdf:
@@ -118,7 +161,7 @@ def send(*, to: str, account_name: str, invoice: dict, support: str = "") -> boo
         from capabilities.email.smtp import send_email_detailed
         return bool(send_email_detailed(
             to=to, subject=subject, body=body, attachments=attachments,
-            reply_to=support or None))
+            from_address=sender(), from_name="4truck", reply_to=contact))
     except Exception:
         logger.exception("receipt email: sending for invoice %s failed", number)
         return False

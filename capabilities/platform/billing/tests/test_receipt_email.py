@@ -20,6 +20,8 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
+from tests._repo import REPO
+
 from capabilities.platform.billing import receipt_email as R
 
 INVOICE = {
@@ -121,3 +123,47 @@ def test_fetch_refuses_a_url_that_is_not_https_and_survives_a_dead_host(monkeypa
         raise OSError("no route to host")
     monkeypatch.setattr(R.urllib.request, "urlopen", _boom)
     assert R.fetch_pdf("https://stripe/x.pdf") is None
+
+
+# ── the envelope ──────────────────────────────────────────────────
+
+def test_the_receipt_comes_from_an_address_that_says_what_it_is(monkeypatch):
+    """And a reply lands where the Billing page already tells a customer
+    to write — its foot prints billing@4truck.us, so a reply to a receipt
+    must reach the same mailbox or the page is lying."""
+    monkeypatch.delenv("BILLING_INVOICE_FROM", raising=False)
+    monkeypatch.delenv("BILLING_CONTACT_EMAIL", raising=False)
+    assert R.sender() == "invoice@4truck.us" and R.reply_to() == "billing@4truck.us"
+    page = (REPO / "interfaces" / "dashboard" / "src" / "features" / "billing" / "Billing.tsx").read_text()
+    assert f"mailto:{R.reply_to()}" in page, "a reply would land somewhere the customer was never given"
+    monkeypatch.setenv("BILLING_INVOICE_FROM", "bills@example.com")
+    monkeypatch.setenv("BILLING_CONTACT_EMAIL", "help@example.com")
+    assert R.sender() == "bills@example.com" and R.reply_to() == "help@example.com"
+    # anything that is not an address falls back rather than becoming a header
+    monkeypatch.setenv("BILLING_CONTACT_EMAIL", "@Allen_Klein")
+    assert R.reply_to() == "billing@4truck.us"
+
+
+def test_a_telegram_handle_never_reaches_a_header(sent, monkeypatch):
+    """SUPPORT_CONTACT holds ``@Allen_Klein``.  It was being passed
+    straight into Reply-To, which is a malformed header and, in the
+    body, an address a customer cannot write to."""
+    monkeypatch.delenv("BILLING_CONTACT_EMAIL", raising=False)
+    monkeypatch.setattr(R, "fetch_pdf", lambda url: b"%PDF-x")
+    assert R.send(to="a@b.example", account_name="Co", invoice=INVOICE, support="@Allen_Klein") is True
+    kw = sent[0]
+    assert kw["reply_to"] == "billing@4truck.us" and "@Allen_Klein" not in kw["body"]
+    assert kw["from_address"] == "invoice@4truck.us" and kw["from_name"] == "4truck"
+
+
+def test_what_counts_as_an_address():
+    for good in ("a@b.co", "adam@premiertruckinggroup.com", "billing@4truck.us"):
+        assert R.looks_like_email(good), good
+    for bad in ("@Allen_Klein", "", "no-at-sign", "a@b", "a@@b.co", "a b@c.co", "a@.co", "a@b.", "@b.co"):
+        assert not R.looks_like_email(bad), bad
+
+
+def test_a_recipient_that_is_not_an_address_is_refused(sent, monkeypatch):
+    monkeypatch.setattr(R, "fetch_pdf", lambda url: b"%PDF-x")
+    assert R.send(to="@Allen_Klein", account_name="Co", invoice=INVOICE) is False
+    assert sent == [], "a handle is never mailed to"

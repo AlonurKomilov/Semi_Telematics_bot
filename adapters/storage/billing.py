@@ -807,7 +807,9 @@ class BillingMixin:
         "amount_due_cents", "amount_paid_cents", "currency",
         "status", "period_start", "period_end",
         "hosted_invoice_url", "invoice_pdf_url", "paid_at",
+        "receipt_emailed_at",
     )
+
 
     async def record_invoice(
         self,
@@ -854,6 +856,23 @@ class BillingMixin:
         )
         row = await cur2.fetchone()
         return row[0] if row else 0
+
+    async def mark_receipt_emailed(self, provider_invoice_id: str, when: str) -> bool:
+        """Stamp the invoice whose receipt 4truck just sent.  Separate
+        from ``record_invoice`` because the send happens after the row
+        exists, and a re-sent receipt should move the stamp."""
+        cur = await self._db.execute(
+            "UPDATE billing_invoices SET receipt_emailed_at = ? WHERE provider_invoice_id = ?",
+            (when, provider_invoice_id))
+        return bool(getattr(cur, "rowcount", 0))
+
+    async def latest_invoice(self) -> dict | None:
+        """The newest invoice on the platform — what the wiring card
+        reads to say whether the receipt service actually worked."""
+        cur = await self._db.execute(
+            "SELECT * FROM billing_invoices ORDER BY created_at DESC, id DESC LIMIT 1")
+        row = await cur.fetchone()
+        return dict(row) if row else None
 
     async def get_invoices(
         self, account_id: int, limit: int = 24

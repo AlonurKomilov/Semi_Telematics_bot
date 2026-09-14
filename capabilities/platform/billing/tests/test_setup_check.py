@@ -331,3 +331,30 @@ def test_an_invoice_without_its_links_would_leave_dead_buttons(stripe_env):
     page = (REPO / "interfaces" / "dashboard" / "src" / "features" / "billing" / "Billing.tsx").read_text()
     assert "invoice_pdf_url" in page and "hosted_invoice_url" in page
     assert page.count("target=\"_blank\" rel=\"noopener noreferrer\"") >= 2
+
+
+# ── our receipt service, on the same card as the rest ─────────────
+
+def test_the_card_says_whether_our_receipt_actually_went_out(monkeypatch):
+    """Configuration is half an answer.  The other half is the last
+    invoice: paid, and did the customer hear from us."""
+    monkeypatch.setenv("SMTP_HOST", "smtp.resend.com")
+    monkeypatch.delenv("BILLING_RECEIPT_EMAIL", raising=False)
+    off = setup_check._check_receipt_email(None)
+    assert off["state"] == "ok" and "Off" in off["note"] and "Stripe's own" in off["note"]
+
+    monkeypatch.setenv("BILLING_RECEIPT_EMAIL", "1")
+    fresh = setup_check._check_receipt_email(None)
+    assert fresh["state"] == "ok" and "nothing billed yet" in fresh["note"]
+    assert "invoice@4truck.us" in fresh["note"] and "billing@4truck.us" in fresh["note"]
+
+    sent = setup_check._check_receipt_email(
+        {"provider_invoice_id": "in_9", "receipt_emailed_at": "2026-09-14T05:30:00+00:00"})
+    assert sent["state"] == "ok" and "in_9" in sent["note"] and "2026-09-14 05:30:00" in sent["note"]
+
+    # paid, and we said nothing — the state the operator must see
+    silent = setup_check._check_receipt_email({"provider_invoice_id": "in_9", "receipt_emailed_at": None})
+    assert silent["state"] == "problem" and "heard nothing" in silent["note"]
+
+    monkeypatch.setenv("SMTP_HOST", "")
+    assert setup_check._check_receipt_email(None)["state"] == "problem"

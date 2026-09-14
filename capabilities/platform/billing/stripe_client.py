@@ -1003,8 +1003,13 @@ class StripeBillingProvider:
             to = str(_field(data, "customer_email", "") or sub.get("billing_email") or "")
             sent = await _off_loop(
                 receipt_email.send,
-                to=to, account_name=getattr(acct, "name", "") or "",
-                invoice=row, support=(os.getenv("SUPPORT_CONTACT") or "").strip())
+                to=to, account_name=getattr(acct, "name", "") or "", invoice=row)
+            if sent:
+                # the row remembers, so the wiring card can answer
+                # "does the receipt service work" with a fact
+                await db.mark_receipt_emailed(
+                    str(row.get("provider_invoice_id") or ""),
+                    datetime.now(timezone.utc).isoformat())
             logger.info("receipt email for invoice %s to %s: %s",
                         row.get("provider_invoice_id"), to or "(nobody)", "sent" if sent else "not sent")
         except Exception:
