@@ -246,6 +246,7 @@ async def run_all(conn) -> None:
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
     await migrate_driver_trucks_registry_id(conn)
+    await migrate_eld_hos_live(conn)
 
 
 
@@ -5624,3 +5625,70 @@ async def migrate_plan_requests(conn) -> None:
         # which is worse than a working platform and better than a
         # crash loop.
         logger.exception("migrate_plan_requests failed")
+async def migrate_eld_hos_live(conn) -> None:
+    """Create ``driver_hos_live`` — the ELD feature's own store.
+
+    A MIRROR of what a certified ELD currently reports, not a record of
+    it.  Keyed on ``(account_id, provider_id, provider_driver_id)``:
+    what the provider actually gives us, so a driver nobody has linked
+    to our roster yet still gets their clocks stored instead of being
+    dropped at the door.  ``user_id`` is a nullable enrichment.
+
+    NOT the existing ``driver_hos_status``, which is keyed on
+    ``user_id`` (an unlinked driver has no row at all) and carries
+    ``samsara_driver_id`` — one vendor's name in a shared identifier.
+    That table has never had a writer, so it holds nothing; it retires
+    in a later migration rather than being altered under a feature that
+    is still landing.
+
+    Clocks are NULLABLE on purpose.  ``NULL`` means the provider did
+    not report that clock; ``0`` means the driver is out of hours.
+    Defaulting them to zero would turn one into the other.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS driver_hos_live (
+                account_id              INTEGER NOT NULL,
+                provider_id             TEXT    NOT NULL,
+                provider_driver_id      TEXT    NOT NULL,
+                user_id                 INTEGER,
+                duty_status             TEXT    NOT NULL DEFAULT 'unknown',
+                drive_seconds_today     INTEGER,
+                on_duty_seconds_today   INTEGER,
+                cycle_seconds_remaining INTEGER,
+                shift_seconds_remaining INTEGER,
+                last_status_change      TEXT    NOT NULL DEFAULT '',
+                driver_name             TEXT    NOT NULL DEFAULT '',
+                source_ts               TEXT    NOT NULL DEFAULT '',
+                updated_at              TEXT    NOT NULL,
+                PRIMARY KEY (account_id, provider_id, provider_driver_id)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hos_live_account "
+            "ON driver_hos_live(account_id, source_ts DESC)")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hos_live_user "
+            "ON driver_hos_live(account_id, user_id)")
+        # Tenant isolation, applied HERE rather than added to migration
+        # 057's table list.  057 is version-tracked: it has already run
+        # on production, so a name appended to its list would only ever
+        # protect a database created after today.  This file re-runs
+        # every boot, which is what actually puts the policy on the
+        # table holding another company's drivers' duty clocks.
+        await conn.execute(
+            "ALTER TABLE driver_hos_live ENABLE ROW LEVEL SECURITY")
+        await conn.execute(
+            "ALTER TABLE driver_hos_live FORCE ROW LEVEL SECURITY")
+        await conn.execute(
+            "DROP POLICY IF EXISTS tenant_isolation ON driver_hos_live")
+        await conn.execute("""
+            CREATE POLICY tenant_isolation ON driver_hos_live
+            USING      (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK (account_id::text = current_setting('app.account_id', true))
+        """)
+    except Exception:
+        # Boot must not fail for this.  Without the table the ELD
+        # surfaces say the feed is not connected, which is exactly what
+        # they say today and is the honest answer either way.
+        logger.exception("migrate_eld_hos_live failed")

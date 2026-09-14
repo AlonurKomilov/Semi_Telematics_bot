@@ -112,6 +112,7 @@ from .alert_triggers import AlertTriggersMixin
 from .push_subscriptions import PushSubscriptionsMixin
 from .errors import ErrorLogMixin
 from .security_requests import SecurityRequestsMixin
+from .eld import EldMixin
 from .scan_log import ScanLogMixin
 from .applications import ApplicationsMixin
 from .application_drafts import ApplicationDraftsMixin
@@ -194,6 +195,7 @@ class Database(
     PushSubscriptionsMixin,
     ErrorLogMixin,
     SecurityRequestsMixin,
+    EldMixin,
     ScanLogMixin,
     ApplicationsMixin,
     ApplicationDraftsMixin,
