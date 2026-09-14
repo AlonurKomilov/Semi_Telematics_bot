@@ -30,6 +30,7 @@ import { DATATRUCK_RESOURCE_LABELS, formatSyncTimestamp } from './labels';
 import FeedsTable, { type FeedRow } from './FeedsTable';
 import SyncPreviewModal from './SyncPreviewModal';
 import DriverImportPanel from './DriverImportPanel';
+import { Switch } from '../../components/ui/switch';
 
 type Feedback = { kind: 'success' | 'error' | 'info'; message: string } | null;
 
@@ -344,23 +345,13 @@ function PayEstimateToggle() {
           against their real settlements before enabling.
         </p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label="Estimate driver pay from Datatruck tariffs"
+      <Switch
+        checked={enabled}
+        onCheckedChange={() => { void flip(); }}
         disabled={busy}
-        onClick={() => { void flip(); }}
-        className={`mt-0.5 shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
-          enabled ? 'bg-primary' : 'bg-muted-foreground/30'
-        } ${busy ? 'opacity-60' : ''} min-h-tap`}
-      >
-        <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
-            enabled ? 'translate-x-5' : 'translate-x-0.5'
-          }`}
-        />
-      </button>
+        aria-label="Estimate driver pay from Datatruck tariffs"
+        className="mt-0.5"
+      />
     </div>
   );
 }

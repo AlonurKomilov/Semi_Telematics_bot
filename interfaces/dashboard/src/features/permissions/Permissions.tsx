@@ -37,6 +37,7 @@ import {
 import type { ModulesData, PermFlag } from './permRows';
 import { DRIVER_KEY } from './verbGrid';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
+import { Switch } from '../../components/ui/switch';
 import { SectionHeader } from '@/components/shell';
 import { scrollIntoScrollport } from '../../lib/scrollport';
 
@@ -374,22 +375,15 @@ export default function Permissions() {
                   const flipped = moduleChanges.some((m) => m.id === id);
                   return (
                     <span key={id} className={`inline-flex items-center gap-1.5 ${flipped ? 'rounded px-1 bg-primary/10' : ''}`}>
-                      <button
-                        type="button"
-                        onClick={() => toggleModule(id)}
-                        role="switch"
-                        aria-checked={on}
+                      {/* `-my-1` keeps the row the height the 16px pill gave
+                          it — the primitive's hit box is the 24px target. */}
+                      <Switch
+                        checked={on}
+                        onCheckedChange={() => toggleModule(id)}
+                        size="sm"
                         aria-label={`${title} department`}
-                        // Hit box split from paint: the pill is 16px tall,
-                        // so a floor written ON it would deform the switch.
-                        // The button carries the 24px WCAG 2.5.8 target and
-                        // -my-1 keeps the row the height the pill gave it.
-                        className="inline-flex items-center justify-center min-h-tap min-w-tap -my-1 shrink-0"
-                      >
-                        <span aria-hidden className={`relative block w-8 h-4 rounded-full transition ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
-                          <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-background shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
-                        </span>
-                      </button>
+                        className="-my-1"
+                      />
                       <button
                         type="button"
                         // A search may have hidden the band: clear it, let React

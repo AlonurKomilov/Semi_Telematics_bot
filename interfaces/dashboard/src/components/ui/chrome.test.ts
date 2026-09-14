@@ -802,6 +802,41 @@ const colourLiteralSites = (src: string): { n: number; hit: string }[] => {
   return out;
 };
 
+/**
+ * Who may draw `role="switch"` without composing the primitive.
+ *
+ * Not a debt list — a reasoned exemption. The entry below is not a
+ * switch that nobody got round to converting; it is a different visual
+ * answer to the same semantic question, and converting it would lose
+ * the thing it exists for.
+ */
+const SWITCH_BY_DESIGN: { file: string; why: string }[] = [
+  { file: 'features/alerts/_shared/matrixCells.tsx',
+    why: 'ChannelPill draws a WORD — On / Off / N/A — not a track and a knob. '
+      + 'Its own comment says why: a channel that cannot deliver says so in a '
+      + 'word instead of dimming an empty box the reader must interpret. The '
+      + 'role is the behaviour; the paint is deliberately not a switch' },
+];
+
+/**
+ * Switch markup written by hand.
+ *
+ * Comments are BLANKED IN PLACE rather than deleted — two files discuss
+ * `role="switch"` in prose, and a strip that removes a block comment's
+ * newlines shifts every line number after it, sending the next reader
+ * to the wrong place.
+ */
+const handRolledSwitchSites = (src: string): number[] => {
+  const stripped = src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1');
+  const out: number[] = [];
+  stripped.split('\n').forEach((line, i) => {
+    if (/role="switch"/.test(line)) out.push(i + 1);
+  });
+  return out;
+};
+
 type DebtList = {
   name: string;
   entries: string[];
@@ -826,6 +861,8 @@ const DEBT: DebtList[] = [
   { name: 'COLOUR_LITERAL_ALLOWED',      entries: COLOUR_LITERAL_ALLOWED.map((e) => e.file), match: 'exact',
     scope: FILES, offends: (f) => colourLiteralSites(f.src).length > 0 },
   { name: 'RADIUS_ARBITRARY_ALLOWED',    entries: RADIUS_ARBITRARY_ALLOWED,    match: 'exact',     scope: FILES, offends: (f) => radiusClassSites(f.src).length > 0 },
+  { name: 'SWITCH_BY_DESIGN',            entries: SWITCH_BY_DESIGN.map((e) => e.file), match: 'exact',
+    scope: TSX,   offends: (f) => handRolledSwitchSites(f.src).length > 0 },
 ];
 
 describe('UI chrome', () => {
@@ -859,6 +896,46 @@ describe('UI chrome', () => {
         (line) => `${f.rel}:${line} → <Card> or cn(cardVariants({…}), …)`,
       ));
     expect(offenders).toEqual([]);
+  });
+
+  it('never hand-rolls the switch the primitive already ships', () => {
+    // `components/ui/switch.tsx` said it replaced this markup in four
+    // places. All four were still hand-rolling it — the primitive was
+    // added and the copies were never removed, so the SSOT was a claim
+    // rather than a fact for as long as anybody read the comment.
+    //
+    // What the copies cost is not tidiness. Three were byte-identical
+    // to `size="md"` and one to `size="sm"`, so they LOOKED settled
+    // while drifting independently: the Team Management copy painted a
+    // disabled switch grey whether it was on or off, which the
+    // primitive does not do, so a disabled manager read as not a
+    // manager. Nothing could have caught that, because there was
+    // nothing to compare against.
+    //
+    // The rule is the primitive or a REASON, never a fifth copy.
+    const offenders = TSX
+      .filter((f) => !f.rel.startsWith('components/ui/switch'))
+      .filter((f) => !SWITCH_BY_DESIGN.some((e) => e.file === f.rel))
+      .flatMap((f) => handRolledSwitchSites(f.src).map(
+        (line) => `${f.rel}:${line} → <Switch checked onCheckedChange aria-label>`,
+      ));
+    expect(
+      offenders,
+      'compose `components/ui/switch.tsx`, or add the file to SWITCH_BY_DESIGN '
+      + 'with the reason its paint is deliberately not a switch',
+    ).toEqual([]);
+  });
+
+  it('and that scan can fail', () => {
+    // A detector that stopped matching reports no copies, which reads
+    // exactly like a codebase that has none.
+    expect(handRolledSwitchSites('<button role="switch" aria-checked={on}>')).toEqual([1]);
+    // Prose about the rule is not a violation of it — two files discuss
+    // `role="switch"` in a comment, and both would otherwise be named.
+    expect(handRolledSwitchSites('/* no role="switch" here */')).toEqual([]);
+    expect(handRolledSwitchSites('  // uses role="switch", which a label may not wrap')).toEqual([]);
+    // And the line number survives a multi-line comment above the hit.
+    expect(handRolledSwitchSites('/* a\n b */\n<button role="switch">')).toEqual([3]);
   });
 
   it('never writes a literal length into an inline style', () => {

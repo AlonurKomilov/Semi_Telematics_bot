@@ -1,8 +1,22 @@
 // Toggle switch — the SSOT for an on/off control.
 //
-// The app hand-rolled this markup in ~4 places (Profile, Permissions,
-// TeamManagement, DatatruckSyncPanel) at two sizes.  This is the shared
-// primitive; new code composes it instead of re-writing the track/knob.
+// New code composes this instead of re-writing the track and knob, and
+// `chrome.test.ts` holds that as a RULE rather than as a hope — because
+// this comment used to claim it had already replaced the copies in
+// Profile, Permissions, TeamManagement and DatatruckSyncPanel while all
+// four were still drawing their own. Three were byte-identical to
+// `size="md"` and one to `size="sm"`, so they looked settled while
+// drifting independently: one of them painted a DISABLED switch grey
+// whether it was on or off, which this does not, so a disabled manager
+// read as not a manager — and nothing could catch it, because there was
+// nothing to compare against.
+//
+// One file draws `role="switch"` and is right to. The alert matrix's
+// ChannelPill answers the same question in a WORD — On / Off / N/A —
+// because a channel that cannot deliver should say so rather than dim
+// an empty box the reader has to interpret. It is named in
+// `SWITCH_BY_DESIGN` with that reason, not carried as debt.
+//
 // On = `bg-primary` (the app's established switch-on colour, NOT a
 // semantic hue) so one convention reads as "on" everywhere.
 //

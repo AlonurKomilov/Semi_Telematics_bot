@@ -115,3 +115,30 @@ what you see, and the wrapping label is the hit target — so the
 primitive's floor would size something invisible. Mark it with an
 `eslint-disable-next-line` naming that reason.
 
+
+## Switch (`switch.tsx`)
+
+**A BEHAVIOUR being turned on** — the family line this file draws above:
+*Checkbox = membership · Switch = behaviour · pressed button = a
+behaviour in a bar.*
+
+**Gated** (`chrome.test.ts`, "never hand-rolls the switch the primitive
+already ships"): `role="switch"` outside this folder fails, with comments
+blanked in place so prose about the rule is not a violation of it.
+
+Migration first, guard after — the same order Radio's note argues for,
+and Switch is the case that shows why waiting is not free. The
+primitive's docstring CLAIMED it had replaced the hand-rolled copies in
+Profile, Permissions, TeamManagement and DatatruckSyncPanel; all four
+were still drawing their own track and knob. Three were byte-identical
+to `size="md"` and one to `size="sm"`, so they read as settled while
+drifting apart, and one had come to paint a disabled switch grey whether
+it was on or off — a disabled manager rendered as not a manager, with no
+second implementation to disagree with it.
+
+**The one exemption**, held by reason and not as debt: the alert matrix's
+`ChannelPill` (`features/alerts/_shared/matrixCells.tsx`) takes the role
+and refuses the paint. It answers in a WORD — On / Off / N/A — because a
+channel that *cannot* deliver should say so rather than dim an empty box
+the reader has to interpret. New entries in `SWITCH_BY_DESIGN` state a
+reason of that kind or they do not belong there.

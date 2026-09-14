@@ -54,6 +54,7 @@ import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../utils/timezones';
 import { useNow } from '../hooks/useNow';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
 import { Card } from '@/components/ui/card';
+import { Switch } from '../components/ui/switch';
 import { SectionHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { scrollIntoScrollport } from '../lib/scrollport';
@@ -272,22 +273,11 @@ export default function Profile() {
                     : 'You get every alert 24/7. Turn on to silence non-urgent ones when you\'re off-shift.'}
                 </p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={dndEnabled}
+              <Switch
+                checked={dndEnabled}
+                onCheckedChange={setDndEnabled}
                 aria-label="Don't disturb me off-shift"
-                onClick={() => setDndEnabled(v => !v)}
-                className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                  dndEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
-                } min-h-tap`}
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
-                    dndEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
+              />
             </div>
 
             {/* Schedule preview — show each shift WITH its label so a

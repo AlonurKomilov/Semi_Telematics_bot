@@ -1424,7 +1424,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Thirty-nine live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Forty-one live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -1450,6 +1450,7 @@ this table has any chance of staying true.
 | modals are never hand-rolled | `scrolling/backdrops.test.ts` |
 | the sheet ✕ is suppressed where the header has one | `components/ui/sheetClose.test.ts` |
 | a locale never falls further behind English | `locales/parity.test.ts` — per-locale ceilings, plus: a translation may not carry a key English does not have |
+| don't hand-roll a Switch (§7) | `role="switch"` outside the primitive, with comments blanked IN PLACE so the line numbers stay true and so two files' prose about the rule is not a violation of it. The primitive's own comment said it had replaced four hand-rolled copies; all four were still there — three byte-identical to `size="md"`, one to `size="sm"`. What the copies cost is not tidiness: one of them painted a disabled switch grey whether it was on or off, so a disabled manager read as not a manager, and nothing could have caught it because there was nothing to compare against. One exemption, held by REASON and not as debt — the alert matrix's pill draws a WORD (On / Off / N/A) rather than a track and a knob, because a channel that cannot deliver should say so instead of dimming an empty box |
 | don't hand-roll the card surface (§6) | narrow on purpose: `rounded-md` is the chip radius, `bg-card/NN` is translucent floating chrome, and `absolute/fixed/sticky` is a thing that floats — the first draft matched 50 sites and most were not cards |
 | no literal length in an inline `style` (§5.1) | the one spelling the arbitrary-length rule cannot see — a number in a style object is not a class. `lib/scaledLength.ts` is the replacement, mirroring the config's axis-by-magnitude rule |
 | the tap floor rides no axis (§5.1) | reads `tailwind.config.js` — `tap` must stay a literal `24px`, because `tapHeight`/`tapWidth` return a hardcoded 24 for it and would keep saying so if it ever became scalable |

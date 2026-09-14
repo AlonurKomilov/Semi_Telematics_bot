@@ -21,6 +21,7 @@ import {
   IdCard,
 } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
+import { Switch } from '../../components/ui/switch';
 import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -1594,25 +1595,12 @@ export default function TeamManagement() {
                                   </p>
                                 )}
                               </div>
-                              <button
-                                type="button"
-                                role="switch"
-                                aria-checked={selected.is_manager}
-                                aria-label={`${tierLabel} tier`}
+                              <Switch
+                                checked={selected.is_manager}
+                                onCheckedChange={(next) => handleManagerToggle(selected.id, next)}
                                 disabled={cannotModify}
-                                onClick={() => handleManagerToggle(selected.id, !selected.is_manager)}
-                                className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                                  cannotModify
-                                    ? 'bg-muted-foreground/20 cursor-not-allowed opacity-60'
-                                    : selected.is_manager ? 'bg-primary' : 'bg-muted-foreground/30'
-                                } min-h-tap`}
-                              >
-                                <span
-                                  className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
-                                    selected.is_manager ? 'translate-x-5' : 'translate-x-0.5'
-                                  }`}
-                                />
-                              </button>
+                                aria-label={`${tierLabel} tier`}
+                              />
                             </div>
                           </div>
                         );
