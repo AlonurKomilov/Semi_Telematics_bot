@@ -30,15 +30,45 @@
  * so they're easy to review/adjust — see the inline notes.
  */
 import {
-  LayoutDashboard, Bot, Bell, FileText, BookOpen,
-  Map as MapIcon, Truck, MapPin, Wrench, Receipt, ClipboardCheck, ParkingSquare,
-  Route, Trophy, AlertTriangle, Camera, Package, Gauge,
-  IdCard, GraduationCap, Link, UserPlus,
-  Fuel, DollarSign, CreditCard,
-  Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
-  Plug, Store, Cog,
-  type LucideIcon, Boxes, BadgeDollarSign,
+  AlertTriangle,
+  BadgeDollarSign,
+  Bell,
+  BookOpen,
+  Bot,
+  Boxes,
+  Building2,
+  Camera,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
+  Cloud,
+  Cog,
+  CreditCard,
+  DollarSign,
+  FileText,
+  Fuel,
+  Gauge,
+  GraduationCap,
+  IdCard,
+  LayoutDashboard,
+  Link,
+  Map as MapIcon,
+  MapPin,
+  Package,
   Palette,
+  ParkingSquare,
+  Plug,
+  Receipt,
+  Route,
+  Settings as SettingsIcon,
+  Shield,
+  Store,
+  Trophy,
+  Truck,
+  UserPlus,
+  Users,
+  Wrench,
+  type LucideIcon,
 } from '../lib/icons';
 
 export type Module =
@@ -196,6 +226,18 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // from the truck; this is the fleet-wide destination.
   { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: 'can_view_inventory', navGroup: 'operations' },
   { id: 'vehicle_documents', labelKey: 'nav.vehicle_documents', path: '/vehicles/documents', icon: FileText, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_view_vehicle_docs'], navGroup: 'operations', parentId: 'vehicles' },
+  // Hours of Service — a FEATURE, not a Drivers sub-feature.  The data
+  // comes from the ELD integration rather than the roster, and three
+  // departments ask three different questions of it: who can take a
+  // load and for how long (dispatch), who is running toward fatigue
+  // (safety), who is available (fleet).  A sub-feature is one with no
+  // nav entry of its own living under its parent's folder (Health,
+  // Faults, Fuel under features/vehicles/) — this is not that.
+  //
+  // The driver card's HOS tab is the same data seen from one person,
+  // the way Inventory's per-truck card sits beside its fleet-wide
+  // page.  One endpoint serves both; there is no second store.
+  { id: 'eld', labelKey: 'nav.eld', path: '/eld', icon: Clock, modules: ['fleet', 'dispatch', 'safety'], tier: 'shared', permission: 'can_view_eld', navGroup: 'operations' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────
   { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: 'can_view_maintenance', navGroup: 'operations' },

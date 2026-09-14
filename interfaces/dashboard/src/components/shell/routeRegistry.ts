@@ -6,7 +6,7 @@ import {
   IdCard, Gauge, Boxes, Receipt, Store, Cog, ClipboardCheck, Package,
   UserPlus, Plug, Cloud,
   BadgeDollarSign,
-  type LucideIcon, Palette } from '../../lib/icons';
+  type LucideIcon, Palette , Clock} from '../../lib/icons';
 
 export interface RouteEntry {
   label: string;
@@ -148,6 +148,12 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     // land on Drivers → Onboarding, which is what it would find
     // otherwise.  A wrong hit is worse than an empty one.
     keywords: ['inventory', 'onboard', 'item', 'camera', 'eld', 'fuel card', 'toll'] },
+  { label: 'Hours of Service', path: '/eld', icon: Clock, group: 'Fleet',
+    permission: ['can_view_eld'],
+    description: 'Duty status and remaining drive, shift and cycle time from the connected ELD',
+    // 'hos' is what a dispatcher types; 'eld' is what the device is
+    // called; 'duty' and 'hours' are what the question sounds like.
+    keywords: ['hos', 'hours of service', 'eld', 'duty', 'logbook', 'drive time'] },
   { label: 'Vehicle Documents', path: '/vehicles/documents', icon: FileText, group: 'Fleet',
     permission: ['can_view_vehicle_docs'],
     description: "Registration, title, insurance and annual inspections — every truck's papers",

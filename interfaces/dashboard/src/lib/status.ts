@@ -174,6 +174,23 @@ const STATUS_TONE: Record<string, Tone> = {
   // rejected=danger, withdrawn=neutral.
   submitted: 'info', screening: 'warn', interview: 'warn',
   approved: 'ok', hired: 'ok', rejected: 'danger', withdrawn: 'neutral',
+  // Hours-of-service duty status, mirrored from the connected ELD.
+  //
+  // `driving` is deliberately NOT a warning — driving is the job, and
+  // painting it amber would make every working truck look like a
+  // problem.  The two FMCSA sub-statuses keep their own reading:
+  // personal conveyance is off-duty movement, yard move is on-duty
+  // movement, and collapsing either into its parent is how a
+  // violation that does not exist gets reported.
+  //
+  // `unknown` is the only alarming one, and it earns it: it means our
+  // mapping did not recognise what the ELD said, so it is the status
+  // an operator has to go and check for themselves.  (It resolves to
+  // warn through the generic `unknown: 'neutral'` above — spelled out
+  // here so the intent survives a future edit to that line.)
+  off_duty: 'neutral', sleeper: 'neutral',
+  driving: 'ok', on_duty: 'info',
+  personal_conveyance: 'info', yard_move: 'info',
 };
 
 export function statusTone(status: string | null | undefined): Tone {

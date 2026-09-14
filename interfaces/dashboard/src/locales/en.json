@@ -219,7 +219,8 @@
     "object_storage": "Object Storage",
     "my_payouts": "My payouts",
     "vehicle_documents": "Documents",
-    "tours": "Tours"
+    "tours": "Tours",
+    "eld": "Hours of Service"
   },
   "scorecards": {
     "page_title": "Scorecards",

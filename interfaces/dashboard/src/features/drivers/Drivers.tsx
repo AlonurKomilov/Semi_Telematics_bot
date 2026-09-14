@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Suspense, lazy, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +13,12 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { buildSignupInviteUrl, useSignupBase } from '../../lib/inviteUrl';
 import { Button } from '../../components/ui/button';
 import { InfoTip } from '../../components/tooltip';
+import { CardSkeleton } from '../../components/shell';
 import { toneClasses, toneText } from '../../lib/status';
+// The HOS tab reads the ELD feature's own endpoint — the same one
+// /eld reads, asked for one person.  Lazy so a driver card that
+// never opens the tab does not pull it.
+const DriverHoursTab = lazy(() => import('../eld/DriverHoursTab'));
 import DataGrid from '../../components/datagrid';
 import OnboardingQueue from './OnboardingQueue';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -491,7 +496,7 @@ function DriverDrawer({
             { key: 'documents' as DetailTab,   label: 'Documents',   icon: <FileText className="size-3" />,       soon: false },
             { key: 'inspections' as DetailTab, label: 'Inspections', icon: <ClipboardCheck className="size-3" />, soon: true  },
             { key: 'trainings' as DetailTab,   label: 'Trainings',   icon: <GraduationCap className="size-3" />,  soon: true  },
-            { key: 'hos' as DetailTab,         label: 'HOS',         icon: <Clock className="size-3" />,          soon: true  },
+            { key: 'hos' as DetailTab,         label: 'HOS',         icon: <Clock className="size-3" />,          soon: false },
             { key: 'integrations' as DetailTab, label: 'Integrations', icon: <Link2 className="size-3" />,        soon: false },
           ]).filter((tt) => tabs.includes(tt.key)).map((tt) => (
             <button
@@ -537,11 +542,9 @@ function DriverDrawer({
           />
         )}
         {tab === 'hos' && (
-          <ComingSoonTab
-            icon={<Clock className="text-muted-foreground size-6" />}
-            title="Hours of Service"
-            description="Live duty status (on duty / off duty / driving / sleeper berth) plus drive-time, on-duty time, and cycle/shift remaining — synced from Samsara HOS."
-          />
+          <Suspense fallback={<CardSkeleton />}>
+            <DriverHoursTab userId={p.user_id} />
+          </Suspense>
         )}
         {tab === 'integrations' && (
           <IntegrationsTab profile={p} onSaved={onSaved} onError={onError} />

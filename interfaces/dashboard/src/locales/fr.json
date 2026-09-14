@@ -173,7 +173,8 @@
     "truck_anatomy": "Truck Anatomy",
     "object_storage": "Object Storage",
     "vehicle_documents": "Documents",
-    "tours": "Guides"
+    "tours": "Guides",
+    "eld": "Heures de service"
   },
   "scorecards": {
     "page_title": "Scorecards Véhicules",

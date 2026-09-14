@@ -82,6 +82,7 @@ const Overview         = lazyWithReload(() => import('./features/overview/Overvi
 const Vehicles         = lazyWithReload(() => import('./features/vehicles/Vehicles'));
 const VehicleDetail    = lazyWithReload(() => import('./features/vehicles/VehicleDetail'));
 const Inventory = lazyWithReload(() => import('./features/inventory/InventoryPage'));
+const Hours = lazyWithReload(() => import('./features/eld/HoursPage'));
 const VehicleDocuments = lazyWithReload(() => import('./features/vehicles/documents/DocumentsPage'));
 const LiveMap          = lazyWithReload(() => import('./features/live-map/LiveMap'));
 const Alerts           = lazyWithReload(() => import('./features/alerts/Alerts'));
@@ -199,6 +200,7 @@ export default function AppRouter() {
         <Route path="live-map" element={L(<P perm={['can_view_live_map']}><LiveMap /></P>)} />
         <Route path="vehicles" element={L(<P perm={['can_view_vehicles']}><Vehicles /></P>)} />
         <Route path="inventory" element={L(<P perm={['can_view_inventory']}><Inventory /></P>)} />
+        <Route path="eld" element={L(<P perm={['can_view_eld']}><Hours /></P>)} />
         {/* Where it lived until it left Vehicles — kept so a bookmark,
             a shared link or a stale tab still lands on the page. */}
         <Route path="vehicles/inventory" element={<Navigate to="/inventory" replace />} />
