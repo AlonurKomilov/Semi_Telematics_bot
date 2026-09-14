@@ -69,6 +69,12 @@ import { Button } from '../ui/button';
 import { ContextMenu, type MenuAction } from '../ui/context-menu';
 import { Tip } from '../tooltip';
 import { toast } from '../../lib/toast';
+// By PATH, not through `../../mods`: that barrel exports the mods
+// PANEL, and this grid renders on 46 pages — every one of them would
+// take the panel's module graph to reach one call. The exception in
+// `mods/index.test.ts` carries the reason, beside the sound lanes that
+// reach the same way.
+import { playActCue } from '../../mods/sound/cue';
 import {
   exportRowsAsCsv, buildTsv, writeToClipboard, buildCsvFromRows, downloadCsv,
 } from '../../lib/csv';
@@ -1986,6 +1992,10 @@ export default function DataGrid({
     }
     if (isRange && lastClickedIdRef.current) {
       e.preventDefault();
+      // A range is a SET gathered in one act, unlike the modifier-click
+      // above it, which is one row and happens hundreds of times a
+      // shift. The two branches of one handler, and only one speaks.
+      playActCue('select_add');
       const rows = table.getRowModel().rows;
       const fromIdx = rows.findIndex(r => r.id === lastClickedIdRef.current);
       const toIdx   = rows.findIndex(r => r.id === rowId);
@@ -2055,11 +2065,11 @@ export default function DataGrid({
   const someRowsSelected = bulkSelection && selectedRowIds.size > 0 && !allRowsSelected;
 
   const cbClass = 'cursor-pointer accent-primary align-middle';
-  // `data-cue="none"` on the two boxes below is TEMPORARY, unlike the
-  // row box's. They are the acts that deserve a cue — one for a set
-  // gathered, one for a set dropped — but those names are not built
-  // yet, and a toggle sound learned here would have to be un-learned
-  // the day they arrive.
+  // `data-cue="none"` on the two boxes below silences the CLASSIFIER,
+  // not the act. Both are checkboxes, so the delegated listener would
+  // call them `toggle_on`/`toggle_off` — true, and the wrong word. They
+  // raise `select_add` / `select_clear` from their own handlers
+  // instead: one act, one cue, and the cue that says what happened.
   const renderSelectAll = () => (
     <input
       type="checkbox"
@@ -2067,10 +2077,16 @@ export default function DataGrid({
       checked={allRowsSelected}
       ref={el => { if (el) el.indeterminate = someRowsSelected; }}
       onClick={e => e.stopPropagation()}
-      onChange={e =>
+      onChange={e => {
+        // ONE ACT, ONE CUE, whether it takes one row or five hundred.
+        // The count is on screen; what the sound reports is that a set
+        // was gathered or dropped, which is the thing the eye has to
+        // leave the rows to check.
+        playActCue(e.target.checked ? 'select_add' : 'select_clear');
         setSelectedRowIds(e.target.checked
           ? new Set(selectableRows().map(r => r.id))
-          : new Set())}
+          : new Set());
+      }}
       className={cbClass}
       aria-label="Select all rows"
     />
@@ -2110,12 +2126,14 @@ export default function DataGrid({
         checked={all}
         ref={el => { if (el) el.indeterminate = some; }}
         onClick={e => e.stopPropagation()}
-        onChange={e =>
+        onChange={e => {
+          playActCue(e.target.checked ? 'select_add' : 'select_clear');
           setSelectedRowIds(prev => {
             const next = new Set(prev);
             ids.forEach(id => { if (e.target.checked) next.add(id); else next.delete(id); });
             return next;
-          })}
+          });
+        }}
         className={cbClass}
         aria-label="Select group"
       />
@@ -2240,8 +2258,14 @@ export default function DataGrid({
           type="button"
           variant="ghost"
           size="icon"
+          // `data-cue="none"` so the delegated listener does not also
+          // call this a press. Dropping a selection is a selection act
+          // and has its own word; two cues on one click would collapse
+          // to the generic one, because the document listener runs in
+          // the capture phase and gets there first.
+          data-cue="none"
           className="text-muted-foreground hover:text-foreground"
-          onClick={() => setSelectedRowIds(new Set())}
+          onClick={() => { playActCue('select_clear'); setSelectedRowIds(new Set()); }}
           aria-label="Clear selection"
         >
           <X />

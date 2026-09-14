@@ -69,6 +69,12 @@ const ALLOWED_DEEP = [
   // Its guard reads the packs' index for the ids it checks the files
   // against, and would inherit the same ring through the barrel.
   'test/iconLane.test.ts',
+  // The grid raises the two selection cues from its own handlers: a
+  // set gathered and a set dropped are acts no click can name, because
+  // the same checkbox means one row or five hundred. By path because
+  // this grid renders on 46 pages and the barrel exports the mods
+  // panel.
+  'components/datagrid/DataGrid.tsx',
   // The two surface roots. A dialog is opened by code as often as by a
   // click and closed by Escape or a backdrop press, so it cannot be
   // classified from an event — it is raised from the wrapper every
