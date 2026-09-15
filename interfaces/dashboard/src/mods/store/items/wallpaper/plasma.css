@@ -9,7 +9,18 @@
     background-color: var(--ground);
     background-image:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23q)' opacity='0.06'/%3E%3C/svg%3E");
-    position: relative;
+    /* NO `position` HERE, deliberately.
+       A pack may paint a ground; it may not change how the element is
+       POSITIONED. These rules are unlayered, so `position: relative`
+       here beat Tailwind's `fixed` utility whatever the specificity —
+       and two of the five grounds in this product are fixed panels: the
+       assistant dock and the mobile nav drawer. Both fell out of
+       position and painted nothing the moment they gained a ground,
+       which is how this was found.
+       The `::before` below still needs a positioned ancestor. The
+       ELEMENT declares that, and `mods/wallpaper.test.ts` holds both
+       halves — no pack sets `position`, and every ground is already
+       positioned. */
     isolation: isolate;
   }
   /* The clouds, on a layer of their own — in BOTH states, so still and

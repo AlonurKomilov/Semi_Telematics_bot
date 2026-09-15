@@ -97,8 +97,13 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
     root.dataset.wallpaperPage = pageWallpaperFor(theme, s?.id ?? null);
   }, [pathname, theme]);
 
+  // `relative` on the two GROUNDS below: a wallpaper's wash is a
+  // `::before` at `inset: 0`, and it anchors to the nearest positioned
+  // ancestor. The packs used to declare that themselves, and it cost two
+  // fixed panels their position — an unlayered rule beats a utility — so
+  // the element says it now. `mods/wallpaper.test.ts` holds both halves.
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground chrome-ground">
+    <div className="relative flex flex-col h-screen overflow-hidden bg-background text-foreground chrome-ground">
       <ModsLock />
       {/* Nothing here scrolls the document — see DocumentLock. */}
       <DocumentLock />
@@ -225,7 +230,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             // ground here. A pattern reaches it through `data-wallpaper-page`
             // on <html>, and with `none` there is no rule — `bg-background`
             // paints the card as it always has.
-            className={`flex-1 bg-background border border-border rounded-xl overflow-hidden page-ground ${dockedContentClass}`}
+            className={`relative flex-1 bg-background border border-border rounded-xl overflow-hidden page-ground ${dockedContentClass}`}
           >
           {/* THE page scrollport, named so a caller with no element in
               hand can reach it — see lib/scrollport. */}

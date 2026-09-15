@@ -691,3 +691,147 @@ describe('a pattern over a custom canvas', () => {
     expect(paletteTokens('#0a0a0a', THEME_PACKS[0].seed.dark, 'dark', true).tokens).not.toBeNull();
   });
 });
+
+/**
+ * A PACK PAINTS A GROUND. IT DOES NOT MOVE ONE.
+ *
+ * Four packs used to declare `position: relative` on `.chrome-ground`
+ * and `.page-ground`, because their wash is a `::before` at `inset: 0`
+ * and that needs a positioned ancestor. The reasoning was right and the
+ * place was wrong: these rules are UNLAYERED, so `position: relative`
+ * beat Tailwind's `fixed` utility whatever the specificity — and two of
+ * the five grounds in this product are fixed panels, the assistant dock
+ * and the mobile nav drawer.
+ *
+ * Both fell out of position and painted nothing the moment they gained
+ * a ground. The space still moved, because the content's own margin is
+ * computed elsewhere, so it read as "the panel is invisible" rather
+ * than "the panel is in the wrong place" — which is the shape of bug
+ * that costs an afternoon.
+ *
+ * So: the element declares how it is positioned, and the pack never
+ * touches it. Both halves are held here, because either alone leaves
+ * the wash anchored to the wrong ancestor.
+ */
+describe('a wallpaper pack paints a ground, it does not position one', () => {
+  const PACKS = join(__dirname, 'store', 'items', 'wallpaper');
+
+  /** Declarations only — the explanation of this rule names the
+   *  property it bans, and prose is not a violation of it. */
+  const declarations = (css: string) => css
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+
+  const files = readdirSync(PACKS).filter((f) => f.endsWith('.css'));
+
+  it('finds the packs to check', () => {
+    expect(files.length, 'no wallpaper packs — this checks nothing')
+      .toBeGreaterThan(4);
+  });
+
+  /**
+   * Rules whose selector names a GROUND ELEMENT — not its `::before`,
+   * which must be `position: absolute` and is the whole reason the
+   * element has to be positioned in the first place.
+   */
+  const groundRules = (css: string) =>
+    // `[^{}]` on BOTH sides. With `[^}]` for the body, the very first
+    // match is `@media screen {` — whose body then swallows every rule
+    // inside it, so no ground rule is ever seen on its own and the
+    // scan reports nothing. A mutation that put `position` back was
+    // what caught that.
+    [...declarations(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, sel]) => /\.(chrome|page)-ground(?!\w)/.test(sel)
+        && !/::(before|after)/.test(sel))
+      .map(([, , body]) => body);
+
+  it('and not one of them sets `position`', () => {
+    const offenders = files.flatMap((f) => groundRules(readFileSync(join(PACKS, f), 'utf8'))
+      .filter((body) => /(^|[\s;])position\s*:/.test(body))
+      .map(() => f));
+    expect(
+      offenders,
+      'a pack set `position`. These rules are unlayered, so it beats the `fixed` '
+        + 'utility on the assistant dock and the mobile drawer and drops them out '
+        + 'of position — where they paint nothing while the space still moves. '
+        + 'The ELEMENT declares its position; the pack paints.',
+    ).toEqual([]);
+  });
+
+  it('and the scan can fail', () => {
+    const on = ':root[data-wallpaper="x"] .chrome-ground { position: relative; }';
+    expect(groundRules(on).some((b) => /position\s*:/.test(b)),
+      'the scan stopped seeing a ground rule').toBe(true);
+    // The pseudo-element MUST be absolute — it is the thing the
+    // element's own position exists for.
+    const wash = ':root[data-wallpaper="x"] .chrome-ground::before { position: absolute; }';
+    expect(groundRules(wash), 'the wash was read as the ground').toEqual([]);
+    // And the paragraph above this rule, which names the property, is
+    // not itself a breach of it.
+    const prose = '/* never write position: relative on .chrome-ground */';
+    expect(groundRules(prose)).toEqual([]);
+  });
+});
+
+/**
+ * …AND EVERY GROUND IS ALREADY POSITIONED.
+ *
+ * The other half. A wash anchored to the nearest positioned ancestor is
+ * anchored to the wrong thing when the ground itself is static — it
+ * would stretch across whatever container happens to be positioned
+ * further up, which on this shell is the viewport.
+ */
+describe('every ground positions itself', () => {
+  const GROUND = /className=\{?[`"'][^`"']*\b(?:chrome-ground|page-ground)\b[^`"']*[`"']/g;
+  const POSITIONED = /\b(relative|absolute|fixed|sticky)\b/;
+
+  const SRC = join(__dirname, '..');
+  const tsx = (dir: string, out: string[] = []): string[] => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) {
+        if (name !== 'node_modules' && name !== 'dist') tsx(full, out);
+      } else if (name.endsWith('.tsx') && !name.includes('.test.')) out.push(full);
+    }
+    return out;
+  };
+
+  const carriers = tsx(SRC).flatMap((f) => {
+    // Comments stripped: this file's own prose names the classes.
+    const src = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    return [...src.matchAll(GROUND)].map((m) => ({
+      rel: relative(SRC, f).split(sep).join('/'), cls: m[0],
+    }));
+  });
+
+  it('finds the grounds', () => {
+    // Five today: the shell root, the content card, the assistant dock
+    // and the panel inside it, and the mobile drawer.
+    expect(carriers.length, 'no grounds found — this checks nothing')
+      .toBeGreaterThanOrEqual(4);
+  });
+
+  /**
+   * Where the position comes from a PRIMITIVE rather than the call
+   * site. A source scan reads one className string and cannot follow a
+   * component; each entry says which primitive positions it, so a
+   * stale one is a question somebody has to answer rather than a hole.
+   */
+  const FROM_PRIMITIVE: Record<string, string> = {
+    'components/shell/MobileNavDrawer.tsx':
+      'SheetContent is `fixed` — see components/ui/sheet.tsx',
+  };
+
+  it('and each one says how', () => {
+    const bare = carriers
+      .filter((c) => !FROM_PRIMITIVE[c.rel])
+      .filter((c) => !POSITIONED.test(c.cls))
+      .map((c) => `${c.rel}: ${c.cls.slice(0, 80)}…`);
+    expect(
+      bare,
+      'this element carries a wallpaper ground and no position. The wash is a '
+        + '`::before` at `inset: 0`; with nothing positioned here it anchors to '
+        + 'whatever is positioned further up, which on this shell is the viewport. '
+        + 'Add `relative` — a pack must not add it for you.',
+    ).toEqual([]);
+  });
+});

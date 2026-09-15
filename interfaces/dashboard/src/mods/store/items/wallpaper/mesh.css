@@ -7,7 +7,18 @@
   :root[data-wallpaper="mesh"] .chrome-ground,
   :root[data-wallpaper-page="mesh"] .page-ground {
     background-color: var(--ground);
-    position: relative;
+    /* NO `position` HERE, deliberately.
+       A pack may paint a ground; it may not change how the element is
+       POSITIONED. These rules are unlayered, so `position: relative`
+       here beat Tailwind's `fixed` utility whatever the specificity —
+       and two of the five grounds in this product are fixed panels: the
+       assistant dock and the mobile nav drawer. Both fell out of
+       position and painted nothing the moment they gained a ground,
+       which is how this was found.
+       The `::before` below still needs a positioned ancestor. The
+       ELEMENT declares that, and `mods/wallpaper.test.ts` holds both
+       halves — no pack sets `position`, and every ground is already
+       positioned. */
     isolation: isolate;
   }
   /* The pools, on a layer of their own in BOTH states — so still and

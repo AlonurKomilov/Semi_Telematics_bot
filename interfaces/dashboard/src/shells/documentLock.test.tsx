@@ -72,8 +72,19 @@ describe('nothing in flow sits above the shell', () => {
     expect(shell, 'the invite banner is not inside the shell').toMatch(/<PendingInviteBanner \/>/);
     // A column: the banner is a ROW of the viewport box, not something
     // stacked on top of a box that is already the whole viewport.
-    expect(shell, 'the shell root is not a column — a banner row would push the work out of view')
-      .toMatch(/className="flex flex-col h-screen overflow-hidden/);
+    //
+    // The class ORDER is not the claim and used to be asserted as one —
+    // the root gained `relative` (it is a wallpaper ground, and a ground
+    // anchors its own wash) and this went red for a change that has
+    // nothing to do with what the rule is about. Matched as a set now.
+    const root = /<div className="([^"]*h-screen[^"]*)"/.exec(shell)?.[1] ?? '';
+    expect(root, 'the shell root moved — this reader is stale').not.toBe('');
+    for (const cls of ['flex', 'flex-col', 'h-screen', 'overflow-hidden']) {
+      expect(
+        root.split(/\s+/),
+        `the shell root lost \`${cls}\` — a banner row would push the work out of view`,
+      ).toContain(cls);
+    }
   });
 
   /**
