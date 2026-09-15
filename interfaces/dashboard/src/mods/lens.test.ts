@@ -1,0 +1,120 @@
+/**
+ * The bevel map, held to the three things that make it a bevel.
+ *
+ * These are not style assertions. Each one is a property the rendered
+ * effect was MEASURED to have, and each has a way of being wrong that
+ * looks fine in a screenshot:
+ *
+ *   · the centre is neutral — otherwise the whole backdrop shifts, and
+ *     a uniform shift of a flat ground is invisible until something
+ *     with an edge sits behind it
+ *   · the edge pushes OUTWARD along the nearest normal — the sign is a
+ *     coin flip that turns a lens into a pinch, and both bend
+ *   · the map is small — the reason the feature is affordable at all,
+ *     and the single easiest thing for a later edit to undo
+ */
+import { describe, it, expect } from 'vitest';
+import { bevelMap, RESOLUTION, NEUTRAL, type Bevel } from './lens';
+
+const BEVEL: Bevel = { band: 30, falloff: 2.2 };
+const W = 236, H = 300, R = 28;
+
+/** One pixel's displacement, in map units away from neutral. */
+function at(m: ReturnType<typeof bevelMap>, mx: number, my: number) {
+  const i = (my * m.width + mx) * 4;
+  return { x: m.data[i] - NEUTRAL, y: m.data[i + 1] - NEUTRAL, b: m.data[i + 2] };
+}
+
+describe('the bevel map', () => {
+  const map = bevelMap(W, H, R, BEVEL);
+
+  it('is small, and that is the performance decision', () => {
+    // Measured over 16 surfaces on a moving backdrop: a full-resolution
+    // map cost +53.4ms per frame against +15.0ms for the same filter
+    // chain without it, and a tiny one cost +16.4ms — the baseline
+    // again. Raising this silently is how the feature stops being
+    // affordable, so the number is pinned rather than merely small.
+    expect(RESOLUTION.w).toBe(32);
+    expect(RESOLUTION.h).toBe(40);
+    expect(map.width).toBe(32);
+    expect(map.height).toBe(40);
+    expect(map.data.length).toBe(32 * 40 * 4);
+  });
+
+  it('leaves the middle exactly alone', () => {
+    // Not "close to neutral" — exactly. The band is 30px into a 300px
+    // pane, so everything in the middle fifth is past it.
+    for (const my of [18, 20, 22])
+      for (const mx of [13, 16, 19]) {
+        const p = at(map, mx, my);
+        expect(p.x, `x moved at ${mx},${my}`).toBe(0);
+        expect(p.y, `y moved at ${mx},${my}`).toBe(0);
+      }
+  });
+
+  it('pushes outward at every edge, along that edge normal', () => {
+    const mid = { x: RESOLUTION.w >> 1, y: RESOLUTION.h >> 1 };
+    // Left edge moves in -x and not in y; right in +x. Top and bottom
+    // are the same statement rotated. `NEUTRAL - 127*n*fade` means a
+    // normal pointing LEFT (-1) raises the channel, so the left column
+    // must read above neutral.
+    const left = at(map, 0, mid.y), right = at(map, RESOLUTION.w - 1, mid.y);
+    expect(left.x).toBeGreaterThan(40);
+    expect(right.x).toBeLessThan(-40);
+    expect(Math.abs(left.y)).toBeLessThan(6);
+    expect(Math.abs(right.y)).toBeLessThan(6);
+
+    const top = at(map, mid.x, 0), bottom = at(map, mid.x, RESOLUTION.h - 1);
+    expect(top.y).toBeGreaterThan(40);
+    expect(bottom.y).toBeLessThan(-40);
+    expect(Math.abs(top.x)).toBeLessThan(6);
+    expect(Math.abs(bottom.x)).toBeLessThan(6);
+  });
+
+  it('bends a corner on the diagonal, not on one axis', () => {
+    // The thing that separates a bevel from four ramps: in a corner
+    // both axes move at once, which is why the corner reads as round.
+    const c = at(map, 0, 0);
+    expect(c.x).toBeGreaterThan(20);
+    expect(c.y).toBeGreaterThan(20);
+  });
+
+  it('dies away with depth rather than stopping at a line', () => {
+    const mid = RESOLUTION.h >> 1;
+    const run = [0, 1, 2, 3, 4, 5].map((mx) => Math.abs(at(map, mx, mid).x));
+    for (let i = 1; i < run.length; i++)
+      expect(run[i], `sample ${i} is not below ${i - 1}`).toBeLessThanOrEqual(run[i - 1]);
+    expect(run[0]).toBeGreaterThan(run[run.length - 1]);
+  });
+
+  it('keeps blue neutral so the map can be read by eye', () => {
+    for (const i of [0, 400, 2000, map.data.length - 2])
+      expect(map.data[(i >> 2) * 4 + 2]).toBe(NEUTRAL);
+  });
+
+  it('clamps a radius larger than the box, the way CSS does', () => {
+    // A pane narrower than twice its radius is a capsule, and the
+    // distance field goes imaginary if the radius is taken literally.
+    const capsule = bevelMap(40, 200, 999, BEVEL);
+    expect([...capsule.data].every((v) => Number.isFinite(v))).toBe(true);
+    const mid = at(capsule, RESOLUTION.w >> 1, RESOLUTION.h >> 1);
+    expect(Number.isNaN(mid.x)).toBe(false);
+  });
+
+  it('puts the band in SURFACE pixels, not map pixels', () => {
+    // The map is one fixed grid whatever the surface is, so the band
+    // has to be measured against the surface — otherwise a wide panel
+    // gets a wide bevel, which is the bug the first attempt shipped
+    // (one map stretched across three widths, the band stretching with
+    // it). A 30px band is a fifth of a 150px pane and a twentieth of a
+    // 600px one, so the same band reaches FEWER map columns on the
+    // wider surface.
+    const narrow = bevelMap(150, 300, R, BEVEL);
+    const wide = bevelMap(600, 300, R, BEVEL);
+    const mid = RESOLUTION.h >> 1;
+    const reach = (m: ReturnType<typeof bevelMap>) =>
+      [...Array(RESOLUTION.w).keys()].filter((mx) => Math.abs(at(m, mx, mid).x) > 2).length;
+    expect(reach(wide), 'the wide pane got as much bevel as the narrow one')
+      .toBeLessThan(reach(narrow));
+  });
+});
