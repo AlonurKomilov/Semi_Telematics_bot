@@ -503,33 +503,39 @@ export default function PlansPage() {
     }
   }
 
+  /** The key the SERVER will derive — mirrors slug_from_label in
+   *  capabilities/permissions/plans.py.  Shown before the operator
+   *  commits, because the key is permanent and they should see it
+   *  before, not discover it after. */
+  function previewKey(label: string, taken: Set<string> = new Set()): string {
+    let base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!base || !/^[a-z]/.test(base)) base = `plan_${base}`.replace(/_+$/, '');
+    base = base.slice(0, 32).replace(/_+$/, '');
+    if (base.length < 2) base = `${base}_plan`.slice(0, 32);
+    let key = base;
+    for (let n = 2; taken.has(key); n++) {
+      const suffix = `_${n}`;
+      key = base.slice(0, 32 - suffix.length).replace(/_+$/, '') + suffix;
+    }
+    return key;
+  }
+
   async function create() {
-    const key = newPlan.key.trim();
-    const label = newPlan.label.trim() || key;
-    const pattern = new RegExp(data?.plan_key_pattern ?? '^[a-z][a-z0-9_]{1,31}$');
-    if (!pattern.test(key)) {
-      setErr('Plan key: a-z, 0-9, _ — 2 to 32 chars, starting with a letter');
-      return;
-    }
-    // Creating is its own door (POST) and the server refuses a taken
-    // key with 409; the check here only spares the operator the round
-    // trip and a confirm that would otherwise promise an empty plan.
-    if (plans.some((p) => p.tier === key)) {
-      setErr(`A plan named "${key}" already exists — edit it in the grid above`);
-      return;
-    }
+    const label = newPlan.label.trim();
+    if (!label) return;
+    const key = previewKey(label, new Set(plans.map((p) => p.tier)));
     const orphaned = data?.accounts_without_plan[key];
     const who = orphaned
       ? `${orphaned} account${orphaned === 1 ? '' : 's'} already on "${key}" will hold everything from now on.`
       : 'No account is on it until one is moved there.';
-    if (!window.confirm(`Create plan "${label}" (${key}) with everything included?  ${who}`)) return;
+    // Names the derived key in the confirm, because it is the one thing
+    // here that cannot be corrected afterwards: it keys the account and
+    // rides into Stripe's lookup_key and metadata.
+    if (!window.confirm(`Create plan "${label}" with key "${key}", everything included?  ${who}`)) return;
     setBusy('new');
     setErr('');
     try {
-      await apiJSON('/system/plans', {
-        method: 'POST',
-        body: { tier: key, label },
-      });
+      await apiJSON('/system/plans', { method: 'POST', body: { label } });
       setNewPlan({ key: '', label: '' });
       await load();
       setTab('offers');
@@ -866,26 +872,26 @@ export default function PlansPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
             <input
               className={inputCls}
-              placeholder="key (e.g. gold) — becomes the account's tier"
-              value={newPlan.key}
-              onChange={(e) => setNewPlan({ ...newPlan, key: e.target.value })}
-              aria-label="New plan key"
-            />
-            <input
-              className={inputCls}
-              placeholder="Label (e.g. Gold)"
+              placeholder="Name it — e.g. Gold"
               value={newPlan.label}
               onChange={(e) => setNewPlan({ ...newPlan, label: e.target.value })}
-              aria-label="New plan label"
+              aria-label="New plan name"
             />
             <Button
               variant="primary"
-              disabled={busy === 'new' || !newPlan.key.trim()}
+              disabled={busy === 'new' || !newPlan.label.trim()}
               onClick={create}
             >
               {busy === 'new' ? 'Creating…' : 'Create with everything included'}
             </Button>
           </div>
+          {newPlan.label.trim() && (
+            <p className="text-xs text-slate-400 mt-2">
+              Its key will be <code className="text-slate-200">{previewKey(newPlan.label)}</code> —
+              derived from the name and permanent. It keys the account, rides into Stripe, and
+              renaming the plan later will not change it.
+            </p>
+          )}
           <p className="text-xs text-slate-500 mt-2">
             A new plan starts in Offers: everything included, no price, hidden from customers. Set its price there,
             then either offer it to one account from its column, or tick "Shown to all customers" and save to move

@@ -139,32 +139,45 @@ async def test_a_write_is_refused_not_silently_dropped(system_app):
 
 
 @pytest.mark.asyncio
-async def test_the_operator_creates_a_plan_and_a_taken_key_is_refused(system_app):
+async def test_the_operator_names_a_plan_and_the_key_is_derived_for_them(system_app):
+    """The key is the plan's identity — it keys five tables and rides
+    into Stripe's lookup_key and metadata, and it cannot be corrected
+    afterwards.  So it is DERIVED, never sent: a plan called Gold has
+    been keyed "costum" since the day somebody typed it."""
     s = system_app
     post = lambda body: s["client"].post("/api/system/plans", headers=s["op"], json=body)  # noqa: E731
-    r = await post({"tier": "gold", "label": "Gold"})
+    r = await post({"label": "Gold"})
     assert r.status_code == 201
+    assert r.json()["plan"]["tier"] == "gold", "derived from the name"
     assert r.json()["plan"]["included"] == ["*"] and r.json()["plan"]["accounts"] == 0
     rows = await s["db"].list_platform_audit(event="plan.created", limit=5)
     assert rows and '"tier": "gold"' in rows[0]["details"]
-    g = (await s["client"].get("/api/system/plans", headers=s["op"])).json()
-    assert "gold" in {p["tier"] for p in g["plans"]}
-    assert g["plan_key_pattern"]
 
-    # narrow it, then "create" it again by mistake: refused, and the narrowing stands
+    # a key the caller sends is NOT honoured — the whole point
+    r = await post({"label": "Silver", "tier": "anything_i_like"})
+    assert r.status_code == 201 and r.json()["plan"]["tier"] == "silver"
+
+    # narrow Gold, then create the same name again: it steps aside to
+    # gold_2 rather than refusing, and the narrowing on gold stands
     r = await s["client"].put("/api/system/plans/gold", headers=s["op"],
                               json={"label": "Gold", "included": ["vehicles"], "quotas": {"max_users": 3}})
     assert r.status_code == 200
-    r = await post({"tier": "gold", "label": "Gold again"})
-    assert r.status_code == 409
-    r = await post({"tier": "Gold", "label": "Gold"})
-    assert r.status_code == 400
-    r = await post({"tier": "silver", "label": "  "})
-    assert r.status_code == 400
+    r = await post({"label": "Gold"})
+    assert r.status_code == 201 and r.json()["plan"]["tier"] == "gold_2"
+
+    # a blank name is refused before any key is derived from nothing
+    r = await post({"label": "  "})
+    assert r.status_code == 400 and "Label is required" in r.json()["detail"]
+    # and a name of pure punctuation still yields a usable key rather
+    # than a dead end — the operator named something, after all
+    r = await post({"label": "★★★"})
+    assert r.status_code == 201
+    from capabilities.permissions.plans import PLAN_KEY_RE
+    assert PLAN_KEY_RE.match(r.json()["plan"]["tier"])
+
     g = (await s["client"].get("/api/system/plans", headers=s["op"])).json()
     gold = {p["tier"]: p for p in g["plans"]}["gold"]
     assert gold["included"] == ["vehicles"] and gold["quotas"] == {"max_users": 3} and gold["label"] == "Gold"
-    assert (await post({"tier": "silver", "label": "Silver"})).status_code == 201
 
 
 @pytest.mark.asyncio

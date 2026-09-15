@@ -220,7 +220,9 @@ class PlanBody(BaseModel):
 
 
 class NewPlanBody(BaseModel):
-    tier: str = Field(..., min_length=2, max_length=32)
+    #: No ``tier``.  The key is derived from the label and returned —
+    #: it is the plan's permanent identity, and typing it by hand is how
+    #: a plan called Gold came to be keyed "costum".
     label: str = Field(..., min_length=1, max_length=60)
 
 
@@ -687,15 +689,26 @@ async def system_create_plan(
     user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
-    """A NEW plan, with everything included — its own door, so a key
-    that already names a plan is refused (409) instead of resetting
-    that plan to everything.  Narrow it with PUT afterwards."""
-    from capabilities.permissions.plans import EVERYTHING, PLAN_KEY_RE, invalidate_plans
-    tier = body.tier.strip()
-    if not PLAN_KEY_RE.match(tier):
-        raise HTTPException(status_code=400, detail="Plan key: a-z, 0-9, _ — 2 to 32 chars, starting with a letter")
-    if await platform_db.get_plan(tier):
-        raise HTTPException(status_code=409, detail=f"A plan named '{tier}' already exists — edit it in the grid")
+    """A NEW plan, with everything included.  Narrow it with PUT after.
+
+    The key is DERIVED from the label, never sent: it is the identity
+    that keys five tables and rides into Stripe's lookup_key and
+    metadata, and it cannot be corrected afterwards without replacing
+    the plan.  A label whose key is taken gets ``_2`` rather than a
+    refusal — two plans may legitimately be called the same thing at
+    different times, and the operator should not have to invent a key to
+    get past us.
+    """
+    from capabilities.permissions.plans import EVERYTHING, invalidate_plans, slug_from_label
+    label = _label_of(body.label)
+    existing = {str(p["tier"]) for p in (await platform_db.list_plans() or [])}
+    try:
+        tier = slug_from_label(label, existing)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="That name has no letters or digits to build a key from — "
+                   "give the plan a name a person would read.")
     actor = f"tg:{user.get('sub')}"
     row = await platform_db.upsert_plan(tier, label=_label_of(body.label), included=[EVERYTHING], quotas={}, updated_by=actor)
     invalidate_plans()

@@ -625,6 +625,9 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
 
 interface PlanCardProps {
   name: string; price: string;
+  /** false when there is no price — then ``price`` reads "Contact us"
+   *  and the "/mo" suffix would turn it into nonsense. */
+  priced?: boolean;
   features: string[]; current: boolean; highlighted: boolean; buyable: boolean; offered?: boolean;
   /** What this plan would not hold, from what the account has today. */
   warnings?: string[];
@@ -642,7 +645,7 @@ interface PlanCardProps {
 }
 
 function PlanCard({
-  name, price, features, current, highlighted, buyable, offered = false, warnings = [],
+  name, price, priced = true, features, current, highlighted, buyable, offered = false, warnings = [],
   openCase, caseMessage, onUpgrade, onAsk, defaultEmail = '', loading,
 }: PlanCardProps) {
   // A plan with no price cannot be bought; asking about it is the whole
@@ -672,7 +675,8 @@ function PlanCard({
       )}
       <h3 className="text-base font-semibold text-foreground mb-1">{name}</h3>
       <p className="text-2xl font-bold text-ok mb-3">
-        {price}<span className="text-sm text-muted-foreground font-normal">/mo</span>
+        {price}
+        {priced && <span className="text-sm text-muted-foreground font-normal">/mo</span>}
       </p>
       <ul className="text-sm text-foreground/80 space-y-1.5 mb-5 flex-1">
         {features.map((f) => (
@@ -1227,7 +1231,12 @@ export default function Billing() {
             <PlanCard
               key={p.tier}
               name={p.label}
-              price={money(p.price_monthly_cents)}
+              // A plan with no price is not free — it is one you have to
+              // talk to us about.  money(0) rendered "$0/mo" in the same
+              // big green type as "$99/mo", which advertised Enterprise
+              // as free on every customer's Billing page.
+              price={p.price_monthly_cents > 0 ? money(p.price_monthly_cents) : 'Contact us'}
+              priced={p.price_monthly_cents > 0}
               features={featureLines(p, labelOf, words)}
               current={p.current}
               highlighted={upgradePlans.some((u) => u.tier === p.tier)}

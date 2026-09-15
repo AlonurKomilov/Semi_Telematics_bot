@@ -59,6 +59,46 @@ _ALL_SELLABLE_FLAGS: frozenset[str] = frozenset(f for fl in _FLAGS_OF.values() f
 
 #: a plan's key — accounts.tier — as the operator may create one
 PLAN_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+
+
+def slug_from_label(label: str, taken: "set[str] | frozenset[str] | None" = None) -> str:
+    """The plan's key, DERIVED from its name — never typed.
+
+    The key is the plan's identity: it keys ``plans``, ``subscriptions``,
+    ``accounts``, ``plan_offers`` and ``plan_requests``, it is stamped
+    into the Stripe Price's ``lookup_key`` and the Product's metadata,
+    and the webhook reads it back from there to decide what an account is
+    on.  A typo in it is permanent — which is not hypothetical: a plan
+    called Gold has been keyed ``costum`` since the day somebody typed it.
+
+    So the operator names the plan and the key follows.  Readable on
+    purpose: it is what a human reads in Stripe's dashboard, in an audit
+    row and in a support conversation, and hiding a private plan behind
+    an unreadable key would buy nothing — reach is decided by
+    ``billing.offers.purchasable_plan``, which refuses a plan that is
+    neither public nor offered to the asking account, whatever its name.
+
+    ``taken`` are keys already in use; a collision takes ``_2``, ``_3``.
+    """
+    base = re.sub(r"[^a-z0-9]+", "_", (label or "").strip().lower()).strip("_")
+    if not base or not base[0].isalpha():
+        # a label that survives none of that ("2026", "★", "") still needs
+        # a key, and PLAN_KEY_RE insists on a leading letter
+        base = f"plan_{base}".strip("_")
+    base = base[:32].rstrip("_")
+    if len(base) < 2:
+        base = f"{base}_plan"[:32]
+    taken = taken or frozenset()
+    key, n = base, 1
+    while key in taken:
+        n += 1
+        suffix = f"_{n}"
+        key = f"{base[:32 - len(suffix)].rstrip('_')}{suffix}"
+    if not PLAN_KEY_RE.match(key):          # belt and braces: the contract
+        raise ValueError(f"cannot derive a plan key from {label!r}")
+    return key
+
+
 #: the quotas a plan row may set; each is enforced by one reader
 #: (interfaces/api/deps.py) with the config table as its default
 QUOTA_KEYS: tuple[str, ...] = ("max_users", "max_companies")

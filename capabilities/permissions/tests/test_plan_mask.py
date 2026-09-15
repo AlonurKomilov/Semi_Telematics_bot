@@ -368,3 +368,48 @@ async def test_the_bots_sync_can_honours_the_plan_after_priming(pg_db, monkeypat
     plans.invalidate_plans()
     await roles.prime_account_permissions(acct.id, Role.OWNER)
     assert roles.can(Role.OWNER, "can_view_maintenance")
+
+
+# ── the plan's key is derived, never typed ─────────────────────────
+
+def test_a_plan_key_is_derived_from_its_name():
+    """A plan called Gold has been keyed "costum" since the day somebody
+    typed it, and the key is the identity — it keys five tables and
+    rides into Stripe's lookup_key, so a typo in it is permanent."""
+    from capabilities.permissions.plans import PLAN_KEY_RE, slug_from_label
+    assert slug_from_label("Gold") == "gold"
+    assert slug_from_label("Enterprise Plus") == "enterprise_plus"
+    assert slug_from_label("Gold+") == "gold"
+    assert slug_from_label("  Premier  Trucking  ") == "premier_trucking"
+
+
+def test_a_name_that_is_not_a_key_still_yields_one():
+    """PLAN_KEY_RE insists on a leading letter and two characters.  A
+    label that satisfies neither must not leave the operator stuck, and
+    must never produce a key the rest of the system will reject."""
+    from capabilities.permissions.plans import PLAN_KEY_RE, slug_from_label
+    for label in ("2026 Plan", "★", "", "A", "7", "___"):
+        key = slug_from_label(label)
+        assert PLAN_KEY_RE.match(key), f"{label!r} produced {key!r}"
+
+
+def test_the_key_never_outgrows_what_the_column_and_the_pattern_allow():
+    from capabilities.permissions.plans import PLAN_KEY_RE, slug_from_label
+    long = "Premier Trucking Ultra Mega Enterprise Plan Of The Year"
+    key = slug_from_label(long)
+    assert len(key) <= 32 and PLAN_KEY_RE.match(key)
+    # and a collision suffix still fits, rather than pushing it over
+    taken = {key}
+    for n in range(2, 12):
+        nxt = slug_from_label(long, taken)
+        assert len(nxt) <= 32 and PLAN_KEY_RE.match(nxt) and nxt not in taken
+        taken.add(nxt)
+
+
+def test_a_taken_key_steps_aside_instead_of_refusing():
+    """Two plans may legitimately carry the same name at different
+    times; the operator should not have to invent a key to get past us."""
+    from capabilities.permissions.plans import slug_from_label
+    assert slug_from_label("Gold", {"gold"}) == "gold_2"
+    assert slug_from_label("Gold", {"gold", "gold_2"}) == "gold_3"
+    assert slug_from_label("Gold", set()) == "gold"
