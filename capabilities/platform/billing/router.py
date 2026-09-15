@@ -468,6 +468,26 @@ class BillingEmailCodeRequest(BaseModel):
     code: str = Field(..., min_length=6, max_length=6)
 
 
+async def _pending_with_link_flag(platform_db, user: dict) -> dict | None:
+    """The waiting change, plus whether a link will actually be needed.
+
+    Only the server knows both halves: the address being moved to, and
+    whether it is the requester's own VERIFIED sign-in address.  The page
+    cannot work it out — it is shown the code's destination masked — so
+    it would have to guess, and a guess here would promise the customer
+    an email that never arrives.
+    """
+    pending = await platform_db.pending_billing_email_change(user["account_id"])
+    if not pending:
+        return None
+    from interfaces.api.deps import get_current_db_user
+    db_user = await get_current_db_user(user, platform_db)
+    same = bool(db_user) and pending["new_email"].strip().lower() == \
+        (db_user.email or "").strip().lower()
+    verified = bool(db_user) and same and await platform_db.is_email_verified(int(db_user.id))
+    return {**pending, "needs_link": not (same and verified)}
+
+
 @router.get("/email/change")
 async def billing_email_change_state(
     user: dict = Depends(_billing_admin),
@@ -479,7 +499,7 @@ async def billing_email_change_state(
     WHICH step it is on and where each message went, and an answer
     holding the second proof would hand it to whoever holds the first.
     """
-    return {"pending": await platform_db.pending_billing_email_change(user["account_id"])}
+    return {"pending": await _pending_with_link_flag(platform_db, user)}
 
 
 @router.post("/email/change")
@@ -517,7 +537,7 @@ async def billing_email_change_start(
             recipient_name=getattr(db_user, "display_name", "") or ""))
     logger.info("billing contact change requested acct=%s by user=%s (code emailed=%s)",
                 user["account_id"], db_user.id, sent)
-    return {"pending": await platform_db.pending_billing_email_change(user["account_id"]),
+    return {"pending": await _pending_with_link_flag(platform_db, user),
             "email_sent": sent}
 
 
@@ -545,6 +565,44 @@ async def billing_email_change_verify(
             detail="That code is wrong or has expired. Ask for a new one.")
     sub = await platform_db.get_subscription(user["account_id"]) or {}
     acct = await platform_db.get_account(user["account_id"])
+
+    # The second proof exists to show the NEW address is real and is
+    # theirs.  When the new address IS the requester's own verified
+    # sign-in address, that is already proven — this account signed in
+    # from it — and the link would be mailed to the very inbox that just
+    # supplied the code.  Asking twice there does not add security, it
+    # only makes the first answer look like it did not count.
+    same_as_signin = (
+        pending["new_email"].strip().lower() == (db_user.email or "").strip().lower()
+        if db_user else False)
+    if same_as_signin and await platform_db.is_email_verified(int(db_user.id)):
+        from capabilities.platform.billing import get_provider
+        try:
+            await get_provider().update_billing_email(
+                user["account_id"], platform_db, pending["new_email"])
+        except Exception as e:
+            # Leave no half-finished request behind: the owner starts
+            # over rather than facing a step that can no longer complete.
+            await platform_db.cancel_billing_email_change(user["account_id"])
+            logger.exception("billing contact could not be applied acct=%s",
+                             user["account_id"])
+            raise HTTPException(
+                status_code=502,
+                detail=f"The billing provider refused the change: {e}")
+        await platform_db.confirm_billing_email_change(token)
+        try:
+            await platform_db.add_platform_audit(
+                "billing_email_changed", account_id=user["account_id"],
+                actor=f"user:{db_user.id}",
+                details=json.dumps({"new_email": pending["new_email"],
+                                    "via": "own_verified_signin_address"}))
+        except Exception:
+            logger.exception("platform audit write failed for billing email change on %s",
+                             user["account_id"])
+        logger.info("billing contact changed acct=%s (owner's own verified address)",
+                    user["account_id"])
+        return {"pending": None, "applied": True, "email": pending["new_email"]}
+
     from capabilities.platform.billing.contact_email import send_confirm_link
     sent = await asyncio.to_thread(
         lambda: send_confirm_link(
@@ -553,8 +611,8 @@ async def billing_email_change_verify(
             old_email=str(sub.get("billing_email") or "")))
     logger.info("billing contact change confirmed by owner acct=%s (link emailed=%s)",
                 user["account_id"], sent)
-    return {"pending": await platform_db.pending_billing_email_change(user["account_id"]),
-            "email_sent": sent}
+    return {"pending": await _pending_with_link_flag(platform_db, user),
+            "applied": False, "email_sent": sent}
 
 
 @router.delete("/email/change")

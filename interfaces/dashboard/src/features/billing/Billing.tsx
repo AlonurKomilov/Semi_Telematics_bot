@@ -248,8 +248,17 @@ interface PendingContactChange {
   new_email: string;
   status: 'code_sent' | 'confirm_sent';
   code_sent_to: string;
+  /** false when the new address is the owner's own verified sign-in address. */
+  needs_link: boolean;
   expires_at: string;
   created_at: string;
+}
+
+/** `applied` is the shortcut: nothing left to confirm, the bills moved. */
+interface ContactChangeReply {
+  pending: PendingContactChange | null;
+  applied?: boolean;
+  email?: string;
 }
 
 function SummaryCard({ summary, canEditContact, onContactChanged }: {
@@ -422,11 +431,15 @@ function BillingContactDialog({ current, onClose, onDone }: {
       .finally(() => setLoaded(true));
   }, []);
 
-  const call = async (fn: () => Promise<{ pending: PendingContactChange | null }>) => {
+  const call = async (fn: () => Promise<ContactChangeReply>) => {
     setBusy(true);
     setErr('');
     try {
-      setPending((await fn()).pending);
+      const r = await fn();
+      // Applied outright: the new address was the owner's own verified
+      // sign-in address, so there was no second party left to ask.
+      if (r.applied) { onDone(); return; }
+      setPending(r.pending);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
@@ -505,11 +518,18 @@ function BillingContactDialog({ current, onClose, onDone }: {
               placeholder="000000"
               className="tracking-[0.4em] text-center font-mono"
             />
-            <p className="text-xs text-muted-foreground">
-              Next we email <strong>{pending?.new_email}</strong> a link. The bills move
-              only when somebody there opens it — so if you typed the address wrong,
-              nothing happens and this one keeps working.
-            </p>
+            {pending?.needs_link === false ? (
+              <p className="text-xs text-muted-foreground">
+                That is the address you sign in with, so there is nobody else to ask —
+                the bills move as soon as you enter the code.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Next we email <strong>{pending?.new_email}</strong> a link. The bills move
+                only when somebody there opens it — so if you typed the address wrong,
+                nothing happens and this one keeps working.
+              </p>
+            )}
             <DialogFooter>
               <Button type="button" variant="ghost" disabled={busy} onClick={() => void cancel()}>
                 Cancel the change

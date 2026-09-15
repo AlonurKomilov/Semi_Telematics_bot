@@ -356,3 +356,112 @@ def test_the_wiring_card_now_expects_the_event_that_keeps_us_in_step():
     go-live with the drift still in place."""
     from capabilities.platform.billing.setup_check import REQUIRED_EVENTS
     assert "customer.updated" in REQUIRED_EVENTS
+
+
+# ── when the two proofs would land in one inbox ────────────────────
+
+@pytest_asyncio.fixture
+async def own_address(pg_db, monkeypatch):
+    """The owner moving the bills to the address they sign in with.
+
+    The real case that exposed this: the owner's 4truck login and the
+    accounting inbox were the same mailbox, so the confirmation link
+    arrived beside the code and read as a pointless repeat.
+    """
+    from adapters.storage import Role
+    from interfaces.api.auth import create_jwt
+    db = pg_db
+    monkeypatch.setenv("BILLING_PROVIDER", "stub")
+    import capabilities.platform.billing as _b
+    monkeypatch.setattr(_b, "_provider", None)
+    acct = await db.create_account("Same Inbox Co", tier="pro")
+    await db.get_or_create_subscription(acct.id)
+    await db.update_subscription(acct.id, billing_email=OLD)
+    owner = await db.create_user(970001, acct.id, role=Role.OWNER)
+    await db.set_user_email_password(owner.id, NEW, "x")   # signs in AS the new address
+
+    outbox: list[dict] = []
+    import capabilities.platform.billing.contact_email as _ce
+    monkeypatch.setattr(_ce, "send_change_code",
+                        lambda **kw: (outbox.append({"kind": "code", **kw}), True)[1])
+    monkeypatch.setattr(_ce, "send_confirm_link",
+                        lambda **kw: (outbox.append({"kind": "link", **kw}), True)[1])
+    import infra.platform as _cp
+    monkeypatch.setattr(_cp, "_db", db)
+    from interfaces.api.app import create_api
+    claims = {}
+    if hasattr(db, "get_user_auth_state"):
+        st = await db.get_user_auth_state(owner.id, "")
+        claims["auth_version"] = int((st or {}).get("auth_version") or 0)
+    async with AsyncClient(transport=ASGITransport(app=create_api()),
+                           base_url="http://testserver") as client:
+        yield {"client": client, "db": db, "acct": acct, "owner": owner, "outbox": outbox,
+               "hdr": {"Authorization":
+                       f"Bearer {create_jwt(owner.telegram_id, acct.id, 'owner', **claims)}"}}
+
+
+@pytest.mark.asyncio
+async def test_the_owners_own_verified_address_needs_no_second_proof(own_address):
+    """Mailing a link to the inbox that just answered the code proves
+    nothing — it only makes the first answer look like it did not count."""
+    c, db, acct = own_address["client"], own_address["db"], own_address["acct"]
+    hdr, outbox = own_address["hdr"], own_address["outbox"]
+    # verified the way a real user is: a token minted and redeemed
+    owner = own_address["owner"]
+    token = await db.create_email_verification_token(owner.id, NEW)
+    assert await db.consume_email_verification_token(token) == owner.id
+    assert await db.is_email_verified(owner.id)
+
+    r = await c.post("/api/billing/email/change", headers=hdr, json={"email": NEW})
+    assert r.status_code == 200, r.text
+    assert r.json()["pending"]["needs_link"] is False, "the page must not promise a link"
+
+    r = await c.post("/api/billing/email/change/verify", headers=hdr,
+                     json={"code": outbox[-1]["code"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["applied"] is True and r.json()["pending"] is None
+    assert [m["kind"] for m in outbox] == ["code"], "no second email was sent"
+    assert (await db.get_subscription(acct.id))["billing_email"] == NEW
+    assert await db.pending_billing_email_change(acct.id) is None
+    rows = await db.list_platform_audit(event="billing_email_changed", limit=5)
+    assert rows and "own_verified_signin_address" in str(rows[0]["details"])
+
+
+@pytest.mark.asyncio
+async def test_a_different_address_still_has_to_prove_itself(own_address):
+    """The shortcut is narrow on purpose: any OTHER address is a party
+    we have never heard from, and it still has to answer."""
+    c, db, acct = own_address["client"], own_address["db"], own_address["acct"]
+    hdr, outbox = own_address["hdr"], own_address["outbox"]
+    # verified, exactly like the shortcut case — so the ONLY thing left
+    # to stop the shortcut is that this is somebody else's address
+    owner = own_address["owner"]
+    assert await db.consume_email_verification_token(
+        await db.create_email_verification_token(owner.id, NEW)) == owner.id
+    r = await c.post("/api/billing/email/change", headers=hdr,
+                     json={"email": "someone.else@elsewhere.com"})
+    assert r.json()["pending"]["needs_link"] is True
+    r = await c.post("/api/billing/email/change/verify", headers=hdr,
+                     json={"code": outbox[-1]["code"]})
+    assert r.json()["applied"] is False
+    assert [m["kind"] for m in outbox] == ["code", "link"]
+    assert outbox[-1]["to"] == "someone.else@elsewhere.com"
+    assert (await db.get_subscription(acct.id))["billing_email"] == OLD, "still unmoved"
+
+
+@pytest.mark.asyncio
+async def test_an_unverified_signin_address_still_has_to_prove_itself(own_address):
+    """The shortcut leans on the sign-in address being PROVEN.  An
+    account that never redeemed its verification link has proven
+    nothing, so the address gets asked like any stranger's would be."""
+    c, db, acct = own_address["client"], own_address["db"], own_address["acct"]
+    hdr, outbox = own_address["hdr"], own_address["outbox"]
+    assert not await db.is_email_verified(own_address["owner"].id)
+
+    r = await c.post("/api/billing/email/change", headers=hdr, json={"email": NEW})
+    assert r.json()["pending"]["needs_link"] is True, "an unproven address is not a shortcut"
+    r = await c.post("/api/billing/email/change/verify", headers=hdr,
+                     json={"code": outbox[-1]["code"]})
+    assert r.json()["applied"] is False
+    assert [m["kind"] for m in outbox] == ["code", "link"]
+    assert (await db.get_subscription(acct.id))["billing_email"] == OLD, "still unmoved"
