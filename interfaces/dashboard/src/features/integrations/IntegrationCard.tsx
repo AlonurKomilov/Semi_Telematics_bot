@@ -58,7 +58,10 @@ import { Badge } from '@/components/ui/badge';
 interface Props {
   entry: CatalogEntry;
   integration: AccountIntegration | null;
-  onConnect: (creds: Record<string, string>) => Promise<void>;
+  /** Credentials as the FORM built them. Not `Record<string, string>`:
+   *  a company-scoped provider posts a nested `{companies: {CODE: key}}`
+   *  map, because its key opens one company rather than the account. */
+  onConnect: (creds: Record<string, unknown>) => Promise<void>;
   onDisconnect: () => Promise<void>;
   onToggle: (next: FeatureToggleMap) => Promise<void>;
   /**
@@ -635,6 +638,8 @@ export default function IntegrationCard({
         <div className="mt-4 border-t border-border pt-3">
           <ConnectForm
             authKind={entry.auth_kind}
+            providerId={entry.provider_id}
+            credentialScope={entry.credential_scope ?? 'account'}
             onCancel={() => setShowConnect(false)}
             onSubmit={async (creds) => {
               await onConnect(creds);
@@ -1180,22 +1185,44 @@ function FeedbackBanner({
 
 function ConnectForm({
   authKind,
+  providerId,
+  credentialScope,
   onSubmit,
   onCancel,
 }: {
   authKind: string;
-  onSubmit: (creds: Record<string, string>) => Promise<void>;
+  providerId: string;
+  credentialScope: 'account' | 'company';
+  onSubmit: (creds: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const [token, setToken] = useState('');
   const [subdomain, setSubdomain] = useState('');
+  const [company, setCompany] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const wantsSubdomain = authKind === 'api_token_with_subdomain';
-  const canSubmit = token.trim().length > 0 && (
-    !wantsSubdomain || subdomain.trim().length > 0
-  );
+  // A key issued PER COMPANY opens exactly that company. Storing the
+  // first one as an account-wide token would connect the integration
+  // and then report one company while silently omitting the rest —
+  // so the form asks which company this key belongs to, and the
+  // operator (who holds all five) is the only one who knows.
+  const wantsCompany = credentialScope === 'company';
+
+  // Available before the integration exists: the companies list is the
+  // account's own, not the provider's.
+  const { data: companyData } = useQuery<ProviderCompaniesResponse>({
+    queryKey: ['integration-companies', providerId],
+    queryFn: () => listProviderCompanies(providerId),
+    enabled: wantsCompany,
+    staleTime: 30_000,
+  });
+  const companies = companyData?.companies ?? [];
+
+  const canSubmit = token.trim().length > 0
+    && (!wantsSubdomain || subdomain.trim().length > 0)
+    && (!wantsCompany || company.length > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1203,7 +1230,12 @@ function ConnectForm({
     setError('');
     setSubmitting(true);
     try {
-      const creds: Record<string, string> = { api_token: token.trim() };
+      const creds: Record<string, unknown> = wantsCompany
+        // Straight into the per-company map. There is no account-level
+        // slot for a company-scoped key, and writing one would leave a
+        // live credential behind that nothing reads.
+        ? { companies: { [company]: token.trim() } }
+        : { api_token: token.trim() };
       if (wantsSubdomain) {
         creds.company_subdomain = subdomain.trim().toLowerCase();
       }
@@ -1225,6 +1257,42 @@ function ConnectForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
+      {/* WHICH company this key belongs to.
+          First, because it is the question the operator has to answer
+          before the token means anything: they hold one key per company
+          and the keys are indistinguishable by looking at them. The
+          field is required — there is no sensible default, and picking
+          one for them is how four companies end up silently unconnected.
+          Test after connecting proves the pairing: the probe compares
+          the carrier's USDOT against this company's. */}
+      {wantsCompany && (
+        <div className="space-y-1.5">
+          <label
+            htmlFor="connect-company"
+            className="block text-xs font-medium uppercase tracking-wide text-muted-foreground"
+          >
+            Which company is this key for?
+          </label>
+          <Select value={company} onValueChange={setCompany}>
+            <SelectTrigger id="connect-company" className="w-full">
+              <SelectValue placeholder="Choose a company…" />
+            </SelectTrigger>
+            <SelectContent>
+              {companies.map((co) => (
+                <SelectItem key={co.code} value={co.code}>
+                  {co.code} — {co.display_name}
+                  {co.has_key ? ' (key already set)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-2xs text-muted-foreground">
+            This provider issues one key per company, and a key opens
+            only the company it was issued for. Add the rest on the
+            card after connecting.
+          </p>
+        </div>
+      )}
       {wantsSubdomain && (
         <div className="space-y-1.5">
           <label className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">

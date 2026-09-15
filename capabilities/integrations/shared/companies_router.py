@@ -35,6 +35,7 @@ from interfaces.api.deps import require_permission
 
 from .helpers import (
     audit,
+    cross_check_company_identity,
     guard_credential_encryption,
     validate_provider,
 )
@@ -299,7 +300,8 @@ async def test_company_connection_generic(
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
-    ok, message = _cross_check(status, ours, company_code)
+    ok, message = cross_check_company_identity(
+        status, ours, company_code)
 
     from capabilities.integrations.company_health import set_company_health
 
@@ -320,40 +322,3 @@ async def test_company_connection_generic(
         "elapsed_ms": elapsed_ms,
         "checked_at": None,
     }
-
-
-def _cross_check(status, ours, company_code: str) -> tuple[bool, str]:
-    """Did this key open the company whose row it was pasted into?
-
-    A working key is not a correct key.  Five carriers on one account,
-    five keys, five rows — paste one into the wrong row and everything
-    downstream agrees with the mistake: the probe goes green, the card
-    says healthy, and that carrier's drivers are reported under another
-    carrier's name on a page about hours of service.  Nothing else in
-    the chain can catch it, because nothing else knows what the
-    operator MEANT.
-
-    Only runs when the provider says its account id is something we
-    also hold (``provider_account_id_kind``) and we actually hold it.
-    An absent USDOT on either side is no opinion, never a mismatch —
-    refusing a good key because a company row has a blank field would
-    make the guard the problem.
-    """
-    if not status.ok:
-        return False, status.message
-    if getattr(status, "provider_account_id_kind", "") != "usdot":
-        return True, status.message
-
-    theirs = str(status.provider_account_id or "").strip()
-    mine = str(getattr(ours, "usdot_number", "") or "").strip()
-    if not theirs or not mine:
-        return True, status.message
-    if theirs.lstrip("0") == mine.lstrip("0"):
-        return True, status.message
-
-    return False, (
-        f"this key belongs to USDOT {theirs}, but company "
-        f"{company_code} is USDOT {mine} — the key is valid, it is in "
-        "the wrong row. Its drivers would be reported under the wrong "
-        "carrier."
-    )

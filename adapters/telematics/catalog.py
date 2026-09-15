@@ -124,6 +124,24 @@ class ProviderCatalogEntry:
     Currently ``api_token`` is the only kind; OAuth2-based providers
     will use ``oauth2`` and ship their own auth-redirect flow."""
 
+    credential_scope: str = "account"
+    """What ONE key opens: the whole account, or a single company.
+
+    ``"account"`` — a key covers everything the account has, and a
+    company without its own key falls back to it.  Samsara.
+
+    ``"company"`` — a key opens exactly the company it was issued for
+    and nothing else, so there is no such thing as an account-level
+    key.  ORIENT ELD issues one per company.
+
+    This is what tells the connect form which QUESTION to ask.  An
+    account-scoped provider asks for a token; a company-scoped one has
+    to ask for a token AND which company it belongs to, because the
+    operator holds five of them and only they know which is which.
+    Guessing — storing the first key as an account-wide one — produces
+    a connected integration that reports one company and silently omits
+    four."""
+
     docs_url: str = ""
     """Optional vendor documentation link rendered as a help icon."""
 
@@ -305,6 +323,7 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
         ),
         capabilities=frozenset(_ORIENT_ELD_DEFAULTS.keys()),
         auth_kind="api_token",
+        credential_scope="company",
         docs_url="https://publicapi.mgkeld.com/redoc",
         icon="Clock",
         status=ProviderStatus.AVAILABLE,

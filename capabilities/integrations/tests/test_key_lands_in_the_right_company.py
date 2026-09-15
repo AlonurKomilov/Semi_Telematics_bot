@@ -23,7 +23,9 @@ from types import SimpleNamespace
 import pytest
 
 from adapters.telematics.protocol import ConnectionStatus
-from capabilities.integrations.shared.companies_router import _cross_check
+from capabilities.integrations.shared.helpers import (
+    cross_check_company_identity as _cross_check,
+)
 
 
 def _company(code="PTG", usdot="3688109"):
@@ -119,3 +121,51 @@ def test_the_kind_defaults_to_no_opinion():
     """Every provider that has not thought about this must be silently
     exempt, not silently wrong."""
     assert ConnectionStatus(ok=True).provider_account_id_kind == ""
+
+
+# ── The form must ask the question at all ─────────────────────────
+
+def test_a_per_company_provider_declares_that_its_keys_are_scoped():
+    """The connect form reads this to decide whether to ask WHICH
+    company. Without the declaration it asks for a token alone, stores
+    it as account-wide, and four of five carriers are silently
+    unconnected on a page about hours of service."""
+    from adapters.telematics.catalog import PROVIDER_CATALOG
+
+    assert PROVIDER_CATALOG["orient_eld"].credential_scope == "company"
+
+
+def test_an_account_scoped_provider_keeps_the_simple_form():
+    """Samsara genuinely supports one token covering every company —
+    asking which one would be a question with no right answer."""
+    from adapters.telematics.catalog import PROVIDER_CATALOG
+
+    assert PROVIDER_CATALOG["samsara"].credential_scope == "account"
+    assert PROVIDER_CATALOG["datatruck"].credential_scope == "account"
+
+
+def test_the_scope_reaches_the_dashboard():
+    """Declared in the catalog and never serialized is the same as not
+    declared — the form only sees what GET /integrations sends."""
+    from adapters.telematics.catalog import PROVIDER_CATALOG
+    from capabilities.integrations.shared.helpers import (
+        serialize_catalog_entry,
+    )
+
+    out = serialize_catalog_entry(PROVIDER_CATALOG["orient_eld"])
+    assert out["credential_scope"] == "company"
+    assert serialize_catalog_entry(
+        PROVIDER_CATALOG["samsara"])["credential_scope"] == "account"
+
+
+def test_a_company_scoped_connect_writes_straight_into_the_companies_map():
+    """What the form posts must be what the builder reads. There is no
+    account-level slot for a company-scoped key, and writing one would
+    leave a live credential behind that nothing ever reads."""
+    from adapters.telematics.orient_eld.client import (
+        build_multi_company_orient_client,
+    )
+
+    posted = {"companies": {"PTG": "key-ptg"}}
+    client = build_multi_company_orient_client(posted)
+    assert client.company_codes == ["PTG"]

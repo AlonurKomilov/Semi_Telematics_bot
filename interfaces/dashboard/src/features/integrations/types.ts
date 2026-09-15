@@ -40,6 +40,11 @@ export interface CatalogEntry {
   description: string;
   capabilities: string[];
   auth_kind: string;
+  /** What ONE key opens. `'company'` means a key is issued per company
+   *  and opens only that company — so the connect form must ask WHICH
+   *  company, not just for a token. `'account'` (the default) means one
+   *  key covers everything. */
+  credential_scope?: 'account' | 'company';
   /** New 2026-06-11 — defaults to 'telematics' on entries the backend
    *  doesn't tag explicitly (back-compat with older catalog serializers). */
   kind: ProviderKind;

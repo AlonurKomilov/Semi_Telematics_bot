@@ -43,6 +43,7 @@ from infra.services import get_telematics_client, invalidate_client
 from interfaces.api.deps import require_permission, resolve_user_id
 
 from .helpers import (
+    cross_check_company_identity,
     ConnectRequest,
     ToggleUpdateRequest,
     audit,
@@ -218,6 +219,34 @@ async def connect_integration(
         raise HTTPException(
             400, f"credentials rejected: {status.message or 'unknown error'}",
         )
+
+    # The key works — but is it the company the operator chose?
+    #
+    # A company-scoped provider's connect form asks for a token AND a
+    # company, because the operator holds one key per company and they
+    # look alike. Picking the wrong one produces a connected integration
+    # whose drivers are reported under another carrier's name, with
+    # every surface agreeing. Caught here so the row is never written,
+    # rather than discovered later by someone reading duty status.
+    chosen = (body.credentials or {}).get("companies") or {}
+    if isinstance(chosen, dict) and len(chosen) == 1:
+        code = next(iter(chosen))
+        ours = None
+        try:
+            tenant = await get_tenant_db(account_id)
+            if tenant is not None:
+                for co in await tenant.get_account_companies(account_id):
+                    if co.code == code:
+                        ours = co
+                        break
+        except Exception:
+            logger.exception(
+                "connect: company lookup failed acct=%d company=%s",
+                account_id, code,
+            )
+        paired, why = cross_check_company_identity(status, ours, code)
+        if not paired:
+            raise HTTPException(400, why)
 
     db = get_platform_db()
     entry = PROVIDER_CATALOG[provider_id]

@@ -61,7 +61,10 @@ export default function Integrations() {
     qc.invalidateQueries({ queryKey: ['integrations'] });
 
   const connectMutation = useMutation({
-    mutationFn: ({ providerId, creds }: { providerId: string; creds: Record<string, string> }) =>
+    // `unknown`, not `string`: a company-scoped provider posts a
+    // nested { companies: { CODE: key } } map, because its key opens
+    // one company rather than the whole account.
+    mutationFn: ({ providerId, creds }: { providerId: string; creds: Record<string, unknown> }) =>
       connectIntegration(providerId, creds),
     onSuccess: invalidate,
   });
@@ -207,7 +210,7 @@ function renderCard(
   entry: CatalogEntry,
   integration: ReturnType<typeof Map.prototype.get> extends infer T ? T : never,
   mutations: {
-    connectMutation: ReturnType<typeof useMutation<unknown, Error, { providerId: string; creds: Record<string, string> }>>;
+    connectMutation: ReturnType<typeof useMutation<unknown, Error, { providerId: string; creds: Record<string, unknown> }>>;
     disconnectMutation: ReturnType<typeof useMutation<unknown, Error, string>>;
     toggleMutation: ReturnType<typeof useMutation<unknown, Error, { providerId: string; next: FeatureToggleMap }>>;
     testMutation: ReturnType<typeof useMutation<TestConnectionResponse, Error, string>>;
