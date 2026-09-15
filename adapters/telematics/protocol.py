@@ -222,6 +222,27 @@ class HosSnapshot:
     """Vendor-reported name, for diagnostics when a link is missing.
     Display always prefers OUR roster name."""
 
+    company_code: str = ""
+    """Which of OUR companies this reading belongs to.
+
+    An account is several legal carriers, and every vendor that issues
+    a key per company already knows which one a row came from — the
+    Samsara fan-out tags each row ``_org`` and the ORIENT one tags
+    ``_company_code``.  Both used to drop it here, which was invisible
+    while an account ran one company and became the whole problem at
+    five: a hundred drivers from five separate carriers in one
+    undifferentiated list, with no way to say whose driver is whose.
+
+    OUR code, not the vendor's, so it joins straight to ``companies``
+    — the same column every other grid on the platform shows as
+    "Company".
+
+    Blank is honest and expected: a single-company account, or a
+    provider whose payload carries no company.  It is NOT a scope rung.
+    Scope is decided by the vehicle identity ladder, which splits the
+    twins a bare name cannot; adding a second rung here would quietly
+    widen who can see a named driver's duty status."""
+
 
 @dataclass(frozen=True)
 class ConnectionStatus:
@@ -238,6 +259,26 @@ class ConnectionStatus:
     ok: bool
     message: str = ""
     provider_account_id: str = ""
+
+    provider_account_id_kind: str = ""
+    """What ``provider_account_id`` actually IS, when it is something we
+    can check against our own records.
+
+    ``"usdot"`` means it is the carrier's USDOT number, which
+    ``companies.usdot_number`` also holds — so a caller can prove that
+    the key an operator pasted into the row labelled CFT really belongs
+    to CARGO FREIGHT TRUCKING, rather than to one of the other four
+    carriers on the account.
+
+    Nothing automatic can make that mistake: a key is never lent from
+    one company to another.  A PERSON can, by pasting into the wrong
+    row, and the result is the worst shape available — another
+    carrier's drivers reported under this one's name, with every
+    surface agreeing.
+
+    Empty means the id is not checkable (Samsara's is an org id, which
+    matches nothing we store), and an empty kind must be read as "no
+    opinion", never as "mismatch"."""
 
 
 @runtime_checkable

@@ -99,6 +99,60 @@ not a code path. `features/eld/tests/test_two_elds_on_one_account.py`
 pins it against the REAL catalog, because a fixture catalog would pass
 forever while the shipped one said something else.
 
+## An account is several carriers
+
+An account is not one business. This one is five legal carriers — CFT,
+G1, OSY, PTG, RMR — each with its own USDOT number and its own ELD key.
+Two rules follow, and both were missing until a five-key setup made them
+visible. With one company neither could bite.
+
+**1. A row must say which carrier it belongs to.**
+
+Both fan-outs already knew: the Samsara client tags every HOS row
+`_org` and the ORIENT one tags `_company_code`, in both cases OUR
+company code. Both providers were dropping it at the protocol boundary,
+so `driver_hos_live` had no company in it and Hours of Service showed a
+hundred drivers from five businesses in one undifferentiated list —
+while every other multi-record grid on the platform (Loads, Scorecards,
+Mileage, Work Orders, Inventory, Reports) carries a Company column.
+
+`HosSnapshot.company_code` closes it. The column renders only when the
+answer names more than one carrier, so a single-company account does not
+get a column of blanks.
+
+It is deliberately **NOT a scope rung**. Scope is decided by the vehicle
+identity ladder, which splits the twins a bare name cannot; admitting
+the company as a second rung would quietly widen a dispatcher scoped to
+two trucks into every driver at those trucks' carrier.
+
+It is also **not in the primary key**. The provider's driver id is
+unique across companies on every vendor here — ORIENT's own
+`/api/logs/tracking` accepts `driver_id` alongside `dot_number`, which
+only resolves if it is — and widening the key would re-home every
+existing row. `OrientEldProvider.get_driver_hos` carries a tripwire
+instead: a cross-company id clash keeps both rows and logs an ERROR
+naming both companies.
+
+**2. A working key is not a correct key.**
+
+Nothing automatic can put one company's key against another — a key is
+never lent. A PERSON can, by pasting into the wrong row, and that
+mistake is silent in the worst way: the probe goes green, the card says
+healthy, and one carrier's drivers are reported under another's name on
+a compliance page.
+
+`ConnectionStatus.provider_account_id_kind` lets an adapter declare what
+its account id IS (`"usdot"` for ORIENT, which returns the carrier's DOT
+number), and the per-company probe compares it against
+`companies.usdot_number` — the model's own "stable join key for matching
+integration records to this sub-company". Same shape as
+`hos_clocks_reported`: the adapter declares, the capability layer
+compares against our data, and the adapter never reads our database.
+
+Empty kind is **no opinion**, never a mismatch. A provider that has not
+thought about this is silently exempt rather than silently wrong, and a
+company with no USDOT on file is not punished for it.
+
 ## Per-company API keys
 
 Some vendors issue a key per COMPANY while the platform schedules per

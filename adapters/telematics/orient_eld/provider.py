@@ -150,6 +150,10 @@ def to_snapshot(row: dict) -> HosSnapshot | None:
             or utc_iso(row.get("datetime_utc"))
         ),
         driver_name=_driver_name(row),
+        # Which of OUR companies this key belongs to.  The fan-out tags
+        # every row with it; dropping it here is what would leave five
+        # carriers' drivers in one undifferentiated list.
+        company_code=str(row.get("_company_code") or ""),
     )
 
 
@@ -208,8 +212,11 @@ class OrientEldProvider:
             ok=ok,
             message=message,
             # ORIENT has no "org id"; the DOT number is what an operator
-            # can actually cross-reference in the vendor's own portal.
+            # can actually cross-reference in the vendor's own portal —
+            # and what lets the per-company probe prove this key belongs
+            # to the company whose row it was pasted into.
             provider_account_id=str((meta or {}).get("dot_number") or ""),
+            provider_account_id_kind="usdot",
         )
 
     async def close(self) -> None:

@@ -5881,6 +5881,7 @@ async def migrate_eld_hos_live(conn) -> None:
                 last_status_change      TEXT    NOT NULL DEFAULT '',
                 driver_name             TEXT    NOT NULL DEFAULT '',
                 source_ts               TEXT    NOT NULL DEFAULT '',
+                company_code            TEXT    NOT NULL DEFAULT '',
                 updated_at              TEXT    NOT NULL,
                 PRIMARY KEY (account_id, provider_id, provider_driver_id)
             )
@@ -5891,6 +5892,14 @@ async def migrate_eld_hos_live(conn) -> None:
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hos_live_user "
             "ON driver_hos_live(account_id, user_id)")
+        # An account is several legal carriers and the page filters by
+        # one.  Deliberately NOT in the primary key: the provider's
+        # driver id is unique across companies on every vendor we have
+        # (checked against ORIENT's own filter semantics), and widening
+        # the key would re-home every existing row.
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hos_live_company "
+            "ON driver_hos_live(account_id, company_code)")
     except Exception:
         # Boot must not fail for this.  Without the table the ELD
         # surfaces say the feed is not connected, which is exactly what
@@ -5918,7 +5927,8 @@ async def migrate_eld_hos_live(conn) -> None:
             "ADD COLUMN IF NOT EXISTS drive_remaining_seconds INTEGER, "
             "ADD COLUMN IF NOT EXISTS shift_remaining_seconds INTEGER, "
             "ADD COLUMN IF NOT EXISTS cycle_remaining_seconds INTEGER, "
-            "ADD COLUMN IF NOT EXISTS break_in_seconds INTEGER")
+            "ADD COLUMN IF NOT EXISTS break_in_seconds INTEGER, "
+            "ADD COLUMN IF NOT EXISTS company_code TEXT NOT NULL DEFAULT ''")
         await conn.execute(
             "ALTER TABLE driver_hos_live "
             "DROP COLUMN IF EXISTS drive_seconds_today, "

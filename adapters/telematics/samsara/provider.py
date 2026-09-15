@@ -399,6 +399,11 @@ class SamsaraProvider:
                 last_status_change=str(r.get("last_status_change") or ""),
                 source_ts=fetched_at,
                 driver_name=str(r.get("driver_name") or ""),
+                # The client already tags every row with the company it
+                # came from (``_org``, OUR company code) and this line
+                # was throwing it away.  Harmless on a one-company
+                # account, and the whole problem on five.
+                company_code=str(r.get("_org") or ""),
             )
             for r in rows
             if str(r.get("provider_driver_id") or "").strip()

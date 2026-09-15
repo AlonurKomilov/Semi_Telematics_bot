@@ -149,16 +149,46 @@ const CLOCK_COLUMNS: Record<HosClockId, AnyColumn> = {
     render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).break_in} /> },
 };
 
+/**
+ * Which carrier the driver works for.
+ *
+ * An account is several legal companies — this one runs five — and
+ * hours of service is regulated per DRIVER of a named carrier. Every
+ * other multi-record grid here carries this column (Loads, Scorecards,
+ * Mileage, Work Orders, Inventory, Reports), and it takes the same
+ * shape: the company CODE, sortable and filterable.
+ *
+ * Rendered only when something fills it, so a single-company account
+ * does not get a column of blanks.
+ */
+const COMPANY_COLUMN: AnyColumn = {
+  key: 'company',
+  label: 'Company',
+  sortable: true,
+  filterable: true,
+  filterMode: 'select',
+  minWidth: 104,
+  render: (v) => (v
+    ? <span className="font-medium">{String(v)}</span>
+    : <span className="text-muted-foreground">—</span>),
+};
+
 /** Identity, then the clocks that exist, then the reading's age. */
 function buildColumns(
   reported: Set<HosClockId>,
   showUnlinked: boolean,
+  showCompany: boolean,
 ): AnyColumn[] {
   const identity = identityColumns(showUnlinked);
   const clocks = CLOCK_ORDER.filter((c) => reported.has(c))
     .map((c) => CLOCK_COLUMNS[c]);
   const readingAt = identity.length - 1;
   return [
+    // Company sits FIRST, before the driver's name: on a multi-carrier
+    // account it is the thing that says which of five businesses this
+    // row belongs to, and reading a name without knowing whose employee
+    // it is answers the wrong question.
+    ...(showCompany ? [COMPANY_COLUMN] : []),
     ...identity.slice(0, readingAt),
     ...clocks,
     identity[readingAt],
@@ -271,7 +301,11 @@ export default function HoursPage() {
   );
 
   const columns = useMemo(
-    () => buildColumns(clockCoverage(data).reported, !allUnlinked(data)),
+    () => buildColumns(
+      clockCoverage(data).reported,
+      !allUnlinked(data),
+      (data?.companies?.length ?? 0) > 1,
+    ),
     [data],
   );
   // Sorting by a column that is not rendered leaves the grid's chip row
@@ -336,7 +370,7 @@ export default function HoursPage() {
             tableId="eld-hours"
             columns={columns}
             data={rows}
-            searchKey={['driver', 'vehicle']}
+            searchKey={['driver', 'vehicle', 'company']}
             // Most drive time first.  The rows arrive newest-reading
             // first, which answers a question nobody asked; this page
             // exists for "who can take this load and for how long".

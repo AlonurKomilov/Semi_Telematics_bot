@@ -117,6 +117,11 @@ def project(row: dict, *, now=None) -> dict:
     return {
         "driver": row.get("display_name") or "",
         "user_id": row.get("user_id"),
+        # Which of the account's carriers this driver works for.  An
+        # account is several legal companies, and every other grid on
+        # the platform carries this column; hours of service omitted it
+        # only because the feature shipped against one company.
+        "company": row.get("company_code") or "",
         "linked": bool(row.get("linked")),
         "vehicle": row.get("truck_num") or "",
         "duty_status": row.get("duty_status") or "unknown",
@@ -193,6 +198,12 @@ async def get_hours(
         # answer; four blank columns is a trap.
         "clocks_reported": clocks_reported,
         "providers": providers,
+        # The carriers present in what this caller can see.  Sorted and
+        # blank-free: a single-company account sends ``[]`` and the page
+        # renders no Company column, rather than a column of blanks.
+        "companies": sorted(
+            {str(r.get("company_code") or "") for r in rows} - {""}
+        ),
         # How many drivers the caller's own vehicle access removed.
         #
         # A surface that shows three of ten drivers and says nothing is

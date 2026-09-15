@@ -18,6 +18,9 @@ export interface Clock {
 export interface DriverHours {
   driver: string;
   user_id: number | null;
+  /** Which of the account's carriers this driver works for. An account
+   *  is several legal companies; `''` on a single-company account. */
+  company: string;
   /** False when the provider reports this driver but nobody has
    *  matched them to our roster yet. */
   linked: boolean;
@@ -67,6 +70,11 @@ export interface HoursResponse {
    *  outside this set must not be RENDERED — four empty columns on a
    *  compliance page read as four zeroes. */
   clocks_reported: HosClockId[];
+  /** The carriers present in what this caller can see. Empty on a
+   *  single-company account, which is why the Company column is built
+   *  from this rather than rendered unconditionally — a column of
+   *  blanks is worse than no column. */
+  companies: string[];
   /** Which ELD is behind the rows, so a surface can say whose
    *  limitation it is by name rather than blaming "the provider". */
   providers: Record<string, ProviderFact>;

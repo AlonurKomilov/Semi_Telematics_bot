@@ -64,6 +64,11 @@ _HOS_TEXT_FIELDS = (
     "last_status_change",
     "driver_name",
     "source_ts",
+    # Which of OUR companies the reading belongs to.  Blank on a
+    # single-company account and on any provider whose payload carries
+    # no company — both honest, and the reader shows the column only
+    # when something fills it.
+    "company_code",
 )
 # All four count DOWN.  They used to include two "today" columns
 # holding time USED, which an ELD never reports — see HosSnapshot for
@@ -178,7 +183,8 @@ class EldMixin(_MixinBase):
             "       h.duty_status, h.drive_remaining_seconds, "
             "       h.shift_remaining_seconds, h.cycle_remaining_seconds, "
             "       h.break_in_seconds, h.last_status_change, "
-            "       h.driver_name, h.source_ts, h.updated_at, "
+            "       h.driver_name, h.source_ts, h.company_code, "
+            "       h.updated_at, "
             "       u.display_name, u.truck_num "
             "FROM driver_hos_live h "
             "LEFT JOIN users u ON u.id = h.user_id "
@@ -230,7 +236,7 @@ class EldMixin(_MixinBase):
                 "duty_status", "drive_remaining_seconds",
                 "shift_remaining_seconds", "cycle_remaining_seconds",
                 "break_in_seconds", "last_status_change",
-                "driver_name", "source_ts", "updated_at",
+                "driver_name", "source_ts", "company_code", "updated_at",
                 "display_name", "truck_num",
             ), tuple(r)))
             row["display_name"] = (
