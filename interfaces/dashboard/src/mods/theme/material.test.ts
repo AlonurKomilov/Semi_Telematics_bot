@@ -73,8 +73,62 @@ describe('what the solid path costs', () => {
     // a window silently stops matching when someone adds a comment.
     const glassSurface = /:root\[data-material="glass"\]\s+\.surface\s*\{([\s\S]*?)\n {2}\}/.exec(CODE)?.[1];
     expect(glassSurface, 'the glass .surface rule is gone').toBeTruthy();
-    expect(glassSurface!).toMatch(/box-shadow:\s*var\(--surface-shadow\)/);
+    // `var(--surface-shadow)` is the DROP shadow and is now the last
+    // entry in a list that starts with the glass edge — an inset
+    // highlight and an inset shade, which is what gives a pane
+    // thickness. Matched as "present", not as "the whole value", so
+    // adding a layer to the edge is not a test failure while losing the
+    // drop shadow still is.
+    expect(glassSurface!).toMatch(/var\(--surface-shadow\)/);
     expect(glassSurface!).toMatch(/backdrop-filter/);
+  });
+
+  /**
+   * GLASS HAS AN EDGE AND A BODY, not just a fill and a blur.
+   *
+   * The first version of the pack was a translucent rectangle: no lit
+   * edge, no brighter top, nothing that says the surface has thickness.
+   * That is frosted plastic, and it is what the owner saw when he
+   * compared it to a material that refracts.
+   *
+   * Both halves ride `--glass-sheen`, one knob, so they can never drift
+   * apart — and both are painted through `box-shadow: inset` and
+   * `background-image`, NEVER a pseudo-element: 21 `.surface` elements
+   * in this product are not positioned, so a `::before` at `inset: 0`
+   * would anchor to whatever is positioned further up. That is exactly
+   * the mistake the wallpaper packs made, and a pack may not require an
+   * element to be positioned any more than it may position one.
+   */
+  it('gives a pane a lit edge and a body that catches light', () => {
+    const glassSurface = /:root\[data-material="glass"\]\s+\.surface\s*\{([\s\S]*?)\n {2}\}/
+      .exec(CODE)?.[1] ?? '';
+    expect(glassSurface, 'the glass .surface rule is gone').not.toBe('');
+    // TWO insets, and the count is the claim: an edge is a lit TOP and
+    // a shaded FOOT, and one without the other is a line rather than a
+    // thickness. A single `inset` passed while the highlight had been
+    // deleted — a mutation found that.
+    const shadow = /box-shadow:([\s\S]*?);/.exec(glassSurface)?.[1] ?? '';
+    expect(
+      (shadow.match(/\binset\b/g) ?? []).length,
+      'glass lost half its edge. A lit top without a shaded foot is a line, not a '
+        + 'thickness — and a translucent rectangle with neither is frosted plastic.',
+    ).toBe(2);
+    expect(glassSurface, 'glass lost its sheen — the body no longer catches light')
+      .toMatch(/background-image:[\s\S]*linear-gradient/);
+    // Told, not sampled. CSS cannot look at what is behind a surface;
+    // `--ground` is what it is TOLD, so a pane over the rail and one
+    // over the page are different glass without either knowing how.
+    expect(glassSurface, 'the ground tint is gone — every pane is the same glass again')
+      .toMatch(/var\(--ground/);
+  });
+
+  it('and no pseudo-element, because 21 surfaces are not positioned', () => {
+    expect(
+      CODE,
+      'a material pack grew a `::before`. 21 `.surface` elements are unpositioned, '
+        + 'so one at `inset: 0` anchors to whatever is positioned further up — the '
+        + 'wallpaper packs made this exact mistake with `position: relative`.',
+    ).not.toMatch(/\[data-material="glass"\][^{]*::(before|after)/);
   });
 
   it('ships solid defaults that reproduce today exactly', () => {

@@ -11,6 +11,21 @@
     --surface-blur: 14px;
     /* Glass without a saturation boost reads as fog. */
     --surface-saturate: 1.5;
+    /* HOW MUCH LIGHT THE EDGE CATCHES — one knob for the rim and the
+       sheen together, so they can never drift apart.
+       What this pack shipped first was a translucent fill and a blur,
+       and that is frosted plastic rather than glass: a flat rectangle
+       with no edge and no body. What reads as glass is thickness, and
+       thickness is two things — a LIT TOP EDGE and a body that is
+       brighter where the light lands.
+       Through `box-shadow: inset` and `background-image`, never a
+       pseudo-element: 21 of the surfaces in this product are not
+       positioned, so a `::before` at `inset: 0` would anchor to
+       whatever is positioned further up. That is the same mistake the
+       wallpaper packs made with `position: relative`, and a pack may
+       not ask an element to be positioned any more than it may
+       position one. */
+    --glass-sheen: 1;
     /* The light's terms, not literals. This rule out-specifies the
        `.surface` rung in index.css — deliberately, so it can beat the
        `shadow-lg` a dialog carries — which meant that CHOOSING GLASS
@@ -31,6 +46,11 @@
     /* Lower, because a dark surface has to let more of the ground
        through before the eye reads it as translucent at all. */
     --surface-alpha: 0.62;
+    /* Stronger in the dark, and it is not a preference. A white rim on
+       a near-black ground is the only thing separating one dark pane
+       from the dark pane behind it; in light the surface already has
+       its own contrast and the rim only has to hint. */
+    --glass-sheen: 1.6;
     --surface-shadow:
       0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1))
         rgb(0 0 0 / calc(0.40 * var(--light-strength, 1))),
@@ -47,13 +67,39 @@
       var(--surface-base, var(--card)) calc(var(--surface-alpha) * 100%),
       transparent
     );
+    /* THE BODY. Two layers, painted over the fill above.
+       The first is the SHEEN: light falls from above, so the top of a
+       pane catches it and the bottom does not. It stops at 46% rather
+       than fading to the foot, because a wash across the whole surface
+       is a tint and a wash across the top is a surface CATCHING light.
+       The second is the GROUND TINT, and it is the honest half of what
+       Apple's material does by sampling: ours cannot look at what is
+       behind it, but it is TOLD — `--ground` is the sidebar's colour on
+       the frame and the page's colour on the content, so a pane over
+       the rail and a pane over the page are visibly different glass
+       without either one knowing how. */
+    background-image:
+      linear-gradient(to bottom,
+        rgb(255 255 255 / calc(0.16 * var(--glass-sheen))) 0%,
+        rgb(255 255 255 / 0) 46%),
+      linear-gradient(
+        color-mix(in oklab, var(--ground, transparent) 10%, transparent),
+        color-mix(in oklab, var(--ground, transparent) 10%, transparent));
     -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
     backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
     /* Only here, never on `.surface` itself. This rule is unlayered and
        so outranks a utility — putting the shadow on the base class would
        beat the `shadow-lg` that dialogs, sheets and menus already carry
-       and silently flatten every one of them. */
-    box-shadow: var(--surface-shadow);
+       and silently flatten every one of them.
+       THE EDGE comes first in the list, because an inset shadow paints
+       over the fill and the later entries are the drop shadow outside
+       it. A lit top and a shaded foot are what give a pane thickness —
+       the one thing a translucent rectangle does not have, and the
+       reason the first version of this pack read as frosted plastic. */
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / calc(0.45 * var(--glass-sheen) * var(--light-strength, 1))),
+      inset 0 -1px 0 rgb(0 0 0 / calc(0.08 * var(--glass-sheen) * var(--light-strength, 1))),
+      var(--surface-shadow);
   }
 
   /* The escape hatch, and it is not optional.
@@ -121,5 +167,18 @@
     background-color: var(--surface-base, var(--card));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+
+  /* OPAQUE GLASS IS STILL GLASS, and the rule above deliberately leaves
+     the sheen and the edge alone. A menu that occludes what it covers
+     and still catches light on its top edge is the thing this material
+     is for — the translucency was never the point, thickness was.
+     The FRAME is the exception, for the reason it is not frosted
+     either: `.chrome-pane` steps aside for a wallpaper, so a lit edge
+     on it would be an edge drawn around a pattern rather than around a
+     pane. It loses both. */
+  :root[data-material="glass"] .surface.chrome-pane {
+    background-image: none;
+    box-shadow: var(--surface-shadow);
   }
 }
