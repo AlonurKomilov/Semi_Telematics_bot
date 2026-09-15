@@ -41,21 +41,125 @@ def _clock_text(clock: dict | None) -> str:
     return _fmt_seconds(None if clock is None else clock.get("seconds"))
 
 
+
+# The four clock ids, in the order a surface reads them, paired with the
+# key each one wears in this tool's output.
+_CLOCK_KEYS = {
+    "drive": "drive_remaining",
+    "shift": "shift_remaining",
+    "cycle": "cycle_remaining",
+    "break": "break_due_in",
+}
+
+
+def _coverage_note(answer: dict) -> str | None:
+    """What to tell the model about clocks the ELD cannot report.
+
+    Without this a model handed twenty-two drivers whose every clock
+    reads ``unknown`` has two ways to be wrong and no way to be right.
+    It can refuse and blame the data, or — much worse — reason that
+    nobody shows as out of hours and answer "everyone has time left".
+    That second failure is the one this feature exists to prevent, and
+    it does not stop being the failure just because the silence comes
+    from the device rather than from us.
+
+    Judged PER PROVIDER, never on the account-wide union.  The union was
+    the first version and it went quiet in exactly the case that needs
+    it most: an account running a full-clock ELD alongside a duty-status
+    -only one unions to all four clocks, so nothing was missing, so
+    nothing was said — while half the drivers in the same answer showed
+    ``unknown`` across the board with no explanation of which device
+    they came from.
+
+    A provider that is no longer registered reports ``None`` and gets no
+    sentence. Unknown is not the same claim as "reports nothing", and
+    only one of them may be printed.
+
+    Returns ``None`` when every device reports every clock, which is the
+    single-Samsara case and needs no extra words.
+    """
+    providers = answer.get("providers") or {}
+    known = {
+        pid: f for pid, f in providers.items()
+        if f.get("clocks_reported") is not None
+    }
+    limited = {
+        pid: f for pid, f in known.items()
+        if set(f["clocks_reported"]) != set(_CLOCK_KEYS)
+    }
+    if not limited:
+        return None
+
+    def _names(pids) -> str:
+        return " and ".join(known[p]["name"] for p in pids)
+
+    def _lacks(pid) -> str:
+        have = set(known[pid]["clocks_reported"])
+        return ", ".join(
+            _CLOCK_KEYS[c].replace("_", " ")
+            for c in _CLOCK_KEYS if c not in have
+        )
+
+    blind = [p for p in limited if not limited[p]["clocks_reported"]]
+
+    # Every device we can speak for reports no countdown at all.  The
+    # dispatch question cannot be answered from this result and the
+    # model is told so by name.
+    if len(blind) == len(known) and blind:
+        who = _names(blind)
+        return (
+            f"{who} reports duty status only — it does not publish "
+            "remaining drive, shift, cycle or break time, so every "
+            "countdown below is 'unknown'. That is a limitation of the "
+            "device, NOT a statement that these drivers have hours "
+            "remaining and NOT a statement that none are near a limit. "
+            "Do not answer 'how many hours are left', 'who is out of "
+            "hours' or 'who can take this load' from this result: say "
+            f"{who} does not report remaining hours and that duty "
+            "status and its age are what is available."
+        )
+
+    # Mixed: some drivers carry real countdowns and some carry none.
+    # The danger here is a whole-fleet conclusion drawn from the half
+    # that happens to have numbers, so the sentence names the split and
+    # points at the per-driver field that identifies the device.
+    parts = [
+        f"{known[pid]['name']} does not publish {_lacks(pid)}"
+        for pid in sorted(limited)
+    ]
+    return (
+        "This account has more than one electronic logging device and "
+        "they do not report the same clocks: "
+        + "; ".join(parts)
+        + ". Those read 'unknown' for that device's drivers — a "
+        "limitation of the device, not a reading of zero. Each driver's "
+        "'source' field names the device they came from. Never answer "
+        "'who is out of hours' or 'who can take this load' for the "
+        "whole account from this result: it can only be answered for "
+        "the drivers whose device reports the clock you are using."
+    )
+
+
+
 @register_tool({
     "name": "get_driver_hos_status",
     "description": (
         "Get hours-of-service status for one driver (by name) or for "
-        "every driver on the account.  Returns duty status (driving / "
-        "on_duty / off_duty / sleeper / personal_conveyance / "
-        "yard_move) and FOUR COUNTDOWNS — drive time remaining, shift "
-        "remaining, cycle remaining, and time until the mandatory "
-        "break is due — plus when the status last changed, the "
-        "assigned truck, and HOW OLD each reading is.  Every clock is "
-        "time LEFT, never time used: an ELD does not report time used, "
-        "so never present these as hours already worked.  Use for "
-        "'how many hours does John have left?', 'who's out of hours?', "
-        "'who has to stop for a break soon?'.  Always state the "
-        "reading's age when you answer."
+        "every driver on the account.  Always returns duty status "
+        "(driving / on_duty / off_duty / sleeper / "
+        "personal_conveyance / yard_move), when it last changed, the "
+        "assigned truck, and HOW OLD each reading is.  Where the "
+        "connected ELD publishes them, it also returns four "
+        "COUNTDOWNS — drive time remaining, shift remaining, cycle "
+        "remaining, and time until the mandatory break is due.  Not "
+        "every ELD publishes those; the result says which ones this "
+        "account's device reports, and a clock it does not report "
+        "comes back as 'unknown'.  Every clock is time LEFT, never "
+        "time used: an ELD does not report time used, so never "
+        "present these as hours already worked.  Use for 'how many "
+        "hours does John have left?', 'who's out of hours?', 'who has "
+        "to stop for a break soon?'.  Always state the reading's age "
+        "when you answer."
     ),
     "parameters": {
         "type": "object",
@@ -131,6 +235,8 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
             ),
         }
 
+    coverage = _coverage_note(answer)
+
     return {
         "count": len(filtered),
         "name_filter": name_q or None,
@@ -144,6 +250,11 @@ async def get_driver_hos_status(tool_args: dict, samsara_client,
         ),
         "stale_after_minutes": answer["stale_after_minutes"],
         "stale_count": answer["stale_count"],
+        # Which countdowns this account's ELD actually publishes, and
+        # the sentence the model must use when some of them are absent.
+        # Omitted entirely when all four are reported — a note that
+        # says "nothing is missing" is noise the model has to read.
+        **({"clock_coverage": coverage} if coverage else {}),
         "drivers": [
             {
                 "name": r.get("driver") or "?",

@@ -17,6 +17,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from adapters.telematics.catalog import PROVIDER_CATALOG
+from adapters.telematics.protocol import HosClock
+from adapters.telematics.registry import get_provider, is_registered
 from capabilities.data_lifecycle.staleness import data_age_minutes
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,52 @@ def _clock(seconds: Optional[int]) -> Optional[dict]:
     if seconds is None:
         return None
     return {"seconds": int(seconds), "hours": round(int(seconds) / 3600, 1)}
+
+
+
+def _provider_facts(rows: list[dict]) -> tuple[dict, list[str]]:
+    """Which ELDs are behind these rows, and which clocks they report.
+
+    Not every electronic logging device reports remaining hours.  Some
+    publish duty status and nothing else — a real product, not a broken
+    integration — and a page that renders four empty columns for one of
+    them is saying "zero hours left" four times over.  So the answer
+    carries what each provider is CAPABLE of, and the surface states it
+    instead of leaving the reader to infer it from blanks.
+
+    Resolved through the registry, never by comparing a provider id: the
+    third ELD may report two of the four clocks, and a surface written
+    around "is it ORIENT" would be wrong about it on day one.
+
+    ``clocks_reported`` is ``None`` — not ``[]`` — for a provider that
+    is no longer registered.  Unknown is not the same statement as
+    "reports none", and only one of them may be printed.
+
+    Returns ``(per_provider, union)``.  The union is what decides which
+    columns exist.  It has a floor: a clock that actually carries a
+    value in these rows is always included, even if nobody declared it.
+    That floor can only ADD a column, never remove one, so the worst
+    case is a column that shows real data next to a stale declaration —
+    where the alternative would be hiding data we hold.
+    """
+    facts: dict[str, dict] = {}
+    union: set[str] = set()
+    for pid in sorted({str(r.get("provider_id") or "") for r in rows} - {""}):
+        entry = PROVIDER_CATALOG.get(pid)
+        clocks: Optional[list[str]] = None
+        if is_registered(pid):
+            declared = getattr(
+                get_provider(pid), "hos_clocks_reported", frozenset())
+            clocks = sorted(declared)
+            union |= set(declared)
+        facts[pid] = {
+            "name": entry.display_name if entry else pid,
+            "clocks_reported": clocks,
+        }
+    for clock_id, field in HosClock.FIELDS.items():
+        if any(r.get(field) is not None for r in rows):
+            union.add(clock_id)
+    return facts, sorted(union)
 
 
 def _scope_admits(scope, row: dict) -> bool:
@@ -98,7 +147,7 @@ async def get_hours(
 ) -> dict:
     """The account's duty clocks, narrowed to this caller.
 
-    Returns ``{"connected", "drivers", "stale_count", ...}``.
+    Returns ``{"connected", "drivers", "clocks_reported", ...}``.
 
     ``connected`` is the load-bearing field and it is NOT derived from
     the row count.  Zero drivers because no ELD was ever connected and
@@ -130,9 +179,20 @@ async def get_hours(
     hidden_by_scope = before_scope - len(rows)
 
     drivers = [project(r) for r in rows]
+    # Read from the rows the caller can actually see: a provider whose
+    # every driver the scope removed is not one this caller is looking
+    # at, and naming it would leak which ELDs the account runs.
+    providers, clocks_reported = _provider_facts(rows)
     return {
         "connected": ever > 0,
         "count": len(drivers),
+        # Which of the four countdowns any connected ELD here reports,
+        # and which ELD is behind each row.  A surface uses the first to
+        # decide which columns exist at all, and the second to say whose
+        # limitation it is — "ORIENT ELD reports duty status only" is an
+        # answer; four blank columns is a trap.
+        "clocks_reported": clocks_reported,
+        "providers": providers,
         # How many drivers the caller's own vehicle access removed.
         #
         # A surface that shows three of ten drivers and says nothing is

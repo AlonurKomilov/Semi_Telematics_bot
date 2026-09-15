@@ -16,8 +16,9 @@ import { CardSkeleton, EmptyState, ErrorState, KpiCard } from '../../components/
 import { Freshness } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
 import { statusTone, toneText } from '../../lib/status';
-import { DUTY_LABELS, clockText, useHours } from './useHours';
-import type { Clock as ClockValue, DriverHours } from './useHours';
+import { CLOCK_ORDER, DUTY_LABELS, clockCoverage, clockText, useHours }
+  from './useHours';
+import type { Clock as ClockValue, DriverHours, HosClockId } from './useHours';
 
 /**
  * One clock, on the shell's own figure primitive.
@@ -90,6 +91,7 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
   }
 
   const row: DriverHours | undefined = data.drivers[0];
+  const coverage = clockCoverage(data);
   if (!row) {
     return (
       <TabBody>
@@ -101,6 +103,22 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
       </TabBody>
     );
   }
+
+  const CLOCK_LABELS: Record<HosClockId, string> = {
+    drive: 'Drive left',
+    shift: 'Shift left',
+    cycle: 'Cycle left',
+    break: 'Break due in',
+  };
+  const CLOCK_VALUES: Record<HosClockId, ClockValue | null> = {
+    drive: row.drive_remaining,
+    shift: row.shift_remaining,
+    cycle: row.cycle_remaining,
+    break: row.break_in,
+  };
+  const tiles = CLOCK_ORDER
+    .filter((id) => coverage.reported.has(id))
+    .map((id) => ({ id, label: CLOCK_LABELS[id], clock: CLOCK_VALUES[id] }));
 
   return (
     <TabBody>
@@ -127,13 +145,25 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
       {/* Every clock counts DOWN.  There is no "used today" here
           because an ELD does not report one, and deriving it needs the
           ruleset's limit — which the certified device knows and we
-          do not. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <ClockTile label="Drive left" clock={row.drive_remaining} />
-        <ClockTile label="Shift left" clock={row.shift_remaining} />
-        <ClockTile label="Cycle left" clock={row.cycle_remaining} />
-        <ClockTile label="Break due in" clock={row.break_in} />
-      </div>
+          do not.
+
+          Only the clocks this account's ELD actually publishes get a
+          tile.  Four tiles reading "—" would be four figures on a
+          compliance card, and a figure is read before its hint is. */}
+      {coverage.none ? (
+        <p className="text-xs text-muted-foreground max-w-prose">
+          {coverage.deviceLabel} reports duty status only — remaining
+          drive, shift, cycle and break time are not available from it.
+        </p>
+      ) : (
+        <div className={`grid grid-cols-2 gap-2 ${
+          tiles.length > 2 ? 'sm:grid-cols-4' : 'sm:grid-cols-2'
+        }`}>
+          {tiles.map(({ id, label, clock }) => (
+            <ClockTile key={id} label={label} clock={clock} />
+          ))}
+        </div>
+      )}
 
       <p className="text-xs text-muted-foreground max-w-prose">
         {data.record_of}{' '}

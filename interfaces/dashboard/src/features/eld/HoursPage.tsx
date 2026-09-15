@@ -27,8 +27,9 @@ import { Freshness, Tip } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
 import { statusTone, toneText } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import { DUTY_LABELS, clockText, countLowOnDrive, useHours } from './useHours';
-import type { DriverHours, HoursResponse } from './useHours';
+import { CLOCK_ORDER, DUTY_LABELS, clockCoverage, clockText, countLowOnDrive, useHours }
+  from './useHours';
+import type { DriverHours, HosClockId, HoursResponse } from './useHours';
 
 /**
  * One clock cell.
@@ -55,7 +56,7 @@ function ClockCell({ clock }: { clock: DriverHours['drive_remaining'] }) {
   );
 }
 
-const COLUMNS: AnyColumn[] = [
+const IDENTITY_COLUMNS: AnyColumn[] = [
   {
     key: 'driver',
     label: 'Driver',
@@ -94,14 +95,6 @@ const COLUMNS: AnyColumn[] = [
       );
     },
   },
-  { key: 'drive_remaining', label: 'Drive left',
-    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).drive_remaining} /> },
-  { key: 'shift_remaining', label: 'Shift left',
-    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).shift_remaining} /> },
-  { key: 'cycle_remaining', label: 'Cycle left',
-    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).cycle_remaining} /> },
-  { key: 'break_in', label: 'Break due in',
-    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).break_in} /> },
   {
     key: 'as_of',
     label: 'Reading',
@@ -126,6 +119,42 @@ const COLUMNS: AnyColumn[] = [
 ];
 
 /**
+ * One clock column per countdown the ELD actually publishes.
+ *
+ * A column for a clock nobody reports is not an empty column — it is
+ * four dashes down a compliance page, and a dash in a hours-remaining
+ * column is read as a zero long before anybody hovers it.  So the set
+ * is built from what the server says the device can report, and the
+ * header says the rest in words.
+ *
+ * Per-cell dashes stay correct INSIDE a visible column: on an account
+ * running two ELDs the column exists because one of them fills it, and
+ * the other one's rows show `—` with its explanation.
+ */
+const CLOCK_COLUMNS: Record<HosClockId, AnyColumn> = {
+  drive: { key: 'drive_remaining', label: 'Drive left',
+    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).drive_remaining} /> },
+  shift: { key: 'shift_remaining', label: 'Shift left',
+    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).shift_remaining} /> },
+  cycle: { key: 'cycle_remaining', label: 'Cycle left',
+    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).cycle_remaining} /> },
+  break: { key: 'break_in', label: 'Break due in',
+    render: (_v, row) => <ClockCell clock={(row as unknown as DriverHours).break_in} /> },
+};
+
+/** Identity, then the clocks that exist, then the reading's age. */
+function buildColumns(reported: Set<HosClockId>): AnyColumn[] {
+  const clocks = CLOCK_ORDER.filter((c) => reported.has(c))
+    .map((c) => CLOCK_COLUMNS[c]);
+  const readingAt = IDENTITY_COLUMNS.length - 1;
+  return [
+    ...IDENTITY_COLUMNS.slice(0, readingAt),
+    ...clocks,
+    IDENTITY_COLUMNS[readingAt],
+  ];
+}
+
+/**
  * What the header says beyond the title.
  *
  * Two facts, both read from the rows rather than asserted: how many
@@ -135,14 +164,21 @@ const COLUMNS: AnyColumn[] = [
  * they are seeing everything.
  */
 function HeaderMeta({ data }: { data: HoursResponse }) {
-  const low = countLowOnDrive(data.drivers);
+  const coverage = clockCoverage(data);
+  // Only ask the question the device can answer.  On an ELD with no
+  // drive clock this count is 0 for every fleet on earth, and printing
+  // that 0 would state "nobody is close to their limit" on no evidence
+  // at all — the exact misreading this page exists to prevent.
+  const low = coverage.reported.has('drive')
+    ? countLowOnDrive(data.drivers)
+    : null;
   return (
     <div className="flex flex-col gap-1 text-xs">
       {/* Act on this.  Kept adjacent and at warn weight so the eye
           finds them without reading the whole strip. */}
-      {(low > 0 || data.stale_count > 0) && (
+      {((low ?? 0) > 0 || data.stale_count > 0) && (
         <div className="flex items-center gap-3 flex-wrap">
-          {low > 0 && (
+          {low !== null && low > 0 && (
             <span className={toneText('warn')}>
               {low} {low === 1 ? 'driver has' : 'drivers have'} under 1h
               drive time left
@@ -156,6 +192,31 @@ function HeaderMeta({ data }: { data: HoursResponse }) {
           )}
         </div>
       )}
+      {/* Why there is no warning above.
+          A page that simply omits the "under 1h" line on a device that
+          cannot measure it leaves the reader to conclude the fleet is
+          clear.  This states the limit of the instrument instead, and
+          names the device so the reader knows where to look for the
+          number we do not have.  Context rather than alarm — muted, own
+          line — because the drivers are not in trouble; we are just not
+          the ones who can say. */}
+      {coverage.missing.length > 0 && (
+        <span className="text-muted-foreground">
+          {coverage.none ? (
+            <>
+              {coverage.deviceLabel} reports duty status only — remaining
+              drive, shift, cycle and break time are not available from
+              it, so this page cannot say who is close to a limit.
+            </>
+          ) : (
+            <>
+              {coverage.deviceLabel} does not report{' '}
+              {coverage.missing.join(', ')} time.
+            </>
+          )}
+        </span>
+      )}
+
       {/* What you are looking at.  Context, not a warning — its own
           line and muted, so it never competes with the two above. */}
       {data.hidden_by_scope > 0 && (
@@ -176,12 +237,27 @@ export default function HoursPage() {
     [data],
   );
 
+  const columns = useMemo(
+    () => buildColumns(clockCoverage(data).reported),
+    [data],
+  );
+  // Sorting by a column that is not rendered leaves the grid's chip row
+  // advertising a sort the reader cannot see or clear.
+  const hasDrive = clockCoverage(data).reported.has('drive');
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="Hours of Service"
         icon={Clock}
-        description="Duty status and remaining drive, shift and cycle time for every driver, mirrored from the connected electronic logging device. The ELD is the system of record — these readings are read-only, and each one shows how old it is."
+        // The description must not promise clocks this account's device
+        // does not publish — an over-claim behind a ⓘ is still an
+        // over-claim, and this is the surface where it would matter.
+        description={
+          clockCoverage(data).none && data?.connected
+            ? `Duty status for every driver, mirrored from ${clockCoverage(data).deviceLabel.toLowerCase()}. It does not report remaining drive, shift, cycle or break time. The ELD is the system of record — these readings are read-only, and each one shows how old it is.`
+            : 'Duty status and remaining drive, shift and cycle time for every driver, mirrored from the connected electronic logging device. The ELD is the system of record — these readings are read-only, and each one shows how old it is.'
+        }
         meta={data?.connected ? <HeaderMeta data={data} /> : undefined}
       />
 
@@ -225,13 +301,17 @@ export default function HoursPage() {
         <>
           <DataGrid
             tableId="eld-hours"
-            columns={COLUMNS}
+            columns={columns}
             data={rows}
             searchKey={['driver', 'vehicle']}
             // Most drive time first.  The rows arrive newest-reading
             // first, which answers a question nobody asked; this page
             // exists for "who can take this load and for how long".
-            defaultSorting={[{ id: 'drive_remaining', desc: true }]}
+            // On a device with no drive clock that column does not
+            // exist, so the rows keep their newest-first order.
+            defaultSorting={hasDrive
+              ? [{ id: 'drive_remaining', desc: true }]
+              : []}
             // A dispatcher's own views — "my night shift", "running
             // low" — saved per user, right-click to manage.
             savedTabs
