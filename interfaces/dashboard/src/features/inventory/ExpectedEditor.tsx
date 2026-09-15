@@ -341,7 +341,7 @@ export default function ExpectedEditor() {
             {crossing && (
               <select
                 aria-label="Whose focus"
-                className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+                className="h-8 min-h-tap rounded-md border border-border bg-background px-2 text-sm"
                 value={data.role}
                 onChange={(e) => { setAimAt(e.target.value); setFocusDraft(null); }}
               >

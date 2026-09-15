@@ -702,7 +702,7 @@ function PlanCard({
             maxLength={2000}
             required
             placeholder="How many trucks, how many companies, and what you need it to do"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm
+            className="w-full min-h-tap rounded-lg border border-border bg-background px-3 py-2 text-sm
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <input
@@ -711,7 +711,7 @@ function PlanCard({
             onChange={(e) => setEmail(e.target.value)}
             required
             placeholder="Where should we reply?"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm
+            className="w-full min-h-tap rounded-lg border border-border bg-background px-3 py-2 text-sm
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <div className="flex gap-2">
