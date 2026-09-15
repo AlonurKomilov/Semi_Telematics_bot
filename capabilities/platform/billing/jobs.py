@@ -158,6 +158,7 @@ async def issue_local_invoice(account_id: int, *, now: datetime | None = None,
         return None
     billing = await platform_db.compute_billing(account_id)
     period_start, period_end = period or _previous_month_window(now)
+    billing = await _counts_as_they_were(platform_db, account_id, billing, period_start)
     account = await platform_db.get_account(account_id)
     invoice = _inv.build(
         account_id=account_id, account_name=getattr(account, "name", "") or "",
@@ -169,6 +170,40 @@ async def issue_local_invoice(account_id: int, *, now: datetime | None = None,
                 invoice["number"], account_id, invoice["subtotal_cents"])
     await _send_local_invoice(account_id, platform_db, invoice)
     return {"number": invoice["number"], **row}
+
+
+async def _counts_as_they_were(platform_db, account_id: int, billing: dict,
+                               period_start: str) -> dict:
+    """Bill a past month on that month's truck count, not today's.
+
+    Trucks are bought and sold, so an account that ran 102 over the
+    included count in July may run 80 today; issuing July from today's
+    registry would bill a month that never happened.  The monthly
+    snapshot recorded the count at the close of each period, so where
+    one exists it wins.
+
+    The RATES are still the plan's current ones — no per-period price
+    was ever recorded, and inventing one would be worse than using the
+    price the plan actually charges.  The operator is told this where
+    they choose the month.
+    """
+    try:
+        snapshots = await platform_db.get_usage_snapshots(account_id, limit=36)
+    except Exception:
+        logger.exception("usage snapshots unreadable for account %s — billing today's count",
+                         account_id)
+        return billing
+    month = (period_start or "")[:7]
+    snap = next((s for s in snapshots if str(s.get("period_start") or "")[:7] == month), None)
+    if not snap:
+        return billing
+    included = int(billing.get("included") or 0)
+    active = int(snap.get("active_vehicles") or 0)
+    extras = max(0, active - included)
+    unit = int(billing.get("extra_unit_cents") or 0)
+    return {**billing, "active": active, "extras": extras,
+            "extras_cents": extras * unit,
+            "subtotal_cents": int(billing.get("base_cents") or 0) + extras * unit}
 
 
 async def _send_local_invoice(account_id: int, platform_db, invoice: dict) -> bool:

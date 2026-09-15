@@ -372,3 +372,38 @@ async def test_the_operator_can_write_a_month_that_went_by_unbilled(api, monkeyp
 
     assert (await c.post(f"/api/system/accounts/{acct.id}/invoice?month=july")).status_code == 400
     assert (await c.post("/api/system/accounts/999999/invoice?month=2026-07")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_past_month_is_billed_on_that_months_truck_count(api, monkeypatch):
+    """Trucks are bought and sold.  Issuing July from today's registry
+    would bill a month that never happened."""
+    c, db = api["client"], api["db"]
+    monkeypatch.delenv("BILLING_RECEIPT_EMAIL", raising=False)
+    acct = await db.create_account("Fleet Changed Co", tier="pro")
+    await db.get_or_create_subscription(acct.id)
+    # the plan as it stands: $99, 10 trucks included, $2.99 each
+    await db.update_subscription(acct.id, tier="pro", monthly_base_usd=9900,
+                                 base_vehicles=10, extra_vehicle_cents=299, vehicle_count=20)
+    # July, when the account ran 60
+    await db.record_usage_snapshot(
+        acct.id, period_start="2026-07-01T00:00:00+00:00",
+        period_end="2026-08-01T00:00:00+00:00", vehicle_count=60,
+        user_count=3, ai_queries=0, base_vehicles=10,
+        monthly_base_cents=9900, extra_vehicle_cents=299,
+        active_vehicles=60)
+    row = await db.create_account_discount(acct.id, kind=ABSOLUTE, reason="partner")
+    await db.mark_account_discount(int(row["id"]), status="active")
+
+    r = await c.post(f"/api/system/accounts/{acct.id}/invoice?month=2026-07")
+    assert r.status_code == 200, r.text
+    july = r.json()["invoice"]
+    assert july["subtotal_cents"] == 9900 + 50 * 299, "50 over the included count, as July had"
+
+    # a month with no snapshot falls back to the registry as it stands
+    # rather than failing — and never borrows another month's count
+    r = await c.post(f"/api/system/accounts/{acct.id}/invoice?month=2026-06")
+    assert r.status_code == 200
+    june = r.json()["invoice"]
+    assert june["subtotal_cents"] == 9900, "the plan, and no trucks on the registry"
+    assert june["subtotal_cents"] != july["subtotal_cents"]

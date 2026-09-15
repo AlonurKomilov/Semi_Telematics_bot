@@ -156,6 +156,11 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
               can download it from their Billing page. Asking twice for one month returns the
               same invoice.
             </p>
+            <p className="text-xs text-slate-500 mb-2">
+              A past month is billed on the truck count recorded at its close, but at the
+              plan's <em>current</em> rates — no per-month price was ever stored. Check the
+              plan price before issuing a month from before a price change.
+            </p>
             <div className="flex items-center gap-2">
               <input
                 type="month"
