@@ -56,7 +56,7 @@ function ClockCell({ clock }: { clock: DriverHours['drive_remaining'] }) {
   );
 }
 
-const IDENTITY_COLUMNS: AnyColumn[] = [
+const identityColumns = (showUnlinked: boolean): AnyColumn[] => [
   {
     key: 'driver',
     label: 'Driver',
@@ -70,8 +70,15 @@ const IDENTITY_COLUMNS: AnyColumn[] = [
           </span>
           {/* A status about OUR RECORD of the driver, not about the
               driver — so it keeps the badge family and takes the
-              outline weight, where duty status takes the fill. */}
-          {!r.linked && (
+              outline weight, where duty status takes the fill.
+
+              Marked per row only while the state is PARTIAL.  When
+              nobody is linked — which is every account whose ELD has no
+              roster link yet — the badge is on all of them, and a mark
+              that never varies stops being a mark: it is twenty-two
+              copies of one fact, in the column that carries the
+              driver's name.  The header states it once instead. */}
+          {!r.linked && showUnlinked && (
             <Tip label="The ELD reports this driver, but nobody has linked them to a member of your team yet. Link them on the driver's Integrations tab.">
               <Badge tone="neutral" subtle className="cursor-help">
                 unlinked
@@ -143,15 +150,30 @@ const CLOCK_COLUMNS: Record<HosClockId, AnyColumn> = {
 };
 
 /** Identity, then the clocks that exist, then the reading's age. */
-function buildColumns(reported: Set<HosClockId>): AnyColumn[] {
+function buildColumns(
+  reported: Set<HosClockId>,
+  showUnlinked: boolean,
+): AnyColumn[] {
+  const identity = identityColumns(showUnlinked);
   const clocks = CLOCK_ORDER.filter((c) => reported.has(c))
     .map((c) => CLOCK_COLUMNS[c]);
-  const readingAt = IDENTITY_COLUMNS.length - 1;
+  const readingAt = identity.length - 1;
   return [
-    ...IDENTITY_COLUMNS.slice(0, readingAt),
+    ...identity.slice(0, readingAt),
     ...clocks,
-    IDENTITY_COLUMNS[readingAt],
+    identity[readingAt],
   ];
+}
+
+/** Nobody on this page is attached to a person on our roster.
+ *
+ *  Its visible consequence is a Truck column of dashes, which on its
+ *  own reads as "these drivers have no truck" rather than "we have not
+ *  been told which truck".  Same shape as the clock columns: the gap is
+ *  in what we know, and a surface that shows the gap without naming it
+ *  lets the reader fill it in wrongly. */
+function allUnlinked(data: HoursResponse | undefined): boolean {
+  return !!data && data.count > 0 && data.drivers.every((d) => !d.linked);
 }
 
 /**
@@ -217,6 +239,17 @@ function HeaderMeta({ data }: { data: HoursResponse }) {
         </span>
       )}
 
+      {/* Said once here instead of on every row — see the Driver
+          column for why.  Names the empty Truck column before the
+          reader concludes these drivers have no truck. */}
+      {allUnlinked(data) && (
+        <span className="text-muted-foreground">
+          No driver here is linked to a member of your team yet, so the
+          Truck column is empty. Link them on each driver's Integrations
+          tab.
+        </span>
+      )}
+
       {/* What you are looking at.  Context, not a warning — its own
           line and muted, so it never competes with the two above. */}
       {data.hidden_by_scope > 0 && (
@@ -238,7 +271,7 @@ export default function HoursPage() {
   );
 
   const columns = useMemo(
-    () => buildColumns(clockCoverage(data).reported),
+    () => buildColumns(clockCoverage(data).reported, !allUnlinked(data)),
     [data],
   );
   // Sorting by a column that is not rendered leaves the grid's chip row

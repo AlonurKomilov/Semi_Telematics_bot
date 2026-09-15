@@ -53,6 +53,24 @@ function TabBody({ children }: { children: React.ReactNode }) {
   return <div className="min-h-48">{children}</div>;
 }
 
+/**
+ * Columns sized to the number of tiles, not to four.
+ *
+ * A device that reports three clocks in a four-column grid leaves one
+ * cell empty, and an empty cell in a row of figures reads as a tile
+ * that failed to load rather than one that was never there.  Written
+ * out as whole class strings because Tailwind scans source text — a
+ * computed `sm:grid-cols-${n}` compiles to nothing and the grid
+ * silently collapses to the mobile two.
+ */
+const TILE_COLUMNS: Record<number, string> = {
+  1: 'sm:grid-cols-1',
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-3',
+  4: 'sm:grid-cols-4',
+};
+
+
 export default function DriverHoursTab({ userId }: { userId: number }) {
   const { data, isLoading, isError, refetch } = useHours(userId);
 
@@ -156,9 +174,7 @@ export default function DriverHoursTab({ userId }: { userId: number }) {
           drive, shift, cycle and break time are not available from it.
         </p>
       ) : (
-        <div className={`grid grid-cols-2 gap-2 ${
-          tiles.length > 2 ? 'sm:grid-cols-4' : 'sm:grid-cols-2'
-        }`}>
+        <div className={`grid grid-cols-2 gap-2 ${TILE_COLUMNS[tiles.length]}`}>
           {tiles.map(({ id, label, clock }) => (
             <ClockTile key={id} label={label} clock={clock} />
           ))}

@@ -878,9 +878,13 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
           are being tracked, on a page about hours of service.  So this
           says which companies are covered and leads with the gap.  It
           takes `warn` rather than muted for the same reason — missing
-          companies is a real hole, not a cosmetic one. */}
+          companies is a real hole, not a cosmetic one.
+
+          text-xs matches the rows below.  The first draft used text-2xs
+          and so rendered a real gap SMALLER than the rows it is about —
+          the size ladder contradicting the tone. */}
       {data?.account_level_key && (
-        <p className={`px-3 py-2 text-2xs border-b border-border ${toneText('warn')}`}>
+        <p className={`px-3 py-2 text-xs border-b border-border ${toneText('warn')}`}>
           Only one key is set, and it covers just the company it was
           issued for
           {missingKeys > 0 && (
