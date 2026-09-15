@@ -7,19 +7,28 @@
    page about to become paper must not be blurred and thinned first. */
 @media screen {
   :root[data-material="glass"] {
-    /* HELD HERE, and not for want of trying. The patterned ground — the
-       worst one a wallpaper may lay down, which `PATTERN_STOPS` bounds
-       and `wallpaper.test.ts` holds every pack under — composites at
-       4.56:1 against a 4.5:1 floor at this value, and below it the dark
-       text on a light card loses its footing: 4.47:1 at 0.62, 4.08:1 at
-       0.20. The cause is the flat light palette, not this pack. A light
-       card is `oklch(1 0 0)` and so is the page under it, so there is
-       nothing behind a light surface to reveal and every step toward
-       clarity only reveals the PATTERN. Light glass gets its depth when
-       the light ladder gains a rung; until then this number is the
-       measurement's answer and not a taste. */
-    --surface-alpha: 0.72;
-    --surface-blur: 14px;
+    /* 0.55, and it was 0.72 for two reasons that are both gone.
+       The first was arithmetic: a light card was `oklch(1 0 0)` and so
+       was the page under it, so clearing the card revealed white and
+       the material had nothing to show. The page is 0.95 now, which is
+       what gives this number something to do.
+       The second was a mismeasurement, and it is the more useful one to
+       record. The patterned ground was held to the PLAIN secondary ink
+       and reported 4.56:1 — a hair over the floor, and the reason a
+       previous version of this comment said light glass had nowhere to
+       go. But under a pattern the page swaps in
+       `--muted-foreground-on-pattern`, which a Card inherits, so the
+       text that actually sits there is darker and the real number was
+       never close. Measured against the ink the product uses, every
+       value down to 0.50 clears; 0.55 is that with room kept.
+       Still short of dark's 0.45, and not arbitrarily: the light card
+       is only 0.05 above its page, so what clarity reveals here is a
+       thin difference to begin with. */
+    --surface-alpha: 0.55;
+    /* 10px. Lower than it was, higher than dark's 8: blur is the knob
+       the contrast guard cannot see, so it is spent where the measured
+       margin is widest, and light's is still the narrower of the two. */
+    --surface-blur: 10px;
     /* Glass without a saturation boost reads as fog. */
     --surface-saturate: 1.5;
     /* HOW MUCH LIGHT THE EDGE CATCHES — one knob for the rim and the

@@ -56,7 +56,10 @@ import { DEFAULT_DEPTH } from '../depth/packs';
  * `mods/catalogue.ts` holds the accent seeds for exactly the same reason.
  */
 export const CANVAS_SEED: Readonly<Record<AccentMode, string>> = {
-  light: '#ffffff',
+  // #eeeeee, not the #ffffff it was: the light page is a step below
+  // white now so the planes above it have somewhere to stand. The
+  // drift test below parses `index.css` and fails if the two disagree.
+  light: '#eeeeee',
   // #030303, not the #0a0a0a a reader would guess: the dark canvas is
   // oklch(0.10 0 0), and the drift test below caught the guess on its
   // first run. That is the whole reason it parses the stylesheet.

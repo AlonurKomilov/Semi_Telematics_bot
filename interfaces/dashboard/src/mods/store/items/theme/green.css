@@ -22,7 +22,7 @@
        did at this lightness, and an out-of-gamut authored value is a
        number the display never shows. */
     --primary-hover: oklch(0.472 0.137 135);
-    --primary-text: oklch(0.447 0.13 135);
+    --primary-text: oklch(0.412 0.12 135);
     --chart-1: oklch(0.522 0.15 135);
     /* The ramp rotates with the accent, and only here.
        Slot 1 IS the accent — that is the rule, and purple.css and the

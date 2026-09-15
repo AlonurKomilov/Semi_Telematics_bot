@@ -128,7 +128,22 @@
        The literal is only the pre-mount fallback. */
     --sidebar-w: 14rem;
 
-    --background: oklch(1 0 0);
+    /* THE LIGHT PAGE IS NOT WHITE, and that is a rung rather than a
+       tint. Every light surface in this product used to be
+       `oklch(1 0 0)` — the page, the card and the popover all three —
+       so a card was not a PLANE above the page, it was the page with a
+       border drawn round it. Nothing could sit on top of anything, the
+       shadow axis had nothing to lift, and the glass material had
+       nothing behind a surface to reveal: clearing a white card over a
+       white page shows white.
+       0.95 is the content well; `--card` stays at 1. The frame
+       (`--sidebar`, 0.965) now sits between them, which is the shape it
+       always described — a rail, a recessed well, and white cards
+       floating in it.
+       Measured before it moved, and the measurement is why 0.95 rather
+       than further: at this depth the worst text-on-glass composite is
+       4.64:1 against a 4.5 floor, and by 0.90 it is 4.33 and gone. */
+    --background: oklch(0.95 0 0);
 
     --foreground: oklch(0.145 0 0);
 
@@ -179,7 +194,7 @@
        It sits close to --primary-hover today, and they are still two
        tokens: fold them together and a hover retune silently moves every
        pieces of body text, which is the exact bug being fixed. */
-    --primary-text: oklch(0.48 0.20 264);
+    --primary-text: oklch(0.438 0.201 264);
 
     --secondary: oklch(0.97 0 0);
 
@@ -192,9 +207,9 @@
        and 4.74 on white.  Darkening it lifts both (4.54 / 4.95) across
        roughly 2187 call sites, which is the rare retune where the wide
        blast radius is the argument FOR it rather than against. */
-    --muted-foreground: oklch(0.545 0 0);
+    --muted-foreground: oklch(0.525 0 0);
     /* The muted ink under a page pattern — see the page-ground rule. */
-    --muted-foreground-on-pattern: oklch(0.48 0 0);
+    --muted-foreground-on-pattern: oklch(0.459 0 0);
 
     --accent: oklch(0.97 0 0);
 
@@ -208,7 +223,7 @@
        on its own washes in light and 3.13-5.98 in dark.  The solid
        button keeps the saturated --destructive; only the soft variant's
        label moves. */
-    --destructive-text: oklch(0.497 0.2 27.325);
+    --destructive-text: oklch(0.467 0.19 27.325);
 
     /* Label colour ON a solid destructive fill.  This token was USED
        (`text-destructive-foreground`, five delete/disconnect buttons)
@@ -223,9 +238,9 @@
        and not once.  Re-measure before changing either `--destructive`. */
     --destructive-foreground: oklch(0.985 0 0);
 
-    --border: oklch(0.922 0 0);
+    --border: oklch(0.87 0 0);
 
-    --input: oklch(0.922 0 0);
+    --input: oklch(0.87 0 0);
 
     /* Derived, not copied.  --ring was `--primary` at 50% in :root and
        in .dark, and the two accent presets re-declared it from their own
@@ -334,24 +349,33 @@
        soft-pill to one short class set; `bg-ok/15` also works now (the
        `/<alpha>` modifier is enabled on every token by tokenColor() in
        tailwind.config.js). */
-    /* 12%, not 15%.  The soft pill is the tone AS TEXT on a wash of
-       itself, so the wash is half of that pair — and on --popover, the
-       lightest surface either theme has, dark danger sat at 3.58.
-       Thinning the wash was the cheaper handle than paling the tone:
+    /* 8%, and it was 12%, and before that 15% — the same handle pulled
+       for the same reason each time.  The soft pill is the tone AS TEXT
+       on a wash of itself, so the wash is half of that pair.  At 15% it
+       was dark danger on --popover at 3.58; at 12% it was light ok and
+       light danger at 4.31 and 4.34, because the wash is TRANSPARENT
+       and the light page is no longer white — a pill sitting on the
+       page now composites over 0.95 instead of 1.0 and takes the whole
+       difference.
+       Thinning the wash stays the cheaper handle than paling the tone:
        clearing it in --danger would have taken its chroma from 0.19 to
-       0.125, and a danger colour's job is to be noticed.  All four move
-       together because one pill recipe should not have four densities;
-       the 30% `-bd` border keeps the shape legible at the lower fill. */
-    --ok-bg:     color-mix(in oklab, var(--ok) 12%, transparent);
+       0.125, and a danger colour's job is to be noticed.  Moving the
+       tone is also not free in the way it looks — it is a value the
+       accent engine measures a custom colour AGAINST, so paling it
+       quietly changes which brand colours the picker will accept.  All
+       four move together because one pill recipe should not have four
+       densities; the 30% `-bd` border keeps the shape legible at the
+       lower fill. */
+    --ok-bg:     color-mix(in oklab, var(--ok) 8%, transparent);
     --ok-bd:     color-mix(in oklab, var(--ok) 30%, transparent);
 
-    --warn-bg:   color-mix(in oklab, var(--warn) 12%, transparent);
+    --warn-bg:   color-mix(in oklab, var(--warn) 8%, transparent);
     --warn-bd:   color-mix(in oklab, var(--warn) 30%, transparent);
 
-    --danger-bg: color-mix(in oklab, var(--danger) 12%, transparent);
+    --danger-bg: color-mix(in oklab, var(--danger) 8%, transparent);
     --danger-bd: color-mix(in oklab, var(--danger) 30%, transparent);
 
-    --info-bg:   color-mix(in oklab, var(--info) 12%, transparent);
+    --info-bg:   color-mix(in oklab, var(--info) 8%, transparent);
     --info-bd:   color-mix(in oklab, var(--info) 30%, transparent);
 
     /* Categorical series — five DISTINCT hues, not five greys.
@@ -367,7 +391,7 @@
 
     --chart-2: oklch(0.55 0.15 142);
 
-    --chart-3: oklch(0.65 0.14 95);
+    --chart-3: oklch(0.619 0.127 95);
 
     --chart-4: oklch(0.58 0.19 30);
 
@@ -783,7 +807,7 @@
      drift apart, so add a token to `.dark` and add it here too. */
   :root, :root.dark, :root.dark[data-theme] {
     color-scheme: light;
-    --background:                 oklch(1 0 0);
+    --background:                 oklch(0.95 0 0);
     --foreground:                 oklch(0.145 0 0);
     --card:                       oklch(1 0 0);
     --card-foreground:            oklch(0.145 0 0);
@@ -792,19 +816,19 @@
     --primary:                    oklch(0.52 0.2 264);
     --primary-foreground:         oklch(0.985 0 0);
     --primary-hover:              oklch(0.47 0.20 264);
-    --primary-text:               oklch(0.48 0.20 264);
+    --primary-text:               oklch(0.438 0.201 264);
     --secondary:                  oklch(0.97 0 0);
     --secondary-foreground:       oklch(0.205 0 0);
     --muted:                      oklch(0.97 0 0);
-    --muted-foreground:           oklch(0.545 0 0);
-    --muted-foreground-on-pattern: oklch(0.48 0 0);
+    --muted-foreground:           oklch(0.525 0 0);
+    --muted-foreground-on-pattern: oklch(0.459 0 0);
     --accent:                     oklch(0.97 0 0);
     --accent-foreground:          oklch(0.205 0 0);
     --destructive:                oklch(0.577 0.245 27.325);
-    --destructive-text:           oklch(0.497 0.2 27.325);
+    --destructive-text:           oklch(0.467 0.19 27.325);
     --destructive-foreground:     oklch(0.985 0 0);
-    --border:                     oklch(0.922 0 0);
-    --input:                      oklch(0.922 0 0);
+    --border:                     oklch(0.87 0 0);
+    --input:                      oklch(0.87 0 0);
     --pin-shadow-right:           4px 0 6px 0 rgb(0 0 0 / 0.20);
     --pin-shadow-left:            -4px 0 6px 0 rgb(0 0 0 / 0.20);
     --ok:                         oklch(0.49 0.132 150);
@@ -817,7 +841,7 @@
     --info-foreground:            oklch(1 0 0);
     --chart-1:                    oklch(0.55 0.20 264);
     --chart-2:                    oklch(0.55 0.15 142);
-    --chart-3:                    oklch(0.65 0.14 95);
+    --chart-3:                    oklch(0.619 0.127 95);
     --chart-4:                    oklch(0.58 0.19 30);
     --chart-5:                    oklch(0.55 0.12 200);
     --sidebar:                    oklch(0.965 0.004 240);

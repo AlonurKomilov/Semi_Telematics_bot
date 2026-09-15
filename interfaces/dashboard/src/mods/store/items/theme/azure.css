@@ -21,7 +21,7 @@
   :root:not(.dark)[data-accent="azure"]:not([data-mod-accent]) {
     --primary: oklch(0.52 0.091 214);
     --primary-hover: oklch(0.469 0.082 214);
-    --primary-text: oklch(0.450 0.079 214);
+    --primary-text: oklch(0.417 0.073 215);
     --chart-1: oklch(0.52 0.091 214);
     --chart-5: oklch(0.559 0.095 316);
   }

@@ -295,9 +295,14 @@ const KNOWN_GAMUT: Record<string, number> = {
   // is deliberate — taking the max across cells once let a regression in
   // one hide behind a worse value in another. The values below are
   // therefore identical to the same tokens' entries in the other cells.
+  // `light * | --chart-3` used to be here, four entries at 0.0065, and
+  // they are gone rather than lowered: the light page dropped to 0.95
+  // and the ramp darkened to keep its 3:1 on it, which took --chart-3
+  // back inside sRGB. The guard refuses a stale entry as firmly as a
+  // raised one — an exemption nobody can delete is how a ratchet turns
+  // into a list of things that are allowed to be wrong.
   'light azure | --destructive': 0.0096,
   'light azure | --warn': 0.0017,
-  'light azure | --chart-3': 0.0065,
   'dark azure | --chart-3': 0.0055,
   // dark blue
   'dark blue | --chart-1': 0.0057,
@@ -311,17 +316,14 @@ const KNOWN_GAMUT: Record<string, number> = {
   'dark purple | --chart-3': 0.0055,
   'dark purple | --chart-5': 0.0176,
   // light blue
-  'light blue | --chart-3': 0.0065,
   'light blue | --chart-5': 0.0265,
   'light blue | --destructive': 0.0096,
   'light blue | --warn': 0.0017,
   // light green
-  'light green | --chart-3': 0.0065,
   'light green | --chart-5': 0.0265,
   'light green | --destructive': 0.0096,
   'light green | --warn': 0.0017,
   // light purple
-  'light purple | --chart-3': 0.0065,
   'light purple | --chart-5': 0.0265,
   'light purple | --destructive': 0.0096,
   'light purple | --warn': 0.0017,

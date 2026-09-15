@@ -7,18 +7,21 @@ import type { DepthPack } from './index';
  * would notice. That is the point: a move and a change in one commit is
  * a move nobody can check.
  *
- * Its name is a description rather than a compliment. In DARK the
- * planes climb — a card is 0.175 above the page, a popover 0.220, so
- * the three read as three. In LIGHT card and popover are both ZERO:
- * they sit exactly on the page, and every surface in the product is the
- * same white. That is why a card there is visible only by its border,
- * and why glass has nothing behind it to show.
+ * Its name is a description rather than a compliment: the steps are
+ * close together. In DARK the planes climb — a card is 0.175 above the
+ * page, a popover 0.220, so the three read as three. In LIGHT the
+ * climb is a tenth of that — a card is 0.051 above the page — which is
+ * all a near-white palette has room for, but it is no longer nothing.
  *
- * It is flat for a reason that is not an oversight. The page IS the
- * seed, and the light seed is `oklch(1 0 0)` — a card cannot climb
- * above white. A ladder that lifts in light needs a page that is not at
- * the ceiling, which is a decision about the SEED and belongs with
- * whoever picks one.
+ * Its LIGHT half used to be flat for a reason that was not an
+ * oversight and is no longer true. The page IS the seed, and the light
+ * seed was `oklch(1 0 0)` — a card cannot climb above white, so card
+ * and popover both read 0.000 and every light surface in the product
+ * was the same colour. A ladder that lifts in light needs a page that
+ * is not at the ceiling, and the page came down: the light canvas is
+ * 0.95 now, so the steps below are the same destinations measured from
+ * a seed that leaves room above it. Nothing a reader sees moved except
+ * the page itself.
  */
 export const flat: DepthPack = {
   id: 'flat',
@@ -26,13 +29,13 @@ export const flat: DepthPack = {
   description: 'The steps this app was drawn with — planes close together',
   ladder: {
     light: {
-      card:          { dL:  0.000, C: 0.000 },
-      popover:       { dL:  0.000, C: 0.000 },
-      secondary:     { dL: -0.030, C: 0.000 },
-      muted:         { dL: -0.030, C: 0.000 },
-      accent:        { dL: -0.030, C: 0.000 },
-      sidebar:       { dL: -0.035, C: 0.004 },
-      sidebarAccent: { dL: -0.065, C: 0.006 },
+      card:          { dL:  0.051, C: 0.000 },
+      popover:       { dL:  0.051, C: 0.000 },
+      secondary:     { dL:  0.021, C: 0.000 },
+      muted:         { dL:  0.021, C: 0.000 },
+      accent:        { dL:  0.021, C: 0.000 },
+      sidebar:       { dL:  0.016, C: 0.004 },
+      sidebarAccent: { dL: -0.014, C: 0.006 },
     },
     dark: {
       card:          { dL:  0.175, C: 0.000 },

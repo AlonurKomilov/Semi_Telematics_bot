@@ -6,7 +6,7 @@
   :root:not(.dark)[data-accent="purple"]:not([data-mod-accent]) {
     --primary: oklch(0.52 0.20 300);
     --primary-hover: oklch(0.47 0.20 300);
-    --primary-text: oklch(0.48 0.20 300);
+    --primary-text: oklch(0.449 0.201 300);
     --chart-1: oklch(0.52 0.20 300);
   }
   .dark[data-accent="purple"]:not([data-mod-accent]) {
