@@ -33,6 +33,27 @@ const GLASS = readFileSync(
   join(__dirname, '..', 'store', 'items', 'material', 'glass.css'), 'utf8',
 ).replace(/\/\*[\s\S]*?\*\//g, '');
 
+const CSS = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
+
+/**
+ * A token's LIGHTNESS, out of the stylesheet.
+ *
+ * `:root` is several separate blocks and the cascade merges them, so
+ * every matching block is concatenated before the token is read —
+ * taking only the first finds the font stacks and no colour at all.
+ * Chroma is dropped: the largest here is `--sidebar`'s 0.022, small
+ * enough that the mix is dominated by L.
+ */
+function tokenL(selector: string, name: string): number {
+  let body = '';
+  for (const m of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+    if (m[1].trim().replace(/\s+/g, ' ') === selector) body += m[2];
+  const v = new RegExp(`${name}:\\s*oklch\\(([\\d.]+)`).exec(body);
+  if (!v) throw new Error(`index.css states no ${name} for ${selector}`);
+  return Number(v[1]);
+}
+
 /**
  * One declaration, out of the pack.
  *
@@ -54,22 +75,35 @@ function decl(selector: string, prop: string): number {
 const LIGHT = ':root[data-material="glass"]';
 const DARK = '.dark[data-material="glass"]';
 
-/** L, read from index.css. Chroma dropped: the largest is 0.022. */
+/**
+ * The planes and inks, READ from index.css rather than copied beside
+ * it — the same rule the pack's own numbers now follow, and for the
+ * same reason: a guard holding its own copy of the value it guards is
+ * not a guard.
+ */
+const LIGHT_SEL = ':root', DARK_SEL = '.dark';
+const modeTokens = (sel: string) => ({
+  background: tokenL(sel, '--background'),
+  sidebar: tokenL(sel, '--sidebar'),
+  card: tokenL(sel, '--card'),
+  popover: tokenL(sel, '--popover'),
+  fg: tokenL(sel, '--foreground'),
+  mutedFg: tokenL(sel, '--muted-foreground'),
+  /**
+   * THE INK CHANGES UNDER A PATTERN, and measuring the plain one there
+   * was this file's own bug for exactly one commit. `index.css` swaps
+   * `--muted-foreground` for this on `.page-ground` whenever a page
+   * wallpaper is on, and a custom property inherits — so a Card inside
+   * that ground is already writing its secondary text in this ink, not
+   * the other. Holding the patterned case to the plain ink reported a
+   * product that does not exist, and reported it as nearly failing.
+   */
+  mutedFgOnPattern: tokenL(sel, '--muted-foreground-on-pattern'),
+});
+
 const T = {
-  light: {
-    background: 1, sidebar: 0.965,
-    card: 1, popover: 1,
-    fg: 0.145, mutedFg: 0.545,
-    alpha: decl(LIGHT, '--surface-alpha'),
-    sheen: decl(LIGHT, '--glass-sheen'),
-  },
-  dark: {
-    background: 0.10, sidebar: 0.215,
-    card: 0.275, popover: 0.32,
-    fg: 0.985, mutedFg: 0.70,
-    alpha: decl(DARK, '--surface-alpha'),
-    sheen: decl(DARK, '--glass-sheen'),
-  },
+  light: { ...modeTokens(LIGHT_SEL), alpha: decl(LIGHT, '--surface-alpha'), sheen: decl(LIGHT, '--glass-sheen') },
+  dark: { ...modeTokens(DARK_SEL), alpha: decl(DARK, '--surface-alpha'), sheen: decl(DARK, '--glass-sheen') },
 } as const;
 
 const grey = (L: number): RGB => oklchToSrgb(L, 0, 0).rgb;
@@ -141,13 +175,15 @@ describe('glass still admits the text that sits on it', () => {
             const t = T[mode];
             const base = t[surface];
             const flat = ground === 'sidebar' ? 'sidebar' : 'background';
-            const groundL = ground === 'background+wallpaper'
-              ? patterned(t.background, t[text])
-              : t[flat];
+            const onPattern = ground === 'background+wallpaper';
+            // Under a pattern the page swaps the secondary ink; the
+            // primary one is unchanged, so only `mutedFg` moves.
+            const inkL = onPattern && text === 'mutedFg' ? t.mutedFgOnPattern : t[text];
+            const groundL = onPattern ? patterned(t.background, inkL) : t[flat];
             const glassL = composite(mode, surface, groundL);
 
-            const solid = contrastRatio(grey(t[text]), grey(base));
-            const glass = contrastRatio(grey(t[text]), grey(glassL));
+            const solid = contrastRatio(grey(inkL), grey(base));
+            const glass = contrastRatio(grey(inkL), grey(glassL));
 
             expect(solid, 'the solid path already fails — glass is not the bug')
               .toBeGreaterThanOrEqual(AA_TEXT);
