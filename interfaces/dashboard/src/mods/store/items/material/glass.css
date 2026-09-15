@@ -13,6 +13,19 @@
     --surface-saturate: 1.5;
     /* HOW MUCH LIGHT THE EDGE CATCHES — one knob for the rim and the
        sheen together, so they can never drift apart.
+       IT IS AN EDGE, NOT A WASH, and the first version was a wash: white
+       falling from the top across 46% of the pane. Two things were wrong
+       with that at once, and they turned out to be the same thing.
+       Measured (`glassContrast.test.ts`, which now reads these very
+       numbers): at the dark value of 1.6 the muted text on a glass card
+       composited at 2.90:1 against a 4.5:1 floor, and NO alpha rescued
+       it — even a nearly invisible surface came to 3.03:1. The budget at
+       that alpha is 0.52. A wash across half the pane is also not what
+       the material this pack is imitating does: its specular is a line
+       along the lit edge. Making it an edge fixes the contrast and the
+       likeness in one move, and costs nothing that separates one dark
+       pane from another — the RIM below does that, and it is 1px, so no
+       text can sit on it. */
        What this pack shipped first was a translucent fill and a blur,
        and that is frosted plastic rather than glass: a flat rectangle
        with no edge and no body. What reads as glass is thickness, and
@@ -63,7 +76,10 @@
        a near-black ground is the only thing separating one dark pane
        from the dark pane behind it; in light the surface already has
        its own contrast and the rim only has to hint. */
-    --glass-sheen: 1.6;
+    /* Under the 0.52 the measurement allows at this alpha, with room
+       left for the clarity the material still owes. It is no longer
+       carrying the job of separating panes: the rim is. */
+    --glass-sheen: 0.45;
     --glass-rim-top: rgb(255 255 255 / calc(0.55 * var(--light-strength, 1)));
     --glass-rim-foot: rgb(0 0 0 / calc(0.45 * var(--light-strength, 1)));
     --surface-shadow:
@@ -83,10 +99,14 @@
       transparent
     );
     /* THE BODY. Two layers, painted over the fill above.
-       The first is the SHEEN: light falls from above, so the top of a
-       pane catches it and the bottom does not. It stops at 46% rather
-       than fading to the foot, because a wash across the whole surface
-       is a tint and a wash across the top is a surface CATCHING light.
+       The first is the SHEEN: light falls from above, so the top edge
+       of a pane catches it and the rest does not. It stops in PIXELS,
+       not a percentage, and that is the whole difference between an
+       edge and a tint: a percentage scales with the pane, so the same
+       declaration lit a 14px band on a chip and a 140px band on a
+       dialog — the taller the surface, the more of its body was washed
+       white, which is backwards for something meant to describe a fixed
+       thickness of glass. 14px is that thickness, on every surface.
        The second is the GROUND TINT, and it is the honest half of what
        Apple's material does by sampling: ours cannot look at what is
        behind it, but it is TOLD — `--ground` is the sidebar's colour on
@@ -95,8 +115,8 @@
        without either one knowing how. */
     background-image:
       linear-gradient(to bottom,
-        rgb(255 255 255 / calc(0.16 * var(--glass-sheen))) 0%,
-        rgb(255 255 255 / 0) 46%),
+        rgb(255 255 255 / calc(0.16 * var(--glass-sheen))) 0px,
+        rgb(255 255 255 / 0) 14px),
       linear-gradient(
         color-mix(in oklab, var(--ground, transparent) 10%, transparent),
         color-mix(in oklab, var(--ground, transparent) 10%, transparent));
