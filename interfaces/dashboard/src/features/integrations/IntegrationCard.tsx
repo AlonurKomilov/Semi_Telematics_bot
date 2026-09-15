@@ -17,12 +17,13 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check, Plug, RefreshCw, X, AlertTriangle, Loader2,
-  Pencil, Plus, Trash2, ChevronDown, ChevronRight,
+  Pencil, Plus, Trash2, ChevronDown, ChevronRight, Activity,
 } from '../../lib/icons';
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses, toneText } from '../../lib/status';
+import { Tip } from '../../components/tooltip';
 import {
   getBackfillStatus,
   getProviderFeeds,
@@ -446,16 +447,21 @@ export default function IntegrationCard({
             </div>
           )}
 
-          {/* Per-company key matrix — canonical place to manage
-              Samsara API keys.  Replaces the API Key column that
-              used to live on the Companies page so operators have
-              ONE place to see "is Samsara wired up correctly".
+          {/* Per-company key matrix — the canonical place to manage
+              a per-company provider's API keys.  Replaces the API Key
+              column that used to live on the Companies page so
+              operators have ONE place to see "is this wired up
+              correctly".
               Only rendered for providers whose credentials are
               per-company (auth_kind="api_token") — TMS providers
               like Datatruck use one token per account, so the
               "Connected companies" matrix has nothing to show. */}
           {entry.auth_kind === 'api_token' && (
-            <ConnectedCompanies providerId={entry.provider_id} />
+            <ConnectedCompanies
+              providerId={entry.provider_id}
+              providerName={entry.display_name}
+              canBackfill={entry.capabilities.includes('history_backfill')}
+            />
           )}
 
           {/* Single-token providers (Datatruck) get the same shell with
@@ -676,7 +682,27 @@ export default function IntegrationCard({
  *  encrypted integration credentials map) — raw tokens are never
  *  sent to the client.  A successful set/remove triggers a refetch
  *  so the row immediately reflects the new state. */
-function ConnectedCompanies({ providerId }: { providerId: string }) {
+function ConnectedCompanies({
+  providerId, providerName, canBackfill,
+}: {
+  providerId: string;
+  /** The provider's own display name.
+   *
+   *  This panel was written for Samsara and then rendered for every
+   *  per-company provider without its copy being re-read, so an ORIENT
+   *  card asked the operator for a "Samsara API token". A key field
+   *  that names the wrong vendor is not a typo — it is an instruction
+   *  to fetch the wrong credential. */
+  providerName: string;
+  /** Whether this provider has any history to refresh.
+   *
+   *  The route behind that button exists only for providers declaring
+   *  `history_backfill`. Offering it otherwise 404s, and the operator
+   *  reads a raw "Not Found" as their key being broken — an action
+   *  offered and then refused, on the screen where they are deciding
+   *  whether the integration works. */
+  canBackfill: boolean;
+}) {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery<ProviderCompaniesResponse>({
     queryKey: ['integration-companies', providerId],
@@ -745,7 +771,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
   };
 
   const handleRemove = async (code: string) => {
-    if (!confirm(`Remove the Samsara API key for ${code}? Live ingest for this company will stop until a new key is added.`)) {
+    if (!confirm(`Remove the ${providerName} API key for ${code}? Live ingest for this company will stop until a new key is added.`)) {
       return;
     }
     setSaving(true); setFeedback(null);
@@ -781,9 +807,14 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
       qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
       qc.invalidateQueries({ queryKey: ['integrations'] });
     } catch (e) {
+      // Task language, then the detail.  This used to render the raw
+      // HTTP reason alone — an operator mid-setup read "RMR: Not Found"
+      // and had no way to tell whether their key, their company or the
+      // server was the thing not found.
+      const why = e instanceof Error ? e.message : String(e);
       setFeedback({
         kind: 'error',
-        message: `${code}: ${e instanceof Error ? e.message : 'refresh failed'}`,
+        message: `${code}: couldn't refresh this company's history — ${why}`,
       });
     } finally {
       setRefreshingCodes(prev => {
@@ -814,9 +845,12 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
       qc.invalidateQueries({ queryKey: ['integration-companies', providerId] });
       qc.invalidateQueries({ queryKey: ['integrations'] });
     } catch (e) {
+      // Same rule as the refresh catch: the operator is deciding
+      // whether a KEY works, so say that, then hand them the detail.
+      const why = e instanceof Error ? e.message : String(e);
       setFeedback({
         kind: 'error',
-        message: `${code}: ${e instanceof Error ? e.message : 'test failed'}`,
+        message: `${code}: couldn't check this company's key — ${why}`,
       });
     } finally {
       setTestingCodes(prev => {
@@ -856,13 +890,13 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
             </Badge>
           )}
           {/* Companies are CREATED on the Companies page (code, name,
-              active window); their Samsara keys are managed here.
-              The link closes the "how do I add a 6th company?" gap —
-              without it the operator has to already know the split. */}
+              active window); their API keys are managed here. The link
+              closes the "how do I add a 6th company?" gap — without it
+              the operator has to already know the split. */}
           <Link
             to="/companies"
             className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-tap"
-            title="Create the company on the Companies page — it appears here for its API key"
+            aria-label="Create the company on the Companies page — it appears here for its API key"
           >
             <Plus className="size-3" />
             Add company
@@ -903,6 +937,8 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
           <CompanyKeyRow
             key={co.code}
             company={co}
+            providerName={providerName}
+            canBackfill={canBackfill}
             editing={editing === co.code}
             tokenDraft={tokenDraft}
             saving={saving}
@@ -932,10 +968,13 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
 }
 
 function CompanyKeyRow({
-  company, editing, tokenDraft, saving, testing, refreshing,
+  company, providerName, canBackfill,
+  editing, tokenDraft, saving, testing, refreshing,
   onEdit, onCancel, onChangeDraft, onSave, onRemove, onTest, onRefresh,
 }: {
   company: ProviderCompanyEntry;
+  providerName: string;
+  canBackfill: boolean;
   editing: boolean;
   tokenDraft: string;
   saving: boolean;
@@ -973,48 +1012,68 @@ function CompanyKeyRow({
         </span>
         {!editing && (
           <>
-            {/* Per-company /me probe result.  Title tooltip carries
-                the full message when the badge gets ellipsised. */}
-            <Badge
-                              tone={healthTone}
-                              className="text-2xs max-w-44 truncate"
-              title={
+            {/* What the last check found for THIS company's key.
+                The badge truncates, so the full reason — which is the
+                only actionable half of a failure — lives in the
+                tooltip primitive rather than a native title=, which is
+                unthemed and invisible on touch. */}
+            <Tip
+              label={
                 company.health
                   ? `${company.health.ok ? 'reachable' : 'failed'} — ${company.health.message}`
-                  : 'No /me probe has been run for this company yet'
+                  : `This company's key has not been checked against ${providerName} yet`
               }
             >
-              {healthText}
-            </Badge>
-            <Button
-              type="button" variant="ghost" size="sm"
-              onClick={onTest} disabled={testing}
-              title="Probe this company's Samsara /me endpoint"
-            >
-              {testing
-                ? <Loader2 className="animate-spin" />
-                : <RefreshCw />}
-              Test
-            </Button>
-            {/* Per-company history refresh — same shape as Test but
-                queues a 30-day backfill scoped to this company's key.
-                Disabled when the company has no key (nothing to fetch
-                with) or a refresh is already in flight for this row. */}
-            <Button
-              type="button" variant="ghost" size="sm"
-              onClick={onRefresh}
-              disabled={refreshing || !company.has_key}
-              title={
-                company.has_key
-                  ? `Refresh this company's last 30 days of history`
-                  : 'Set a key first before refreshing this company'
-              }
-            >
-              {refreshing
-                ? <Loader2 className="animate-spin" />
-                : <RefreshCw />}
-              Refresh
-            </Button>
+              <Badge
+                tone={healthTone}
+                className="text-2xs max-w-44 truncate cursor-help"
+              >
+                {healthText}
+              </Badge>
+            </Tip>
+            {/* Test and Refresh both wore RefreshCw — one shape for
+                two meanings, side by side, in a row the operator scans
+                five times. Test PROBES a key; a circular arrow says
+                "reload", which is the other button's job. */}
+            <Tip label={`Check this company's key against ${providerName}`}>
+              <Button
+                type="button" variant="ghost" size="sm"
+                onClick={onTest} disabled={testing}
+              >
+                {testing
+                  ? <Loader2 className="animate-spin" />
+                  : <Activity />}
+                Test
+              </Button>
+            </Tip>
+            {/* Per-company history refresh — queues a 30-day backfill
+                scoped to this company's key.
+
+                Rendered ONLY for a provider that has history to fetch.
+                The route behind it lives with the providers declaring
+                `history_backfill`, so on an ELD it answered 404 and the
+                row reported "Not Found" — which reads as a broken key,
+                on the screen where the operator is deciding exactly
+                that. An action that cannot succeed does not belong on
+                the row; disabling it would still promise something. */}
+            {canBackfill && (
+              <Tip
+                label={company.has_key
+                  ? "Re-fetch this company's last 30 days of history"
+                  : 'Set a key first before refreshing this company'}
+              >
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  onClick={onRefresh}
+                  disabled={refreshing || !company.has_key}
+                >
+                  {refreshing
+                    ? <Loader2 className="animate-spin" />
+                    : <RefreshCw />}
+                  Refresh
+                </Button>
+              </Tip>
+            )}
             {company.has_key ? (
               <span className="text-ok text-2xs flex items-center gap-1">
                 <Check className="size-3" /> key set
@@ -1038,10 +1097,10 @@ function CompanyKeyRow({
         <div className="mt-2 flex items-center gap-2">
           <input
             type="password"
-            placeholder="Samsara API token"
+            placeholder={`${providerName} API token`}
             value={tokenDraft}
             onChange={(e) => onChangeDraft(e.target.value)}
-            className="flex-1 bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-ring"
+            className="flex-1 min-h-tap bg-muted border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-ring"
             autoFocus
           />
           <Button
