@@ -18,7 +18,7 @@ import logging
 from typing import Any, Optional
 
 from adapters.telematics.catalog import PROVIDER_CATALOG
-from adapters.telematics.protocol import HosClock
+from adapters.telematics.protocol import Capability, HosClock
 from adapters.telematics.registry import get_provider, is_registered
 from capabilities.data_lifecycle.staleness import data_age_minutes
 
@@ -43,6 +43,83 @@ def _clock(seconds: Optional[int]) -> Optional[dict]:
         return None
     return {"seconds": int(seconds), "hours": round(int(seconds) / 3600, 1)}
 
+
+
+
+async def feed_status(account_id: int) -> Optional[dict]:
+    """Which ELD is actually SERVING hours of service for this account.
+
+    ``connected`` used to mean "we have ingested at least one row", and
+    that collapsed two states a reader needs kept apart.  An account
+    that just connected its first ELD — keys set, every company green,
+    the first poll not yet due — was shown "No electronic logging device
+    is connected".  That is not a cautious answer, it is a false one,
+    and it is false on the page whose entire purpose is not making false
+    statements about hours of service.
+
+    It also could not explain the quieter case.  Two connected providers
+    may both offer hours of service, the resolver takes the first in
+    CATALOG order, and the loser is simply never asked.  An operator who
+    has just wired five ORIENT keys and sees nothing has no way to learn
+    that a telematics integration further up the catalog is the one
+    being polled — the fact lives in one log line.
+
+    So this asks the integrations layer directly, and reports:
+
+      ``serving``    the provider that will actually be polled, or None
+      ``connected``  every connected provider offering the capability
+      ``shadowed``   connected, offering it, and NOT being asked
+
+    Returns ``None`` when the integrations layer cannot be reached.  Not
+    ``{}``: unknown is a third answer, and a caller must not read a
+    failed lookup as "nothing is connected" — that is the same mistake
+    one layer up.
+    """
+    try:
+        from capabilities.integrations.shared.resolver import (
+            providers_offering, resolve_provider_for,
+        )
+        from infra.platform import get_platform_db
+
+        db = get_platform_db()
+        offering = providers_offering(Capability.DRIVER_HOS)
+        connected: list[str] = []
+        for pid in offering:
+            row = await db.get_account_integration(account_id, pid)
+            if row is not None and getattr(row, "status", "") == "connected":
+                connected.append(pid)
+        resolved = await resolve_provider_for(account_id, Capability.DRIVER_HOS)
+        serving = resolved.provider_id if resolved else None
+    except (NameError, AttributeError, ImportError):
+        # A broken import or a typo is OUR bug, not an unreachable
+        # integrations layer, and swallowing it here made this function
+        # return None on every call while every test stayed green —
+        # which would have silently un-fixed the thing it was written
+        # for.  Let it crash loudly in the caller's log instead of
+        # quietly answering "unknown" forever.
+        raise
+    except Exception:
+        # A real outage: the platform DB is down, a row is malformed.
+        # Unknown is the honest answer and the caller treats it as a
+        # third state, never as "nothing is connected".
+        logger.exception("eld: feed status lookup failed acct=%d", account_id)
+        return None
+
+    def _name(pid: str) -> str:
+        entry = PROVIDER_CATALOG.get(pid)
+        return entry.display_name if entry else pid
+
+    return {
+        "serving": serving,
+        "serving_name": _name(serving) if serving else "",
+        "connected": [{"id": p, "name": _name(p)} for p in connected],
+        # Connected, offers hours of service, and is not the one being
+        # polled.  Named so the page can say WHICH integration to switch
+        # off rather than leaving the operator to compare two cards.
+        "shadowed": [
+            {"id": p, "name": _name(p)} for p in connected if p != serving
+        ],
+    }
 
 
 def _provider_facts(rows: list[dict]) -> tuple[dict, list[str]]:
@@ -149,6 +226,7 @@ async def get_hours(
     *,
     user_id: Optional[int] = None,
     vehicle_scope: Optional[list[str]] = None,
+    feed: Optional[dict] = None,
 ) -> dict:
     """The account's duty clocks, narrowed to this caller.
 
@@ -177,6 +255,11 @@ async def get_hours(
     """
     ever = await db.count_driver_hos_live(account_id)
     rows = await db.get_driver_hos_live(account_id, user_id=user_id)
+    # Passed in by a caller that already has it; looked up otherwise.
+    # ``None`` survives as None — a lookup that failed is not an
+    # account with nothing connected.
+    if feed is None:
+        feed = await feed_status(account_id)
 
     before_scope = len(rows)
     if vehicle_scope is not None:
@@ -188,8 +271,20 @@ async def get_hours(
     # every driver the scope removed is not one this caller is looking
     # at, and naming it would leak which ELDs the account runs.
     providers, clocks_reported = _provider_facts(rows)
+    # An ELD counts as connected because it IS connected, not because
+    # it has spoken yet.  Rows remain sufficient on their own: if we
+    # hold readings, something produced them, whatever the integrations
+    # layer says today.
+    has_provider = bool((feed or {}).get("connected"))
     return {
-        "connected": ever > 0,
+        "connected": ever > 0 or has_provider,
+        # Connected, and nothing has arrived yet.  The honest reading of
+        # a fresh connect, and the state that used to be reported as "no
+        # device is connected".
+        "awaiting_first_reading": has_provider and ever == 0,
+        # Which integration is actually polled for this, and which
+        # connected ones are not.  ``None`` when we could not ask.
+        "feed": feed,
         "count": len(drivers),
         # Which of the four countdowns any connected ELD here reports,
         # and which ELD is behind each row.  A surface uses the first to

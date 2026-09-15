@@ -207,6 +207,38 @@ function allUnlinked(data: HoursResponse | undefined): boolean {
 }
 
 /**
+ * Only one integration is polled for a capability.
+ *
+ * Two connected ELDs both offering hours of service is not an error and
+ * not rare — an account can run one vendor for telematics and another
+ * as its actual logging device. The resolver takes the first in catalog
+ * order and the other is simply never asked, which is correct and
+ * completely invisible: the fact lives in a server log line while the
+ * operator looks at an empty page having just entered five keys.
+ *
+ * Returns the sentence that names the integration to switch off, or
+ * null when there is no contention to explain.
+ */
+/** The connected ELDs, by name — so the waiting state can say "ORIENT
+ *  ELD is connected" rather than the vaguer "an ELD is". */
+function connectedNames(data: HoursResponse | undefined): string {
+  const names = (data?.feed?.connected ?? []).map((p) => p.name);
+  return names.length ? names.join(' and ') : 'Your electronic logging device';
+}
+
+
+function shadowedNote(data: HoursResponse | undefined): string | null {
+  const feed = data?.feed;
+  if (!feed || !feed.shadowed.length || !feed.serving_name) return null;
+  const waiting = feed.shadowed.map((p) => p.name).join(' and ');
+  return `${feed.serving_name} is the integration currently polled for `
+    + `hours of service, so ${waiting} is connected but not in use. `
+    + `Only one can serve it. To switch, turn OFF "Hours of service" on `
+    + `${feed.serving_name}'s Integration card.`;
+}
+
+
+/**
  * What the header says beyond the title.
  *
  * Two facts, both read from the rows rather than asserted: how many
@@ -252,6 +284,13 @@ function HeaderMeta({ data }: { data: HoursResponse }) {
           number we do not have.  Context rather than alarm — muted, own
           line — because the drivers are not in trouble; we are just not
           the ones who can say. */}
+      {/* A table that is filling from the other integration is the
+          quietest version of this problem: everything looks fine and
+          the device the operator just wired is doing nothing. */}
+      {shadowedNote(data) && (
+        <span className={toneText('warn')}>{shadowedNote(data)}</span>
+      )}
+
       {coverage.missing.length > 0 && (
         <span className="text-muted-foreground">
           {coverage.none ? (
@@ -339,7 +378,16 @@ export default function HoursPage() {
 
       {/* The state this page exists to get right.  An empty table here
           would read as "nobody is near their limit"; this says the feed
-          is absent and where to go. */}
+          is absent and where to go.
+
+          It must ALSO not be shown to an account that has just
+          connected one. "No electronic logging device is connected" was
+          being rendered to an operator looking at five green keys on
+          the Integrations page, because `connected` meant "a reading
+          has arrived" rather than "a device is wired". Telling somebody
+          their device is absent while they are looking at it is the
+          same failure this page exists to prevent, pointed the other
+          way. */}
       {!isLoading && !isError && data && !data.connected && (
         <EmptyState
           icon={Plug}
@@ -356,7 +404,35 @@ export default function HoursPage() {
         />
       )}
 
-      {!isLoading && !isError && data?.connected && rows.length === 0 && (
+      {/* Connected, and nothing has arrived yet.
+          Two different reasons land here and they need different
+          sentences: the feed is simply young, or another integration is
+          the one being polled and this one will never fill on its own.
+          The second is the one an operator cannot work out alone. */}
+      {!isLoading && !isError && data?.awaiting_first_reading && (
+        <EmptyState
+          icon={Clock}
+          title={shadowedNote(data)
+            ? 'Connected, but another integration is serving hours of service'
+            : `${connectedNames(data)} is connected — waiting for the first reading`}
+          description={shadowedNote(data) ?? (
+            'Duty status is polled every 5 minutes. If nothing appears '
+            + 'after that, check on Integrations that each company has '
+            + 'its own key and that its last test passed.'
+          )}
+          action={
+            <Link
+              to="/integrations"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-tap bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary-hover transition"
+            >
+              Go to Integrations
+            </Link>
+          }
+        />
+      )}
+
+      {!isLoading && !isError && data?.connected
+        && !data.awaiting_first_reading && rows.length === 0 && (
         <EmptyState
           icon={Clock}
           title="No drivers in your vehicle access"
@@ -364,7 +440,8 @@ export default function HoursPage() {
         />
       )}
 
-      {!isLoading && !isError && data?.connected && rows.length > 0 && (
+      {!isLoading && !isError && data?.connected
+        && !data.awaiting_first_reading && rows.length > 0 && (
         <>
           <DataGrid
             tableId="eld-hours"

@@ -57,12 +57,44 @@ export interface ProviderFact {
   clocks_reported: HosClockId[] | null;
 }
 
+/** One integration, as the hours feed sees it. */
+export interface FeedProvider {
+  id: string;
+  name: string;
+}
+
+/** Which ELD is actually POLLED for hours of service.
+ *
+ *  Only one integration serves a capability, so a second connected ELD
+ *  is simply never asked — a fact that otherwise lives in one server
+ *  log line, while the operator stares at an empty page having just
+ *  wired five keys. */
+export interface FeedStatus {
+  serving: string | null;
+  serving_name: string;
+  connected: FeedProvider[];
+  /** Connected, offers hours of service, NOT being polled. */
+  shadowed: FeedProvider[];
+}
+
 export interface HoursResponse {
   /** The load-bearing field.  NOT derived from the row count: zero
    *  drivers because no ELD is connected and zero because the caller's
    *  scope is empty are different answers, and only one of them means
    *  the data is missing. */
+  /** True when an ELD IS CONNECTED — not when it has spoken.
+   *
+   *  This used to mean "at least one reading has been ingested", which
+   *  told a freshly-connected account that no device was connected. On
+   *  the page whose whole job is not making false statements about
+   *  hours of service, that was the false one. */
   connected: boolean;
+  /** Connected, and nothing has arrived yet. The honest reading of a
+   *  fresh connect, and the state the old `connected` swallowed. */
+  awaiting_first_reading: boolean;
+  /** `null` when the integrations layer could not be reached — which
+   *  is a third answer, not "nothing is connected". */
+  feed: FeedStatus | null;
   count: number;
   /** Which of the four countdowns the account's connected ELD(s)
    *  publish. Not every ELD publishes any: some report duty status and
