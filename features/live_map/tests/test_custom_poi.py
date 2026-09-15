@@ -845,7 +845,30 @@ class TestMyVendorsSaysWhatItCannotShow:
         assert r.status_code == 200, r.text
         body = r.json()
         assert len(body["features"]) == 1
-        assert body["note"] == "1 of 3 vendors have a location on file", body
+        assert body["note"] == (
+            "1 of 3 vendors have a location on file — "
+            "add an address to a vendor and we'll place it"), body
+
+    async def test_the_note_says_what_to_do_and_not_only_what_is_missing(self, app_ctx):
+        """A sentence that states a shortfall and stops reads as a fault.
+
+        The owner read "4 of 443" and asked why the layer was still
+        broken — the right question to ask of a number with no way out
+        beside it.  An empty state names the CONSTRAINT and the REMEDY,
+        and the remedy here is an address: `autosuggest_vendor` returns
+        early on a vendor without one, so 441 of that account's 443 never
+        enter the chain at all.
+        """
+        db, acct = app_ctx["db"], app_ctx["acct_a"]
+        await self._three_vendors(db, acct.id)
+
+        async with _client(app_ctx["app"]) as c:
+            r = await c.get(
+                "/api/map/pois?type=my_vendors&bbox=41.0,-88.0,42.0,-87.0",
+                headers=_h(app_ctx["owner_a_token"]))
+        note = r.json()["note"]
+        assert "address" in note, (
+            f"the note states a shortfall with no way out of it: {note!r}")
 
     async def test_a_cache_hit_is_not_a_quieter_answer(self, app_ctx):
         """The viewport cache is keyed by bbox and this fact is

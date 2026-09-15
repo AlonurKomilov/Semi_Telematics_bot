@@ -215,8 +215,22 @@ async def map_pois(
         # Computed before the cache is consulted: the cache is keyed by
         # viewport and this fact is account-wide, so a cache hit must
         # not be a quieter answer than a miss.
+        # THE FACT AND THE REMEDY, because the fact alone reads as a
+        # fault.  The owner saw "4 of 443" and asked why the layer was
+        # still broken — which is the right question to ask of a sentence
+        # that states a shortfall and stops.  An empty state has to name
+        # the constraint AND the way out of it, or the reader is left to
+        # guess whether there is one.
+        #
+        # The address is the trigger: `autosuggest_vendor` returns early
+        # on a vendor without one, so 441 of these never enter the chain
+        # at all.  "we'll place it" owns OUR half honestly — confirming
+        # and geocoding the directory entry is an operator step, not
+        # something the reader can do or should be left waiting on
+        # unknowingly.
         total, mappable = await tenant.count_mappable_vendors(user["account_id"])
-        note = (f"{mappable} of {total} vendors have a location on file"
+        note = (f"{mappable} of {total} vendors have a location on file — "
+                "add an address to a vendor and we'll place it"
                 if total > mappable else None)
 
         cached = _poi_cache.get(cache_key)
