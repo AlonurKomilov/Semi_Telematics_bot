@@ -315,18 +315,25 @@ describe('a surface paints its own colour, on its own backdrop', () => {
   const CSS = readFileSync(join(SRC, 'index.css'), 'utf8');
 
   /**
-   * `--surface-base` is a CUSTOM PROPERTY, and those inherit — so every
-   * `.surface` inside the sidebar painted in the RAIL's colour. The
-   * persona menu is a `<Card>` four levels down; in dark that made it
-   * the same lightness as the thing it covers. Opaque and invisible is
-   * not better than translucent and illegible.
+   * `--surface-base` is a CUSTOM PROPERTY, and those inherit — so a
+   * `<Card>` mounted inside the sidebar painted in the RAIL's colour.
+   * The persona menu is four levels down from `.surface-sidebar`; in
+   * dark that made it the same lightness as the thing it covers.
+   * Opaque and invisible is not better than translucent and illegible.
+   *
+   * Stated on the CARD, not registered with `@property
+   * { inherits: false }` — which was the first fix and reached too far:
+   * it changes the property's behaviour for every element in the
+   * product at once, including ones nobody has written yet, to solve a
+   * problem that belongs to one primitive.
    */
-  it('never inherits its base from an ancestor', () => {
-    expect(
-      CSS,
-      '`--surface-base` inherits again — a Card inside the sidebar will paint in '
-        + 'the rail colour instead of its own.',
-    ).toMatch(/@property\s+--surface-base\s*\{[^}]*inherits:\s*false/);
+  it('a Card declares its own base rather than inheriting one', () => {
+    expect(CSS, '`.surface-card` is gone — a Card inside the sidebar will paint in '
+      + 'the rail colour instead of its own.')
+      .toMatch(/\.surface-card\s*\{[^}]*--surface-base:\s*var\(--card\)/);
+    const card = readFileSync(join(SRC, 'components/ui/card.tsx'), 'utf8');
+    expect(card, 'the Card primitive stopped declaring its base')
+      .toMatch(/cva\("surface surface-card/);
   });
 
   /**
