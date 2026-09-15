@@ -62,6 +62,23 @@ logger = logging.getLogger(__name__)
 
 ORIENT_BASE_URL = "https://publicapi.mgkeld.com"
 
+#: How we introduce ourselves to ORIENT ELD.
+#:
+#: aiohttp's default is ``Python/3.12 aiohttp/3.x``, which says nothing
+#: about who is calling.  This is not a courtesy: ORIENT publishes
+#: per-endpoint rate limits and this key is a live production
+#: credential, so when a call of ours misbehaves — a tight loop, a
+#: retry storm, a limit we misread — the vendor's logs should name the
+#: product doing it rather than "some Python script".
+#:
+#: Picked up from the live-map session, whose Overpass client was being
+#: answered with HTTP 406 BEFORE the query was read, purely for having
+#: no User-Agent, while the client logged it as "the source is not
+#: answering".  ORIENT does not enforce it today (verified: it answers
+#: the default agent fine), which is exactly why it costs nothing to
+#: send and would cost a confusing outage not to.
+USER_AGENT = "4truck-telematics/1.0 (+https://4truck.us)"
+
 # Upstream's own cap on the ``size`` query parameter.  Asking for more
 # is a 422, not a silent clamp.
 MAX_PAGE_SIZE = 100
@@ -228,6 +245,7 @@ class OrientEldClient:
                 headers={
                     "x-api-key": self._key,
                     "Accept": "application/json",
+                    "User-Agent": USER_AGENT,
                 },
                 timeout=aiohttp.ClientTimeout(total=20),
             )

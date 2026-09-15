@@ -24,6 +24,7 @@ import pytest
 
 from adapters.telematics.orient_eld.client import (
     MultiCompanyOrientClient,
+    USER_AGENT,
     OrientEldClient,
     OrientEldRateGate,
     _safe_detail,
@@ -433,3 +434,32 @@ def test_the_capability_is_declared_with_a_feed_behind_it():
     assert entry.capabilities == OrientEldProvider.supported_capabilities
     assert [f.capability for f in entry.feeds] == [Capability.DRIVER_HOS]
     assert entry.feature_defaults[Capability.DRIVER_HOS]["enabled"] is True
+
+
+def test_the_client_introduces_itself():
+    """aiohttp's default agent names Python, not us.
+
+    ORIENT does not enforce a User-Agent today — but this key is a live
+    production credential against a rate-limited API, and when a call of
+    ours misbehaves the vendor's logs should name the product doing it.
+    The live-map session lost a whole POI feed to exactly this: a
+    volunteer mirror started answering the default agent with HTTP 406
+    before reading the request, and the client reported it as "the
+    source is not answering".
+    """
+    assert "4truck" in USER_AGENT
+    assert "aiohttp" not in USER_AGENT.lower()
+    assert "python" not in USER_AGENT.lower()
+
+
+@pytest.mark.asyncio
+async def test_every_request_carries_it():
+    """Set on the SESSION, so it rides every call rather than the one
+    someone remembered to decorate."""
+    client = OrientEldClient("k", company_code="X")
+    try:
+        session = await client._ensure_session()
+        assert session.headers.get("User-Agent") == USER_AGENT
+        assert session.headers.get("x-api-key") == "k"
+    finally:
+        await client.close()
