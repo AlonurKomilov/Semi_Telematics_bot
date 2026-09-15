@@ -282,9 +282,18 @@ async def test_one_companys_expired_key_does_not_empty_the_account():
 
 
 @pytest.mark.asyncio
-async def test_a_partial_connect_is_reported_as_a_failure():
-    """Three working keys out of five means two-fifths of the drivers
-    are invisible.  The honest moment to say so is at connect."""
+async def test_a_partial_connect_stays_reachable_and_names_the_hole():
+    """This drives ``account_integrations.status``, and a non-connected
+    row makes the resolver skip the account ENTIRELY.
+
+    "All five must pass" therefore meant one expired key stopped hours
+    of service for all five companies — undoing one layer up the
+    containment ``_fan_out`` provides, where a dead key costs only its
+    own drivers. It happened on a live account: a 12-second health-check
+    timeout flipped the row to error and the feed stopped writing.
+
+    So: reachable if ANY key works, and the message names the ones that
+    do not. The per-company rows already carry the precise signal."""
     class _Probe:
         def __init__(self, ok):
             self._ok = ok
@@ -299,8 +308,11 @@ async def test_a_partial_connect_is_reported_as_a_failure():
 
     mc = MultiCompanyOrientClient({"A": _Probe(True), "B": _Probe(False)})
     ok, message, _ = await mc.test_connection()
-    assert ok is False
-    assert "B" in message
+    assert ok is True, (
+        "one failing key stopped the four that work — the resolver "
+        "skips a non-connected row for the whole account"
+    )
+    assert "B" in message and "1 of 2" in message
 
 
 @pytest.mark.asyncio
@@ -495,3 +507,69 @@ def test_a_missing_or_padded_unit_number_is_normalised(raw, expected):
     empty string, and whitespace masquerading as a truck would stop
     that fallback while displaying nothing."""
     assert to_snapshot(_row(vehicle_number=raw)).provider_vehicle == expected
+
+
+@pytest.mark.asyncio
+async def test_every_key_failing_is_still_a_failure():
+    """"Any" is not "never red". Nothing reachable is nothing."""
+    class _Probe:
+        async def test_connection(self):
+            return False, "API key rejected", None
+
+        async def close(self):
+            return None
+
+    mc = MultiCompanyOrientClient({"A": _Probe(), "B": _Probe()})
+    ok, message, _ = await mc.test_connection()
+    assert ok is False
+    assert "A" in message and "B" in message
+
+
+@pytest.mark.asyncio
+async def test_one_hung_company_cannot_spend_the_callers_budget():
+    """The health check allows 12s for everything. A probe killed from
+    outside reports a bare "timeout after 12 s" that names nobody — so
+    each company is probed under its own clock and the failure names
+    the company."""
+    import adapters.telematics.orient_eld.client as mod
+
+    class _Hangs:
+        async def test_connection(self):
+            await asyncio.sleep(3600)
+
+        async def close(self):
+            return None
+
+    class _Works:
+        async def test_connection(self):
+            return True, "connected to X", {"dot_number": "1"}
+
+        async def close(self):
+            return None
+
+    real = mod.PROBE_TIMEOUT_SEC
+    mod.PROBE_TIMEOUT_SEC = 0.05
+    try:
+        mc = MultiCompanyOrientClient({"SLOW": _Hangs(), "OK": _Works()})
+        ok, message, _ = await asyncio.wait_for(
+            mc.test_connection(), timeout=5)
+    finally:
+        mod.PROBE_TIMEOUT_SEC = real
+
+    assert ok is True
+    assert "SLOW" in message, "the failure did not name the company"
+
+
+def test_the_clients_timeout_is_under_its_callers_budget():
+    """A client whose timeout exceeds its caller's can never report its
+    own failure — the caller kills it first and records a generic one.
+    The health check's budget is 12s; both of ours must fit inside."""
+    from adapters.telematics.orient_eld.client import (
+        PROBE_TIMEOUT_SEC, REQUEST_TIMEOUT_SEC,
+    )
+    from capabilities.integrations.telematics_health import (
+        _HEALTH_CHECK_TIMEOUT_SEC,
+    )
+
+    assert REQUEST_TIMEOUT_SEC < _HEALTH_CHECK_TIMEOUT_SEC
+    assert PROBE_TIMEOUT_SEC < _HEALTH_CHECK_TIMEOUT_SEC

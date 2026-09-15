@@ -89,6 +89,22 @@ MAX_PAGE_SIZE = 100
 # can see than by a job that quietly runs long.
 MAX_PAGES = 20
 
+#: A request must fail before its CALLER gives up.
+#:
+#: This was 20 seconds, and the health check that calls it allows 12.
+#: So the caller always won the race: a slow request was killed from
+#: outside and recorded as a bare "timeout after 12 s", with no company
+#: named and no reason — while the client that knew both was still
+#: waiting. A client whose timeout exceeds its caller's budget can never
+#: report its own failure.
+REQUEST_TIMEOUT_SEC = 8.0
+
+#: And the whole fan-out must fit in that budget too, however many
+#: companies it spans. Each company is probed under its own clock so one
+#: unreachable key cannot spend everybody else's time — the failure then
+#: names the company instead of the account.
+PROBE_TIMEOUT_SEC = 6.0
+
 
 # Endpoint group → (calls, per_seconds), transcribed from the vendor's
 # published limits.  Deliberately one notch under each published figure
@@ -247,7 +263,7 @@ class OrientEldClient:
                     "Accept": "application/json",
                     "User-Agent": USER_AGENT,
                 },
-                timeout=aiohttp.ClientTimeout(total=20),
+                timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SEC),
             )
         return self._session
 
@@ -375,7 +391,9 @@ class OrientEldClient:
         try:
             status, body = await self._get("/api/companies/info")
         except asyncio.TimeoutError:
-            return False, "timeout after 20s — ORIENT ELD did not respond", None
+            return False, (
+                f"no answer within {REQUEST_TIMEOUT_SEC:.0f}s"
+            ), None
         except aiohttp.ClientError as e:
             return False, f"could not reach ORIENT ELD: {e}", None
         if status in (401, 403):
@@ -473,18 +491,44 @@ class MultiCompanyOrientClient:
         return await self._fan_out("get_vehicles")
 
     async def test_connection(self) -> tuple[bool, str, dict | None]:
-        """Green only when EVERY configured key works.
+        """Green when ANY configured key works — and it says which do not.
 
-        A partial success is reported as a failure with the failing
-        companies named: an account that connects with three of five
-        keys has three-fifths of its drivers invisible, and the honest
-        moment to say so is now rather than when a dispatcher notices
-        somebody missing.
+        This drives ``account_integrations.status``, and a non-connected
+        row makes the resolver skip the account entirely. So "all five
+        must pass" meant one expired key stopped hours of service for
+        all five companies — undoing, one layer up, the containment
+        ``_fan_out`` is careful to provide, where a dead key costs only
+        its own drivers.
+
+        The per-company rows on the Integration card already say exactly
+        which key is failing, with its own probe and its own timestamp.
+        That is the precise signal; this one is the coarse question
+        "is there anything here at all", and answering it with "no"
+        because one company of five is down is the wrong answer to the
+        wrong question.
+
+        At CONNECT the two readings coincide: the form asks for one
+        company, so the credentials carry exactly one key and "any"
+        is "the one".
+
+        Each company is probed under its own clock. One unreachable key
+        must not spend the caller's whole budget — the health check
+        allows 12 seconds for everything, and a probe killed from
+        outside reports a bare timeout that names nobody.
         """
         if not self._clients:
             return False, "no ORIENT ELD API key configured", None
+
+        async def _one(client: "OrientEldClient"):
+            try:
+                return await asyncio.wait_for(
+                    client.test_connection(), timeout=PROBE_TIMEOUT_SEC,
+                )
+            except asyncio.TimeoutError:
+                return False, f"no answer within {PROBE_TIMEOUT_SEC:.0f}s", None
+
         results = await asyncio.gather(
-            *(c.test_connection() for c in self._clients.values()),
+            *(_one(c) for c in self._clients.values()),
             return_exceptions=True,
         )
         good: list[str] = []
@@ -503,8 +547,17 @@ class MultiCompanyOrientClient:
                     first_meta = meta
             else:
                 bad.append(f"{code}: {message}")
-        if bad:
+
+        if not good:
             return False, "; ".join(bad), first_meta
+        if bad:
+            # Reachable, and honest about the hole. The status stays
+            # connected so the working companies keep reporting; the
+            # message and the per-company rows carry the rest.
+            return True, (
+                f"{len(good)} of {len(self._clients)} companies reachable — "
+                + "; ".join(bad)
+            ), first_meta
         return True, "; ".join(good), first_meta
 
 
