@@ -12,6 +12,7 @@
    axis equal to its folder, both ways. */
 @import './mods/store/items/wallpaper/mesh.css';
 @import './mods/store/items/wallpaper/grid.css';
+@import './mods/store/items/wallpaper/gauge.css';
 @import './mods/store/items/wallpaper/grain.css';
 @import './mods/store/items/wallpaper/paper.css';
 @import './mods/store/items/wallpaper/plasma.css';

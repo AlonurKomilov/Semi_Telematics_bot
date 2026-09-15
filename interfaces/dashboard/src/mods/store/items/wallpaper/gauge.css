@@ -1,0 +1,59 @@
+/* Gauge — three line scales at once, so a material can be read.
+
+   EVERY OTHER PATTERN HERE IS A TEXTURE; this one is an instrument, and
+   the difference is that its layers are chosen by SIZE rather than by
+   how they look together. A blur does not remove detail evenly — it
+   removes the fine before the coarse — so a pattern carrying one scale
+   can only answer "blurred or not", while three answer "blurred by how
+   much", and they answer it by eye with nothing to measure.
+
+   Read a surface over it by asking which scales survive underneath:
+
+     all three            the surface is barely blurred
+     24px and 96px only   a moderate blur — the fine hatch is gone first
+     96px only            a heavy blur
+     none of the three    NOT a blur at all: the surface is opaque
+
+   That last row is the one worth having. A frosted surface and an
+   opaque surface look alike over a flat ground, and the question they
+   are usually asked — "does the glass work?" — cannot tell them apart.
+   Over this it is not a judgement call: an opaque surface hides a 96px
+   rule that no amount of blur can erase.
+
+   Screen-only, like every pattern here: paper gets the print reset. */
+@media screen {
+  :root[data-wallpaper="gauge"] .chrome-ground,
+  :root[data-wallpaper-page="gauge"] .page-ground {
+    background-color: var(--ground);
+    background-image:
+      /* FINE — a 45° hatch on an 8px period. The first thing any blur
+         takes, and the reason it is diagonal: the two layers below run
+         with the axes, so a diagonal cannot be mistaken for either of
+         them at a glance. */
+      repeating-linear-gradient(45deg,
+        color-mix(in oklab, var(--sidebar-border) 70%, transparent) 0 1px,
+        transparent 1px 8px),
+      /* MEDIUM — the same 24px grid `grid` paints, and deliberately the
+         same: it is the 4px spacing scale six steps up, so what a
+         reader sees here is the rhythm the layout already uses rather
+         than a number invented for this pattern. */
+      linear-gradient(to right,
+        color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom,
+        color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px),
+      /* COARSE — a 2px accent rule every 96px. It carries the brand
+         rather than the border token because this layer answers a
+         second question the greys cannot: a material that keeps the
+         line but drains its COLOUR is one whose saturation is wrong,
+         and grey lines cannot report that. 14% is well under the 20%
+         ceiling `PATTERN_STOPS` sets for an accent stop. */
+      repeating-linear-gradient(90deg,
+        color-mix(in oklab, var(--primary) 14%, transparent) 0 2px,
+        transparent 2px 96px);
+    /* `auto` for the two repeating gradients — they carry their own
+       period, and sizing them again crops the tile and leaves seams.
+       Only the grid pair needs a size, because a plain linear-gradient
+       has no period of its own. */
+    background-size: auto, 24px 24px, 24px 24px, auto;
+  }
+}
