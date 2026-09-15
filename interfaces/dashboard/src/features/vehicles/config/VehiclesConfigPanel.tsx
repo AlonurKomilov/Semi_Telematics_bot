@@ -26,11 +26,12 @@ import { useRoleView } from '../../../context/RoleViewContext';
 import { Loader2 } from '../../../lib/icons';
 import { Switch } from '../../../components/ui/switch';
 import { ErrorState } from '../../../components/shell';
+import { SOURCE_LABEL } from '../sourceLabels';
 
-const SOURCE_LABEL: Record<string, string> = {
-  datatruck: 'Datatruck',
-  samsara: 'Samsara',
-};
+// The map lives in ../sourceLabels — this file kept a private copy,
+// which is the fourth place one label lived and exactly the drift that
+// SSOT was extracted to stop.  It was already one provider behind.
+
 
 export default function VehiclesConfigPanel() {
   const qc = useQueryClient();

@@ -94,6 +94,8 @@ _EXPECTED_JOB_IDS = {
     # writes the ELD feature's own store.  A job id is a wire value the
     # console and the scheduler snapshot key on, so it says what it is.
     "eld.driver_hos":         "eld_driver_hos",
+    # A second opinion on vehicle spec — fill-only, never creates.
+    "vehicles.spec_fill": "vehicle_spec_fill",
 }
 
 
@@ -114,7 +116,14 @@ def test_sparse_feeds_declare_themselves_sparse():
     those datasets must not be judged on row counts."""
     discover()
     sparse = {d.key for d in all_datasets() if not d.expect_rows}
-    assert sparse == {"vehicles.faults", "events.safety"}
+    assert sparse == {
+        "vehicles.faults",
+        "events.safety",
+        # Both sources already agreeing is the HEALTHY state here, not
+        # a stopped feed: a merge that changes nothing is what you want
+        # from a backstop that fills gaps.
+        "vehicles.spec_fill",
+    }
 
 
 def test_no_hand_wired_ingest_jobs_remain_in_the_scheduler():

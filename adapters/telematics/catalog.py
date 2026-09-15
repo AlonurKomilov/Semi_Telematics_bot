@@ -278,11 +278,19 @@ def resolve_capability_cadence(
 # same rule regardless of who is behind it.
 _ORIENT_ELD_DEFAULTS: dict[str, dict] = {
     Capability.DRIVER_HOS: {"enabled": True, "interval_min": 5},
+    # A SECOND OPINION on trucks another integration registered — VIN,
+    # plate, make, model for the same vehicles.  Six hours because
+    # those do not change; this fills gaps and keeps arriving when the
+    # other integration goes dark, which is the point of it.  It can
+    # never create a vehicle, so it can never move a bill.
+    Capability.VEHICLE_SPEC: {"enabled": True, "interval_hour": 6},
 }
 
 _ORIENT_ELD_FEED_SPECS: tuple[FeedSpec, ...] = (
     FeedSpec(Capability.DRIVER_HOS, "driver_hos_live", "updated_at",
              feature="ELD", component="Hours of service"),
+    FeedSpec(Capability.VEHICLE_SPEC, "vehicles", "updated_at",
+             feature="Vehicles", component="Spec (second opinion)"),
 )
 
 

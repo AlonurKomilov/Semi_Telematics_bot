@@ -294,3 +294,36 @@ register_dataset(IngestDataset(
     freshness_sla_min=180,
     label="Ingest fleet-efficiency aggregates",
 ))
+
+
+def _run_vehicle_spec(account_id: int):
+    from features.vehicles.spec_ingest import ingest_vehicle_spec
+    return ingest_vehicle_spec(account_id)
+
+
+register_dataset(IngestDataset(
+    key="vehicles.spec_fill",
+    owner="vehicles",
+    job_id="vehicle_spec_fill",
+    capability="vehicle_spec",
+    # Resolve, do not assume — this feed exists BECAUSE more than one
+    # provider can answer, and the point is that it survives any one of
+    # them going dark.
+    provider_id=None,
+    # Six hours.  A truck's VIN and plate do not change; this is a
+    # backstop that fills gaps and takes over when another integration
+    # stops, not a live feed. Polling it often would spend a provider
+    # call per account to re-learn a constant.
+    # MINUTES.  The scheduler reads ``cadence["interval_min"]`` and
+    # nothing else — an ``interval_hour`` here is a KeyError at boot,
+    # which is what the cadence guard caught before this shipped.
+    cadence={"interval_min": 360},
+    run=_run_vehicle_spec,
+    tables=("vehicles",),
+    freshness_sla_min=1440,
+    # Silence is normal and GOOD here: a merge that changes nothing
+    # means both sources already agree, which is the healthy state.
+    # Unlike hours of service, zero rows is not a stopped feed.
+    expect_rows=False,
+    label="Fill vehicle spec gaps from a second provider",
+))

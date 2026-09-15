@@ -41,6 +41,7 @@ _JOB_META = {
     # not a telematics feed.  Deliberately does NOT name a vendor —
     # whichever ELD the account connected is the one this pulls from.
     "eld_driver_hos":                 ("ELD", "Ingest driver hours of service from the connected ELD"),
+    "vehicle_spec_fill":              ("Vehicles", "Fill vehicle VIN/plate/make gaps from a second provider"),
     "fault_cache_warmup":             ("Telematics", "Warm the vehicle-fault cache on startup"),
     # ── Datatruck (TMS) auto-sync ──
     "datatruck_sync_drivers":         ("TMS", "Sync Datatruck drivers"),

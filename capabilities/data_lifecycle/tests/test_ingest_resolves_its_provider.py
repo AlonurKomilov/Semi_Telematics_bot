@@ -32,11 +32,28 @@ def _dataset(**kw):
     return IngestDataset(**base)
 
 
-def test_the_default_is_samsara_so_the_existing_eight_are_untouched():
+#: Datasets that RESOLVE their provider instead of assuming one.
+#:
+#: Named rather than counted, because adding one is a decision: a
+#: resolving dataset runs for an account with no Samsara row, which is
+#: the whole point for a feed whose provider may be anybody — and the
+#: wrong answer for the eight that are Samsara-fed and would then be
+#: asked of a provider that does not serve them.
+_RESOLVING = {
+    "eld.driver_hos",      # whichever ELD the account connected
+    "vehicles.spec_fill",  # a second opinion, from whoever offers one
+}
+
+
+def test_only_the_resolving_datasets_opt_out_of_the_samsara_default():
     assert _dataset().provider_id == "samsara"
     discover()
     for d in all_datasets():
-        if d.key != "eld.driver_hos":
+        if d.key in _RESOLVING:
+            assert d.provider_id is None, (
+                f"{d.key} is listed as resolving but still names a provider"
+            )
+        else:
             assert d.provider_id == "samsara", d.key
 
 

@@ -430,10 +430,25 @@ def test_the_capability_is_declared_with_a_feed_behind_it():
     from adapters.telematics.protocol import Capability
 
     entry = PROVIDER_CATALOG["orient_eld"]
-    assert Capability.DRIVER_HOS in entry.capabilities
+
+    # Every claim lands together — the id, the provider's declaration,
+    # the toggle default and a feed that fills a table.  A capability
+    # with no feed behind it renders a switch that controls nothing.
     assert entry.capabilities == OrientEldProvider.supported_capabilities
-    assert [f.capability for f in entry.feeds] == [Capability.DRIVER_HOS]
-    assert entry.feature_defaults[Capability.DRIVER_HOS]["enabled"] is True
+    assert entry.capabilities == {
+        Capability.DRIVER_HOS,
+        # A SECOND OPINION on trucks another integration registered.
+        # Not VEHICLE_STATE: this is what a truck IS, not where it is,
+        # and several providers can each half-know it — which is what
+        # capabilities/source arbitrates.
+        Capability.VEHICLE_SPEC,
+    }
+    fed = {f.capability for f in entry.feeds}
+    assert fed == entry.capabilities, (
+        f"capabilities with no feed: {sorted(entry.capabilities - fed)}"
+    )
+    for cap in entry.capabilities:
+        assert entry.feature_defaults[cap]["enabled"] is True, cap
 
 
 def test_the_client_introduces_itself():

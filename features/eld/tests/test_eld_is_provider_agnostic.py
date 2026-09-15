@@ -60,6 +60,10 @@ class FakeEldProvider:
     async def get_stats_history(self, types, start_iso, end_iso):
         return {}
 
+    async def get_vehicle_spec(self):
+        # This fake is an ELD, not a second opinion on the registry.
+        return []
+
     async def get_driver_hos(self):
         self.asked += 1
         return list(self._snapshots)

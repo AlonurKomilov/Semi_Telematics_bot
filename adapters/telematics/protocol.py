@@ -54,6 +54,19 @@ class Capability:
     """
 
     VEHICLE_STATE           = "vehicle_state"
+    # Not VEHICLE_STATE's smaller sibling — a different question.
+    # STATE is where a truck is right now and is keyed by the truck, so
+    # one provider has to win it.  SPEC is what the truck IS — VIN,
+    # plate, make, model — which several providers can each half-know,
+    # and which ``capabilities/source`` already arbitrates field by
+    # field with the account owner choosing the order.
+    #
+    # The point is resilience, and it is the owner's argument rather
+    # than mine: a feature reads the MERGED vehicle, not "Samsara's
+    # vehicle".  When one integration goes dark — outage, revoked
+    # token, contract ended — the VIN and plate keep arriving from the
+    # other and nothing downstream notices.
+    VEHICLE_SPEC            = "vehicle_spec"
     SAFETY_EVENTS           = "safety_events"
     VEHICLE_HEALTH          = "vehicle_health"
     VEHICLE_FAULTS          = "vehicle_faults"
@@ -381,6 +394,24 @@ class TelematicsProvider(Protocol):
 
     async def get_vehicle_faults(self) -> list[dict[str, Any]]:
         """Vehicles with at least one active fault code."""
+        ...
+
+    async def get_vehicle_spec(self) -> list[dict[str, Any]]:
+        """What this provider knows each vehicle IS, not where it is.
+
+        Shape per row: ``unit_number`` (required — the registry matches
+        on it), plus any of ``vin``, ``plate_number``, ``make``,
+        ``model``, ``year``, ``company_code``.  Absent and empty mean
+        the same thing here and both read as "no opinion", which is
+        what lets the merge fill a gap without overwriting a better
+        answer.
+
+        A provider that registers vehicles through its own path returns
+        ``[]``.  This is for a SECOND opinion on trucks somebody else
+        already put in the registry, which is why a caller may never
+        create rows from it — see the fill-only rule in
+        ``features/vehicles/spec_ingest``.
+        """
         ...
 
     async def get_driver_hos(self) -> list[HosSnapshot]:

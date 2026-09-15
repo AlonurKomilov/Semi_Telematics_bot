@@ -12,6 +12,7 @@
 export const SOURCE_LABEL: Record<string, string> = {
   samsara: 'Samsara',
   datatruck: 'Datatruck',
+  orient_eld: 'ORIENT ELD',
   manual: 'Local',
 };
 
@@ -37,6 +38,10 @@ export type ProviderRole = 'telematics' | 'tms' | 'local';
 export const PROVIDER_ROLE: Record<string, ProviderRole> = {
   samsara: 'telematics',
   datatruck: 'tms',
+  // An ELD is a gateway in a truck: it supplies positions and engine
+  // data, which is the telematics answer to "who supplies this
+  // record" — not the TMS one about loads and paperwork.
+  orient_eld: 'telematics',
   manual: 'local',
 };
 

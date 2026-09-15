@@ -98,7 +98,13 @@ DEFAULT_FIELD_PRECEDENCE: dict[str, tuple[str, ...]] = {
     "year":         ("datatruck", "samsara"),
 }
 # Integrations that can write vehicle spec fields (the precedence UI choices).
-VEHICLE_SPEC_SOURCES = ("datatruck", "samsara")
+# Every source the owner may rank in the precedence panel.  ORIENT ELD
+# is here as a SECOND OPINION on trucks another integration registered —
+# it describes the same VIN, plate, make and model, which is the exact
+# case this hub exists for, and it is what keeps those fields arriving
+# when the other integration goes dark.  Fill-only by construction; see
+# ``may_create`` on ``project_external_vehicles``.
+VEHICLE_SPEC_SOURCES = ("datatruck", "samsara", "orient_eld")
 # Human labels for the configurable spec fields (the precedence panel).
 _VEHICLE_FIELD_LABELS = {
     "vin": "VIN", "plate_number": "Plate", "make": "Make",
@@ -696,6 +702,7 @@ class VehiclesRegistryMixin(_MixinBase):
         *,
         vehicle_type: str,
         source: str,
+        may_create: bool | None = None,
     ) -> int:
         """Project a TMS/integration vehicle list (Datatruck trucks or
         trailers) onto the registry, reconciling against vehicles that
@@ -730,7 +737,23 @@ class VehiclesRegistryMixin(_MixinBase):
         # Same gate as the ingest: `add` governs net-new creation only;
         # matching and enrichment below run regardless — "stop
         # auto-adding vehicles" never means "freeze the trucks I own".
-        allow_add = await recon.may_add(self, account_id, "vehicle", source)
+        # ``may_create=False`` is a promise the CALLER makes, and it
+        # outranks the policy on purpose.
+        #
+        # ``recon.may_add`` fails OPEN — "unknown sources may" — which is
+        # right for a source that has always been allowed to register
+        # vehicles and wrong for one being added to a live account.  The
+        # registry is what billing counts, so a brand-new source that
+        # creates even a handful of rows moves a customer's invoice.
+        #
+        # A source that exists to give a SECOND OPINION on trucks
+        # somebody else registered therefore says so here rather than
+        # relying on a default, and no owner can turn it into a creator
+        # from a panel about field precedence.
+        allow_add = (
+            await recon.may_add(self, account_id, "vehicle", source)
+            if may_create is None else bool(may_create)
+        )
         skipped_add = 0
         # INCLUDING retired rows, for the same reason as
         # `upsert_from_integration`: a retired row still owns its VIN,
@@ -1099,6 +1122,23 @@ class VehiclesRegistryMixin(_MixinBase):
             (account_id,),
         )
         return {str(r[0]) for r in await cur.fetchall() if r[0]}
+
+    async def get_vehicle_company_codes(self, account_id: int) -> dict[str, str]:
+        """Company access for history, including retired vehicles.
+
+        A reused provider id with conflicting owners is ambiguous and
+        grants no access until the identity is resolved.
+        """
+        # archived-ok: historical camera/alert rows retain their vehicle owner.
+        cur = await self._db.execute(
+            "SELECT telematics_ref, "
+            "CASE WHEN COUNT(DISTINCT company_code) = 1 "
+            "AND COUNT(*) = COUNT(NULLIF(company_code, '')) "
+            "THEN MIN(company_code) ELSE '' END AS company_code "
+            "FROM vehicles WHERE account_id = ? AND telematics_ref <> '' "
+            "GROUP BY telematics_ref", (account_id,),
+        )
+        return {str(row[0]): str(row[1] or "") for row in await cur.fetchall()}
 
     async def registry_ids_by_telematics_ref(
         self, account_id: int,

@@ -147,6 +147,13 @@ class DatatruckProvider:
         # their duty clocks read.  Hours of service comes from an ELD.
         return []
 
+    async def get_vehicle_spec(self) -> list[dict[str, Any]]:
+        # Datatruck projects its own trucks into the registry through
+        # ``project_external_vehicles`` already, and that path MAY
+        # create rows.  Returning [] here keeps one contributor per
+        # provider rather than two that could disagree.
+        return []
+
     async def get_stats_history(
         self,
         types: list[str],

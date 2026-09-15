@@ -411,6 +411,11 @@ class SamsaraProvider:
 
     # ── Historical ───────────────────────────────────────────────
 
+    async def get_vehicle_spec(self) -> list[dict[str, Any]]:
+        # Samsara registers vehicles through its own roster path; it is
+        # not a second opinion on somebody else's rows.
+        return []
+
     async def get_stats_history(
         self,
         types: list[str],

@@ -168,6 +168,7 @@ class OrientEldProvider:
 
     supported_capabilities: frozenset[str] = frozenset({
         Capability.DRIVER_HOS,
+        Capability.VEHICLE_SPEC,
     })
 
     # The empty set is the whole point of this declaration existing.
@@ -298,6 +299,45 @@ class OrientEldProvider:
                 "orient_eld: %d repeated row(s) within a company collapsed",
                 duplicates,
             )
+        return out
+
+    async def get_vehicle_spec(self) -> list[dict[str, Any]]:
+        """What ORIENT knows each truck IS — a SECOND opinion.
+
+        ``/api/vehicles`` carries VIN, plate, make and model for the
+        same trucks another integration already registered, which is
+        exactly the shape ``capabilities/source`` arbitrates: several
+        sources describing one record, field by field, with the account
+        owner choosing whose answer wins.
+
+        Deliberately NOT mapped:
+
+        ``year`` — ORIENT does not report one, and a blank is already
+        "no opinion" to the merge.
+
+        ``device_id`` -> ``gateway_serial`` — tempting and wrong. That
+        column holds a Samsara gateway's hardware serial; ORIENT's
+        device id is an integer in ORIENT's own namespace. Writing one
+        into the other would make two unrelated identifiers collide in
+        a field the device-identity watch compares across ticks.
+        """
+        rows = await self._client.get_vehicles()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            unit = str(row.get("unit_number") or "").strip()
+            if not unit:
+                # The registry matches on the unit number; a row without
+                # one cannot be attached to anything and inventing a key
+                # would create the duplicate this feed exists to avoid.
+                continue
+            out.append({
+                "unit_number": unit,
+                "vin": str(row.get("vin") or "").strip().upper(),
+                "plate_number": str(row.get("plate") or "").strip(),
+                "make": str(row.get("make") or "").strip(),
+                "model": str(row.get("model") or "").strip(),
+                "company_code": str(row.get("_company_code") or "").strip(),
+            })
         return out
 
     # ── Not this vendor's business ───────────────────────────────
