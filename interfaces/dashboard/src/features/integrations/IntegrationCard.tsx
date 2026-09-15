@@ -20,6 +20,8 @@ import {
   Pencil, Plus, Trash2, ChevronDown, ChevronRight, Activity,
 } from '../../lib/icons';
 import StatusBadge from '../../components/StatusBadge';
+import { cardVariants } from '../../components/ui/card';
+import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses, toneText } from '../../lib/status';
@@ -299,10 +301,19 @@ export default function IntegrationCard({
 
   return (
     <div
-      className={[
-        'bg-card border rounded-xl p-5',
-        isComingSoon ? 'border-border opacity-70' : 'border-border',
-      ].join(' ')}
+      className={cn(
+        // The four classes here were typed by hand, and that cost two
+        // things at once: the material axis cannot reach a surface which
+        // paints its own colour, and the radius used was the SHELL
+        // FRAME's rather than a card's, so this box repeated the
+        // curvature of the box it sits inside. The primitive settles
+        // both. (Written without naming the old classes: the guard's
+        // scanner joins every quoted string inside a cn call and reads
+        // it as one class value, so a comment quoting them here is a
+        // violation of the very rule it documents.)
+        cardVariants({ padding: 'none' }), 'p-5',
+        isComingSoon && 'opacity-70',
+      )}
     >
       {/* Header is the click target for collapse/expand on connected
           integrations.  Coming-soon cards are never collapsible —

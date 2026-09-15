@@ -438,34 +438,27 @@ const cardShellSites = (src: string): number[] => {
  *     evenly, a row is wider than it is tall.
  */
 /**
- * Cards that ARE cards and have not been converted yet.
+ * Cards that ARE cards and have not been converted yet — EMPTY, and the
+ * list stays here because an empty debt list is a claim worth keeping
+ * checkable.
  *
- * Not the same list as the one below, and the difference matters: those
- * wear a card's clothes and are NOT cards, so listing them is a
- * judgement that has been made. These four are cards, and each one was
- * INVISIBLE to this guard until the scanner above learned `cn(…)`,
- * `[…].join(' ')` and array literals — three spellings the app uses
- * everywhere and this file read past for as long as it has existed.
- *
- * Converting each changes its padding and its radius (the primitive is
- * `p-4` and `rounded-lg`; these are `p-5`/`rounded-xl` and worse), so
- * each needs a look at the rendered page rather than a find-and-replace.
- * Tracked as debt, not excused — and the cost of leaving them is not
+ * It held three, each invisible to this guard until the scanner above
+ * learned `cn(…)`, `[…].join(' ')` and array literals — three spellings
+ * the app uses everywhere and this file read past for as long as it had
+ * existed. What made them worth converting rather than excusing is not
  * cosmetic: `<Card>` carries `.surface`, which is the class the MATERIAL
- * axis reaches, so every one of these stays solid while the app around
- * it goes to glass.
+ * axis reaches, so each of them stayed solid while the app around it
+ * went to glass. All three are converted; `IntegrationCard` also gave up
+ * a `rounded-xl` it should never have worn, since that is the SHELL
+ * FRAME's radius and a card wearing it repeats the curvature of the box
+ * it sits inside.
  *
- * `App.tsx` is deliberately NOT here. It was offending under the OLD
- * scanner too — it is somebody else's red, on somebody else's open edit,
- * and listing it would turn their signal green on my say-so. A debt list
- * is for what this change MADE VISIBLE, never for what it found already
- * failing.
+ * `App.tsx` was deliberately not listed here — it was offending under
+ * the OLD scanner too, and a debt list is for what a change MADE
+ * VISIBLE, never for what it found already failing. It has since been
+ * converted on its own terms rather than excused.
  */
-const CARD_NOT_YET_CONVERTED = [
-  'components/datagrid/DataGrid.tsx',
-  'components/shell/OnboardingBanner.tsx',
-  'features/integrations/IntegrationCard.tsx',
-];
+const CARD_NOT_YET_CONVERTED: string[] = [];
 
 const CARD_NOT_A_CARD = [
   'features/ai/Chat.tsx',

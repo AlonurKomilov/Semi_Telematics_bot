@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN, explicitSignoutActive } from './lib/safeReturnTo';
 import AppRouter from './router';
+import { Card } from './components/ui/card';
 import LiveAlertWatcher from './features/alerts/LiveAlertWatcher';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
@@ -189,7 +190,7 @@ function AccessUnderReview({ scope }: { scope: 'person' | 'account' }) {
   const company = scope === 'account';
   return (
     <div className="flex items-center justify-center min-h-screen bg-background px-4 py-8">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6">
+      <Card padding="panel" className="w-full max-w-md">
         <h1 className="text-lg font-semibold text-foreground">
           {company
             ? 'This account is under review'
@@ -221,7 +222,7 @@ function AccessUnderReview({ scope }: { scope: 'person' | 'account' }) {
         >
           Sign out
         </button>
-      </div>
+      </Card>
     </div>
   );
 }

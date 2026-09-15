@@ -66,6 +66,7 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
 import { Button } from '../ui/button';
+import { cardVariants } from '../ui/card';
 import { ContextMenu, type MenuAction } from '../ui/context-menu';
 import { Tip } from '../tooltip';
 import { toast } from '../../lib/toast';
@@ -3496,7 +3497,13 @@ export default function DataGrid({
       <div
         ref={setCardEl}
         className={cn(
-          'rounded-lg border border-border bg-card overflow-hidden',
+          // `cardVariants`, not the same four classes typed again: this
+          // shell IS a card, and painting `bg-card` by hand is the one
+          // thing that keeps the MATERIAL axis out — the utility paints
+          // a colour, `.surface` is what glass replaces. `padding:
+          // 'none'` because the toolbar, body and footer own their own
+          // edges, and it brings `overflow-hidden` with it.
+          cardVariants({ padding: 'none' }),
           // The column that pins toolbar + footer to its edges and gives
           // the table body everything between them.
           fills && 'flex flex-col',

@@ -128,7 +128,7 @@ export default function OnboardingBanner({
               className={`flex items-start gap-2 p-3 rounded-lg border transition group ${
                 s.done
                   ? `${toneClasses('ok')} text-muted-foreground`
-                  : 'bg-card border-border hover:border-primary/40 hover:bg-card/80'
+                  : 'surface surface-card border-border hover:border-primary/40 hover:bg-card/80'
               }`}
             >
               <span
