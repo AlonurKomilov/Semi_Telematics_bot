@@ -14,7 +14,10 @@
  *     and the single easiest thing for a later edit to undo
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { bevelMap, RESOLUTION, NEUTRAL, type Bevel } from './lens';
+import { MATERIAL_PACKS, materialPackById } from './store/items/material';
 
 const BEVEL: Bevel = { band: 30, falloff: 2.2 };
 const W = 236, H = 300, R = 28;
@@ -116,5 +119,47 @@ describe('the bevel map', () => {
       [...Array(RESOLUTION.w).keys()].filter((mx) => Math.abs(at(m, mx, mid).x) > 2).length;
     expect(reach(wide), 'the wide pane got as much bevel as the narrow one')
       .toBeLessThan(reach(narrow));
+  });
+});
+
+/**
+ * THE SHAPE IS THE ENGINE'S, THE NUMBERS ARE THE PACK'S — the same line
+ * the depth ladder is held to, and for the same reason: a material's
+ * thickness is what that material IS, so a band typed into the drawing
+ * code would be one material's taste compiled into the machine that
+ * serves all of them.
+ *
+ * Source-level, because an output test cannot see this. A bevel moved
+ * back into `lens.ts` would draw exactly the same map, so nothing about
+ * the rendered result would change — which is what makes the line worth
+ * a guard rather than a comment.
+ */
+describe('the bevel is a pack value, not an engine one', () => {
+  /** Comments blanked in place, or this file's own prose about `band`
+   *  counts as a violation of the rule it documents. */
+  const codeOnly = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+       .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+
+  it('the engine states no bevel of its own', () => {
+    const src = codeOnly(readFileSync(join(__dirname, 'lens.ts'), 'utf8'));
+    expect(src.match(/\bband\s*:\s*[\d.]/g) ?? [], 'lens.ts holds a band').toEqual([]);
+    expect(src.match(/\bfalloff\s*:\s*[\d.]/g) ?? [], 'lens.ts holds a falloff').toEqual([]);
+  });
+
+  it('and the pack states one', () => {
+    // The control: without it the sweep above passes just as happily
+    // when the field has been renamed and it is measuring nothing.
+    const glass = materialPackById('glass');
+    expect(glass?.bevel, 'glass declares no bevel').toBeTruthy();
+    expect(glass!.bevel!.band).toBeGreaterThan(0);
+    expect(glass!.bevel!.falloff).toBeGreaterThan(1);
+  });
+
+  it('solid declares none, because it must cost nothing', () => {
+    // Not a zero band — an ABSENT one. A zero is a number the engine
+    // still has to read and a filter it still has to mount.
+    expect(materialPackById('solid')?.bevel).toBeUndefined();
+    expect(MATERIAL_PACKS.filter((p) => p.bevel).map((p) => p.id)).toEqual(['glass']);
   });
 });
