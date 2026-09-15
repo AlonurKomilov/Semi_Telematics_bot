@@ -34,6 +34,14 @@ interface Discount {
 interface NextInvoice { subtotal_cents: number; discount_cents: number; total_cents: number }
 
 const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
+
+/** ``2026-08`` when it is September — the month the job would bill. */
+function lastMonth(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : '—');
 
 function describe(d: Discount): string {
@@ -54,6 +62,8 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [granting, setGranting] = useState(false);
+  const [month, setMonth] = useState(lastMonth());
+  const [issued, setIssued] = useState('');
 
   const load = useCallback(async () => {
     setErr('');
@@ -79,6 +89,23 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Could not revoke');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const issue = async () => {
+    setBusy(true);
+    setErr('');
+    setIssued('');
+    try {
+      const r = await apiJSON<{ invoice: { number: string } }>(
+        `/system/accounts/${accountId}/invoice?month=${encodeURIComponent(month)}`,
+        { method: 'POST' });
+      setIssued(r.invoice.number);
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Could not write the invoice');
     } finally {
       setBusy(false);
     }
@@ -119,6 +146,34 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
           </dl>
         ) : !isComped && (
           <p className="text-sm text-slate-400">No discount. This account pays the full plan price.</p>
+        )}
+        {live?.kind === 'absolute' && (
+          <div className="mt-3 pt-3 border-t border-slate-800">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">Issue an invoice</p>
+            <p className="text-xs text-slate-400 mb-2">
+              The monthly job bills the month just closed, on the 1st. Name any month to write
+              that one now — the customer gets the invoice, the PDF and the receipt email, and
+              can download it from their Billing page. Asking twice for one month returns the
+              same invoice.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className={`${inputCls} w-40`}
+                aria-label="Month to invoice"
+              />
+              <Button variant="secondary" disabled={busy || !month} onClick={issue}>
+                {busy ? 'Writing…' : 'Issue invoice'}
+              </Button>
+            </div>
+            {issued && (
+              <p className="text-xs text-ok mt-2">
+                {issued} written and sent — it is on the customer's Billing page now.
+              </p>
+            )}
+          </div>
         )}
         {next && (
           <dl className="text-sm space-y-1 mt-3 pt-3 border-t border-slate-800">

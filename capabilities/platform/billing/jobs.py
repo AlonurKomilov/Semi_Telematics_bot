@@ -45,6 +45,23 @@ def _platform_router():
     return _ip.get_router()
 
 
+def month_window(month: str) -> tuple[str, str]:
+    """``"2026-09"`` → that calendar month, as a half-open ISO interval.
+
+    The operator's way of naming a period: the monthly job bills the
+    month that just closed, but an account switched to Absolute 0
+    mid-year has months behind it that nobody billed, and the operator
+    must be able to say which one.
+    """
+    try:
+        year, mon = (int(part) for part in month.split("-", 1))
+        start = datetime(year, mon, 1, tzinfo=timezone.utc)
+    except Exception:
+        raise ValueError("A month is written YYYY-MM, for example 2026-09.")
+    end = datetime(year + (mon == 12), (mon % 12) + 1, 1, tzinfo=timezone.utc)
+    return start.isoformat(), end.isoformat()
+
+
 def _previous_month_window(now: datetime | None = None) -> tuple[str, str]:
     """Return ISO-8601 (period_start, period_end) for the prior calendar month.
 
@@ -254,6 +271,7 @@ __all__ = [
     "issue_local_invoice",
     "snapshot_account_billing",
     "_previous_month_window",
+    "month_window",
     "run_comp_expiry_sweep",
     "run_billing_quantity_sync",
 ]

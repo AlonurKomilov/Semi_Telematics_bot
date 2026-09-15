@@ -1038,6 +1038,52 @@ async def force_sync_quantity(
     return result
 
 
+@router.post("/accounts/{account_id}/invoice")
+async def system_issue_local_invoice(
+    account_id: int,
+    month: str = Query(default="", description="YYYY-MM; default is the month just closed"),
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Write and send one Absolute 0 account's invoice for a month, now.
+
+    The monthly job does this on the 1st, which is right for the month
+    that just closed and useless for the months an account spent
+    unbilled before Absolute 0 was granted.  This is the operator
+    saying which month, and getting the same invoice, the same PDF and
+    the same email the job would have produced.
+
+    Idempotent through the invoice number: asking twice for one month
+    returns the one invoice, never a second.  Refuses an account that
+    has no Absolute 0 grant — every other account is Stripe's to bill,
+    and a local invoice beside a Stripe one bills the customer twice on
+    paper.
+    """
+    acc = await platform_db.get_account(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    from capabilities.platform.billing.jobs import issue_local_invoice, month_window
+    period = None
+    if month.strip():
+        try:
+            period = month_window(month.strip())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    try:
+        row = await issue_local_invoice(account_id, period=period)
+    except Exception as e:
+        logger.exception("system: local invoice failed acct=%s", account_id)
+        raise HTTPException(status_code=502, detail=f"The invoice could not be written: {e}")
+    if row is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This account has no Absolute 0 discount — its bills are Stripe's to issue. "
+                   "Grant Absolute 0 first if 4truck is covering the cost.")
+    logger.info("system: local invoice %s issued acct=%s by operator_tg=%s",
+                row.get("number"), account_id, user.get("sub"))
+    return {"invoice": row}
+
+
 @router.post("/accounts/{account_id}/refresh-vehicles")
 async def force_refresh_vehicles(
     account_id: int,

@@ -325,3 +325,50 @@ async def test_the_download_is_rebuilt_from_the_lines_not_from_todays_prices(cus
     assert "102 $2.99 $304.98" in text, "the extra trucks at the price they were billed at"
     assert "$999.00" not in text and "$99.99" not in text, "today's prices never reach a bill already written"
     assert "Subtotal $403.98" in text and "Total $0.00" in text
+
+
+# ── the operator writing a month that nobody billed ────────────────
+
+def test_a_month_is_named_the_way_a_person_writes_one():
+    from capabilities.platform.billing.jobs import month_window
+    assert month_window("2026-09") == ("2026-09-01T00:00:00+00:00", "2026-10-01T00:00:00+00:00")
+    assert month_window("2026-12") == ("2026-12-01T00:00:00+00:00", "2027-01-01T00:00:00+00:00")
+    for bad in ("2026", "september", "2026-13", ""):
+        with pytest.raises(ValueError):
+            month_window(bad)
+
+
+@pytest.mark.asyncio
+async def test_the_operator_can_write_a_month_that_went_by_unbilled(api, monkeypatch):
+    """An account switched to Absolute 0 today has months behind it
+    nobody billed.  Waiting for the 1st would leave the customer with an
+    empty Billing page and nothing to download."""
+    c, db = api["client"], api["db"]
+    monkeypatch.delenv("BILLING_RECEIPT_EMAIL", raising=False)
+    acct = await db.create_account("Backfill Co", tier="pro")
+    await db.get_or_create_subscription(acct.id)
+    await db.update_subscription(acct.id, tier="pro", monthly_base_usd=50000,
+                                 base_vehicles=0, extra_vehicle_cents=0, vehicle_count=0)
+
+    # before the grant it is Stripe's to bill, and the refusal says so
+    r = await c.post(f"/api/system/accounts/{acct.id}/invoice?month=2026-07")
+    assert r.status_code == 409 and "Grant Absolute 0 first" in r.json()["detail"]
+
+    assert (await c.post(f"/api/system/accounts/{acct.id}/discount", json={
+        "account_id": acct.id, "kind": ABSOLUTE, "reason": "partner"})).status_code == 201
+
+    for month in ("2026-07", "2026-08"):
+        r = await c.post(f"/api/system/accounts/{acct.id}/invoice?month={month}")
+        assert r.status_code == 200, r.text
+        inv = r.json()["invoice"]
+        assert inv["number"] == f"INV-{month.replace('-', '')}-{acct.id}"
+        assert inv["amount_due_cents"] == 0 and inv["subtotal_cents"] == 50000
+
+    assert len(await db.get_invoices(acct.id)) == 2, "two months, two invoices"
+    # and asking again for a month already written returns that one
+    again = await c.post(f"/api/system/accounts/{acct.id}/invoice?month=2026-07")
+    assert again.status_code == 200
+    assert len(await db.get_invoices(acct.id)) == 2, "never a second bill for one month"
+
+    assert (await c.post(f"/api/system/accounts/{acct.id}/invoice?month=july")).status_code == 400
+    assert (await c.post("/api/system/accounts/999999/invoice?month=2026-07")).status_code == 404
