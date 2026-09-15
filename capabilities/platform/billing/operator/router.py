@@ -934,6 +934,99 @@ async def operator_set_account_plan(
 # the engine when the plan's Stripe price does not say what the row says.
 
 
+@router.delete("/plans/{tier}")
+async def system_delete_plan(
+    tier: str,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Remove a plan nobody is on.
+
+    Refused, never cascaded.  A tier with no plan row resolves to None
+    in the permission layer, and every sellable feature then answers
+    False — so deleting a plan an account sits on does not downgrade
+    them, it closes the product on them.  Move them first; the answer
+    says how many and where.
+
+    Three plans are refused whatever their counts: ``free`` is the floor
+    every account falls back to, the trial default is where new signups
+    land, and a plan with an OPEN customer case is a conversation in
+    progress.  Live offers are withdrawn with the plan and named back.
+
+    Stripe is tidied best-effort: the base and extras Prices are
+    archived, and if Stripe refuses the plan still goes and the ids come
+    back so an operator can archive them by hand.  An orphaned Price
+    charges nobody; a plan we could not delete because Stripe was down
+    would strand the operator.
+    """
+    plan = await platform_db.get_plan(tier)
+    if not plan:
+        raise HTTPException(status_code=404, detail="No such plan.")
+    if tier == "free":
+        raise HTTPException(
+            status_code=409,
+            detail="'free' is the plan every account falls back to — it cannot be deleted.")
+    if plan.get("trial_default"):
+        raise HTTPException(
+            status_code=409,
+            detail="This is the trial default — new signups land on it. Make another "
+                   "plan the trial default first.")
+
+    counts = await platform_db.plan_dependents(tier)
+    unreadable = [k for k, v in counts.items() if v < 0]
+    if unreadable:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not check what still points at this plan ({', '.join(unreadable)}) "
+                   "— refusing rather than guessing.")
+    blocking = {k: v for k, v in counts.items()
+                if v > 0 and k in ("accounts", "subscriptions", "open_requests")}
+    if blocking:
+        says = ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in blocking.items())
+        raise HTTPException(
+            status_code=409,
+            detail=f"{says} still point at this plan. Move them to another plan (or close "
+                   "the cases) first — deleting it now would take every service away "
+                   "from them, not move them down a tier.")
+
+    actor = f"tg:{user.get('sub')}"
+    withdrawn = 0
+    if counts.get("offers"):
+        withdrawn = await platform_db.revoke_all_plan_offers(tier)
+
+    archived: list[str] = []
+    failed: list[str] = []
+    from capabilities.platform.billing import get_provider
+    provider = get_provider()
+    for key in ("stripe_price_id", "stripe_extra_price_id"):
+        price_id = str(plan.get(key) or "").strip()
+        if not price_id:
+            continue
+        try:
+            await provider.archive_plan_price(price_id)
+            archived.append(price_id)
+        except Exception:
+            logger.exception("plan %s: could not archive %s", tier, price_id)
+            failed.append(price_id)
+
+    await platform_db.delete_plan(tier)
+    from capabilities.permissions.plans import invalidate_plans
+    invalidate_plans()
+    try:
+        await platform_db.add_platform_audit(
+            "plan.deleted", account_id=0, actor=actor,
+            details=json.dumps({"tier": tier, "label": plan.get("label") or "",
+                                "offers_withdrawn": withdrawn,
+                                "prices_archived": archived,
+                                "prices_left_live": failed}))
+    except Exception:
+        logger.exception("platform audit write failed for plan delete on %s", tier)
+    logger.info("system: plan %s deleted by %s (offers withdrawn=%s, archived=%s, left=%s)",
+                tier, actor, withdrawn, archived, failed)
+    return {"deleted": tier, "offers_withdrawn": withdrawn,
+            "prices_archived": archived, "prices_left_live": failed}
+
+
 @router.get("/plans/{tier}/rollout")
 async def system_plan_rollout_preview(
     tier: str,

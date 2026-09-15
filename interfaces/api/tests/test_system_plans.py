@@ -506,3 +506,92 @@ async def test_a_save_heals_a_plan_whose_extras_price_predates_its_own_product(s
                           json={"label": "Gold", "included": ["*"], "quotas": {},
                                 "price_monthly_cents": 15000, "extra_vehicle_cents": 499})
     assert len(fake.calls) == n
+
+
+# ── deleting a plan ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_plan_an_account_sits_on_cannot_be_deleted(system_app):
+    """Not a downgrade — a closure.  A tier with no plan row resolves to
+    None in permissions.plans, and plan_includes then answers False for
+    every sellable feature, so the page, the API, the bot and the AI all
+    shut on that account at once."""
+    s = system_app
+    # a plan that is NOT the trial default, so this test measures the
+    # dependent count and not a different guard firing first
+    await s["db"].upsert_plan("occupied", label="Occupied", included=["*"])
+    acct = await s["db"].create_account("Sitting Co", tier="occupied")
+    await s["db"].get_or_create_subscription(acct.id)
+    await s["db"].update_subscription(acct.id, tier="occupied")
+
+    r = await s["client"].delete("/api/system/plans/occupied", headers=s["op"])
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert "still point at this plan" in detail
+    assert "every service away" in detail, "the refusal says what it would have cost"
+    assert await s["db"].get_plan("occupied"), "and the plan is untouched"
+
+
+@pytest.mark.asyncio
+async def test_the_floor_and_the_trial_default_are_never_deletable(system_app):
+    s = system_app
+    r = await s["client"].delete("/api/system/plans/free", headers=s["op"])
+    assert r.status_code == 409 and "falls back to" in r.json()["detail"]
+
+    await s["db"].upsert_plan("trialy", label="Trialy", included=["*"], trial_default=True)
+    r = await s["client"].delete("/api/system/plans/trialy", headers=s["op"])
+    assert r.status_code == 409 and "trial default" in r.json()["detail"]
+    assert await s["db"].get_plan("trialy")
+
+
+@pytest.mark.asyncio
+async def test_an_empty_plan_goes_and_takes_its_offers_with_it(system_app):
+    s = system_app
+    other = await s["db"].create_account("Offered Co", tier="free")
+    await s["db"].upsert_plan("spare", label="Spare", included=["*"], price_monthly_cents=100)
+    await s["db"].offer_plan("spare", other.id, created_by="operator:1")
+    assert await s["db"].plan_offered_to("spare", other.id)
+
+    r = await s["client"].delete("/api/system/plans/spare", headers=s["op"])
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == "spare" and r.json()["offers_withdrawn"] == 1
+    assert await s["db"].get_plan("spare") is None
+    assert not await s["db"].plan_offered_to("spare", other.id), "the offer went with it"
+    rows = await s["db"].list_platform_audit(event="plan.deleted", limit=3)
+    assert rows and '"tier": "spare"' in rows[0]["details"]
+
+    assert (await s["client"].delete("/api/system/plans/spare", headers=s["op"])).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_an_open_customer_case_holds_the_plan_open_too(system_app):
+    """A plan request is a conversation in progress; deleting the plan
+    under it leaves the customer's case pointing at nothing."""
+    s = system_app
+    acct = await s["db"].create_account("Asking Co", tier="free")
+    await s["db"].upsert_plan("asked", label="Asked", included=["*"])
+    await s["db"].create_plan_request(acct.id, tier="asked", note="how much?",
+                                      contact_email="a@b.com")
+
+    r = await s["client"].delete("/api/system/plans/asked", headers=s["op"])
+    assert r.status_code == 409 and "open request" in r.json()["detail"]
+    assert await s["db"].get_plan("asked")
+
+
+@pytest.mark.asyncio
+async def test_a_dependent_count_we_cannot_read_refuses_rather_than_guesses(system_app, monkeypatch):
+    """The counts are the only thing standing between a delete and an
+    account losing every service.  A table we cannot read might be
+    holding one, so an unreadable count is a refusal, never a zero."""
+    s = system_app
+    await s["db"].upsert_plan("unknowable", label="Unknowable", included=["*"])
+
+    async def _blind(tier):
+        return {"accounts": 0, "subscriptions": -1, "offers": 0, "open_requests": 0}
+    monkeypatch.setattr(s["db"], "plan_dependents", _blind)
+
+    r = await s["client"].delete("/api/system/plans/unknowable", headers=s["op"])
+    assert r.status_code == 503
+    assert "subscriptions" in r.json()["detail"]
+    assert "refusing rather than guessing" in r.json()["detail"]
+    assert await s["db"].get_plan("unknowable"), "and nothing was deleted"

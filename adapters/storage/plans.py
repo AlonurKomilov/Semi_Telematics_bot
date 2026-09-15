@@ -72,6 +72,46 @@ class PlansMixin:
             "SELECT tier, COUNT(*) AS n FROM accounts WHERE is_active = 1 GROUP BY tier")
         return {(r["tier"] or "free"): int(r["n"]) for r in await cur.fetchall()}
 
+    async def plan_dependents(self, tier: str) -> dict[str, int]:
+        """What would be left pointing at nothing if this plan went.
+
+        A tier with no plan row resolves to ``None`` in
+        ``permissions.plans.included_for``, and ``plan_includes`` then
+        answers False for every sellable feature — so an account left on
+        a deleted plan loses the page, the API, the bot and the AI at
+        once.  The delete refuses on these counts rather than cascading.
+        """
+        out: dict[str, int] = {}
+        for name, sql in (
+            ("accounts", "SELECT COUNT(*) AS n FROM accounts WHERE tier = ?"),
+            ("subscriptions", "SELECT COUNT(*) AS n FROM subscriptions WHERE tier = ?"),
+            ("offers", "SELECT COUNT(*) AS n FROM plan_offers WHERE tier = ?"),
+            ("open_requests",
+             "SELECT COUNT(*) AS n FROM plan_requests WHERE tier = ? AND status = 'open'"),
+        ):
+            try:
+                cur = await self._db.execute(sql, (tier,))
+                row = await cur.fetchone()
+                out[name] = int(dict(row).get("n") or 0) if row else 0
+            except Exception:
+                # A table that is not there yet cannot be holding a
+                # dependent; a table we cannot READ might be, so the
+                # caller must treat -1 as "refuse, I could not tell".
+                out[name] = -1
+        return out
+
+    async def delete_plan(self, tier: str) -> bool:
+        """Remove the plan row.  True when there was one to remove.
+
+        Deliberately dumb: every question about whether it is SAFE to go
+        is answered by the caller through ``plan_dependents``, because
+        the answers are policy (a comped account, an open case, the
+        trial default) and policy does not belong in a DELETE.
+        """
+        cur = await self._db.execute("DELETE FROM plans WHERE tier = ?", (tier,))
+        await self._db.commit()
+        return bool(getattr(cur, "rowcount", 0))
+
     async def upsert_plan(
         self, tier: str, *, label: str, included: list[str],
         quotas: Optional[dict] = None, updated_by: str = "",

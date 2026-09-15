@@ -520,6 +520,35 @@ export default function PlansPage() {
     return key;
   }
 
+  async function removePlan(p: Plan) {
+    const offers = (p.offered_to ?? []).length;
+    // Names the two things that do NOT come back — the Stripe price is
+    // archived, the offers are withdrawn — because "are you sure" on its
+    // own tells an operator nothing they did not already know.
+    const also = [
+      offers ? `${offers} offer${offers === 1 ? '' : 's'} will be withdrawn` : '',
+      p.stripe_price_id ? 'its Stripe price will be archived' : '',
+    ].filter(Boolean).join(', ');
+    if (!window.confirm(
+      `Delete the plan "${p.label}" (${p.tier})?  No account is on it.` +
+      (also ? `  ${also}.` : '') + '  This cannot be undone.')) return;
+    setBusy(`del:${p.tier}`);
+    setErr('');
+    try {
+      const r = await apiJSON<{ prices_left_live: string[] }>(
+        `/system/plans/${p.tier}`, { method: 'DELETE' });
+      if (r.prices_left_live?.length) {
+        setErr(`Plan deleted, but Stripe would not archive ${r.prices_left_live.join(', ')} `
+               + '— archive it in the Stripe dashboard.');
+      }
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Delete failed');
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function create() {
     const label = newPlan.label.trim();
     if (!label) return;
@@ -663,9 +692,21 @@ export default function PlansPage() {
                       </>
                     ) : p.price_monthly_cents === 0 ? (
                       <div className="mt-1 text-[11px] font-normal rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">
-                        offered free — no price
+                        no price — customers see "Contact us"
                       </div>
                     ) : null}
+                    {/* Offered only where it can possibly succeed: the
+                        server refuses free, the trial default and any plan
+                        an account still sits on, and a button that is
+                        always refused teaches people to ignore the refusal. */}
+                    {p.tier !== 'free' && !p.trial_default && p.accounts === 0 && (
+                      <Button size="sm" variant="ghost"
+                              className="mt-1 font-normal text-slate-500 hover:text-danger"
+                              disabled={busy === `del:${p.tier}`}
+                              onClick={() => removePlan(p)}>
+                        {busy === `del:${p.tier}` ? 'Deleting…' : 'Delete plan'}
+                      </Button>
+                    )}
                   </th>
                 ))}
               </tr>
