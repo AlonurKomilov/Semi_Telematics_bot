@@ -358,3 +358,19 @@ def test_the_card_says_whether_our_receipt_actually_went_out(monkeypatch):
 
     monkeypatch.setenv("SMTP_HOST", "")
     assert setup_check._check_receipt_email(None)["state"] == "problem"
+
+
+def test_a_missing_event_says_what_it_costs_and_where_to_add_it():
+    """An operator reading this card has to be able to act on it without
+    asking anybody.  Naming the event alone sends them looking — which is
+    exactly what happened with customer.updated."""
+    from capabilities.platform.billing.setup_check import EVENT_COST, REQUIRED_EVENTS
+    assert set(EVENT_COST) == set(REQUIRED_EVENTS), (
+        "every required event needs its consequence written down — an "
+        "event with no cost line reads as a rule for its own sake")
+    for event, cost in EVENT_COST.items():
+        assert cost.endswith("."), event
+        assert len(cost) > 30, f"{event}: say what breaks, not that something does"
+    # and the two extremes are not described as the same kind of problem
+    assert "never learns" in EVENT_COST["checkout.session.completed"]
+    assert "portal" in EVENT_COST["customer.updated"]

@@ -36,6 +36,26 @@ REQUIRED_EVENTS = (
     "customer.updated",
 )
 
+#: What each missing event actually costs, so the operator reading a red
+#: line knows whether they are looking at a stopped checkout or a slow
+#: drift.  A card that says "fix this" without saying what breaks gets
+#: read as noise the third time.
+EVENT_COST = {
+    "checkout.session.completed":
+        "a customer pays and 4truck never learns they did.",
+    "customer.subscription.updated":
+        "plan and price changes made in Stripe never reach the account.",
+    "customer.subscription.deleted":
+        "a cancelled subscription keeps its access here.",
+    "invoice.payment_succeeded":
+        "paid invoices never appear on the customer's Billing page.",
+    "invoice.payment_failed":
+        "a failed payment raises no dunning and no past-due state.",
+    "customer.updated":
+        "a billing address the customer changes in Stripe's portal never "
+        "comes back, and receipts keep going to the old one.",
+}
+
 #: The paths this API answers webhooks on — the provider-named one and
 #: the alias.  Matched on the URL's tail so the same endpoint counts on
 #: api.4truck.us (no prefix) and on the hosts that mount under /api.
@@ -229,8 +249,12 @@ def _check_webhook(stripe) -> dict:
     subscribed = set(ep.enabled_events)
     missing = [e for e in REQUIRED_EVENTS if e not in subscribed and "*" not in subscribed]
     if missing:
+        costs = "  ".join(f"{e} — {EVENT_COST[e]}" for e in missing if e in EVENT_COST)
         return _check("webhook", label, _PROBLEM,
-                      f"{urlparse(ep.url).path} — not subscribed to {', '.join(missing)}.")
+                      f"{urlparse(ep.url).path} — not subscribed to "
+                      f"{', '.join(missing)}. {costs} "
+                      "Add them in Stripe: Developers \u2192 Webhooks \u2192 this "
+                      "endpoint \u2192 Update details \u2192 Select events.")
     return _check("webhook", label, _OK,
                   f"{urlparse(ep.url).path} · {len(REQUIRED_EVENTS)} events · signed")
 

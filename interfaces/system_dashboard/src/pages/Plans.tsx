@@ -197,7 +197,12 @@ function PaymentWiring({ provider, reloadKey }: { provider: string; reloadKey: n
             ? 'Prices below are shown to customers but nothing is charged until BILLING_PROVIDER=stripe.'
             : report.ok
               ? 'Customers can buy a plan.'
-              : 'Fix the red lines above — a customer meets them at checkout.'}
+              /* Not every red line is a checkout: a missing customer.updated
+                 costs nothing at the till and quietly drifts the billing
+                 address instead. Each line names its own consequence, so
+                 this one stops claiming a single shared one — a footer that
+                 cries checkout at everything gets read as noise. */
+              : 'Fix the red lines above — each one says what it costs.'}
         </p>
       )}
     </section>
