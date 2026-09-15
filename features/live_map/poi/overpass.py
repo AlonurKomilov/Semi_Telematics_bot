@@ -83,10 +83,35 @@ _MAX_CUSTOM_OVERPASS_LEN = 500
 _OVERPASS_OPENERS_RE = re.compile(r"^\s*(node|way|nwr)\s*\[", re.IGNORECASE)
 
 
+#: How we introduce ourselves to a volunteer mirror.
+#:
+#: NOT OPTIONAL, and not merely polite.  The Overpass usage policy asks
+#: every client to identify itself, and lambert.openstreetmap.de now
+#: ENFORCES it: measured 2026-09-15, the identical request gets
+#:
+#:     no User-Agent  ->  HTTP 406 in 0.16s   (refused at the door)
+#:     identified     ->  reaches the backend
+#:
+#: aiohttp's default is `Python/3.12 aiohttp/3.x`, which is what we had
+#: been sending, so every query this host made was being turned away
+#: before Overpass ever saw it — and the client reported it as "the
+#: map-data source is not answering", blaming the mirror for our own
+#: bad manners.
+#:
+#: A URL and no person: the policy wants a way to reach whoever runs the
+#: client, and the domain is that.  No email — an operator's address does
+#: not belong in a header sent to a third party.
+_USER_AGENT = "4truck-poi/1.0 (+https://4truck.us)"
+
+
 async def _get_http_session() -> aiohttp.ClientSession:
     global _http_session
     if _http_session is None or _http_session.closed:
-        _http_session = aiohttp.ClientSession()
+        # On the SESSION, so every request through it carries the name —
+        # the two POST sites set their own Content-Type and would each
+        # have had to remember this one otherwise.
+        _http_session = aiohttp.ClientSession(
+            headers={"User-Agent": _USER_AGENT})
     return _http_session
 
 
