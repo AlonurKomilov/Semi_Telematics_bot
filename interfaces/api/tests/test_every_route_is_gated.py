@@ -182,6 +182,10 @@ PUBLIC: dict[str, str] = {
         "the sign-in surface — it cannot require what it grants",
     'GET /auth/verify-email':
         "the sign-in surface — it cannot require what it grants",
+    'GET /billing/email/confirm':
+        "the new billing address proving itself — gated by its one-time "
+        "TOKEN, not a JWT, because the accountant who reads that inbox may "
+        "have no login here at all",
     'GET /carrier-directory/intake':
         "the public carrier intake — gated by its link TOKEN, not a JWT",
     'GET /dashboard':

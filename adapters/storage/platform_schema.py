@@ -972,6 +972,34 @@ async def create_tables(conn) -> None:
             ON billing_invoices(account_id, created_at DESC);
 
 
+        -- A change to the address a customer's bills go to, waiting on
+        -- its two proofs: a code typed back by the person who asked
+        -- (proving the owner, not a stolen session) and a link opened
+        -- at the NEW address (proving the address is real and theirs).
+        -- One pending change per account, so asking again replaces the
+        -- request instead of leaving two codes alive.
+        CREATE TABLE IF NOT EXISTS billing_email_changes (
+            id                SERIAL  PRIMARY KEY,
+            account_id        INTEGER NOT NULL UNIQUE,
+            new_email         TEXT    NOT NULL,
+            requested_by      INTEGER NOT NULL,
+            -- where the code went; shown back MASKED, never in full
+            requested_email   TEXT    NOT NULL DEFAULT '',
+            code_hash         TEXT    NOT NULL DEFAULT '',
+            code_expires_at   TEXT    NOT NULL DEFAULT '',
+            confirm_token     TEXT    NOT NULL DEFAULT '',
+            token_expires_at  TEXT    NOT NULL DEFAULT '',
+            status            TEXT    NOT NULL DEFAULT 'code_sent',
+            created_at        TEXT    NOT NULL,
+            updated_at        TEXT    NOT NULL
+        );
+
+        -- The link is looked up BY its token, and no two changes may
+        -- ever share one.  Partial, because a request still waiting on
+        -- its code carries no token and they would all collide on ''.
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_email_changes_token
+            ON billing_email_changes(confirm_token) WHERE confirm_token <> '';
+
         -- A price break for ONE account, for a bounded time: "$100 off
         -- for 3 months", "20% off until March".  The money is Stripe's
         -- to compute, so each grant is a Stripe Coupon applied to the

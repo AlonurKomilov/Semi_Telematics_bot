@@ -20,7 +20,10 @@ the other Stripe mode, and a Product id pasted where a Price id belongs.
   route is under `/api/` — probed 2026-09-11), events
   `checkout.session.completed`, `customer.subscription.updated`,
   `customer.subscription.deleted`, `invoice.payment_succeeded`,
-  `invoice.payment_failed`. Paste its signing secret into
+  `invoice.payment_failed`, `customer.updated` (that last one is how a
+  billing address the customer changes in Stripe's own portal gets back
+  to us — without it our copy drifts and receipts keep going to the old
+  address). Paste its signing secret into
   `STRIPE_WEBHOOK_SECRET`. The API refuses unsigned webhooks in stripe mode.
 - **The per-extra-truck Price**: nothing to make by hand. Each plan's
   extras Price is created on Save beside its base Price, on the same

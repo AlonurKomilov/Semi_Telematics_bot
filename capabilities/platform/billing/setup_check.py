@@ -30,6 +30,10 @@ REQUIRED_EVENTS = (
     "customer.subscription.deleted",
     "invoice.payment_succeeded",
     "invoice.payment_failed",
+    # The portal is where customers change their own billing address;
+    # without this event our copy drifts and nobody finds out until a
+    # receipt goes to an address that stopped existing.
+    "customer.updated",
 )
 
 #: The paths this API answers webhooks on — the provider-named one and

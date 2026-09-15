@@ -22,6 +22,7 @@ All endpoints except /webhook require a valid JWT with role admin or owner.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import os
@@ -433,37 +434,205 @@ async def billing_webhook(
     return result
 
 
-# ── Billing email ─────────────────────────────────────────────────
+# ── Billing contact: the address every bill goes to ───────────────
+#
+# An edit control lived here once and was removed, because a system
+# write from a customer surface mixes operator and customer roles.
+# What comes back is not that write: it is a REQUEST, and it moves
+# nothing by itself.  Two proofs stand between it and the address —
+# a code typed back by the owner who asked (a stolen session cannot
+# read the owner's inbox) and a link opened at the NEW address (a typo
+# never confirms, and the old address keeps working).  The operator
+# console keeps its own direct write for the cases support must fix.
+
+
+def _require_account_owner(user: dict) -> None:
+    """Only the owner moves the billing address.
+
+    ``can_manage_billing`` reaches admins too, and an admin should be
+    able to READ the bills without being able to redirect where they
+    are sent — that redirect is the first move of an account takeover.
+    """
+    if user.get("role") != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the account owner can change the billing contact.")
+
 
 class BillingEmailRequest(BaseModel):
     email: str = Field(..., min_length=3, max_length=320,
-                       description="Inbox that receives Stripe receipts + dunning.")
+                       description="Inbox that should receive invoices + receipts.")
 
 
-@router.patch("/email")
-async def update_billing_email(
+class BillingEmailCodeRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+@router.get("/email/change")
+async def billing_email_change_state(
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """The change in flight, if any — so the page can resume its step.
+
+    Carries neither the code nor the token: the page needs to know
+    WHICH step it is on and where each message went, and an answer
+    holding the second proof would hand it to whoever holds the first.
+    """
+    return {"pending": await platform_db.pending_billing_email_change(user["account_id"])}
+
+
+@router.post("/email/change")
+async def billing_email_change_start(
     body: BillingEmailRequest,
     user: dict = Depends(_billing_admin),
     platform_db=Depends(get_platform_db),
 ):
-    """Update the billing inbox for the current account.
+    """Step 1 — ask, and send the owner a code to prove it was them."""
+    _require_account_owner(user)
+    from interfaces.api.deps import get_current_db_user
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user or not (db_user.email or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Your profile has no email, so there is nowhere to send the "
+                   "confirmation code. Add one in Profile settings first.")
+    sub = await platform_db.get_subscription(user["account_id"]) or {}
+    new_email = body.email.strip()
+    if new_email.lower() == str(sub.get("billing_email") or "").strip().lower():
+        raise HTTPException(
+            status_code=409, detail="That is already the billing contact.")
+    try:
+        code = await platform_db.start_billing_email_change(
+            user["account_id"], new_email=new_email,
+            requested_by=int(db_user.id), requested_email=db_user.email)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    acct = await platform_db.get_account(user["account_id"])
+    from capabilities.platform.billing.contact_email import send_change_code
+    sent = await asyncio.to_thread(
+        lambda: send_change_code(
+            to=db_user.email, code=code, new_email=new_email,
+            account_name=getattr(acct, "name", "") or "",
+            recipient_name=getattr(db_user, "display_name", "") or ""))
+    logger.info("billing contact change requested acct=%s by user=%s (code emailed=%s)",
+                user["account_id"], db_user.id, sent)
+    return {"pending": await platform_db.pending_billing_email_change(user["account_id"]),
+            "email_sent": sent}
 
-    Writes the local subscription row immediately so the dashboard's
-    "Receipts go to …" field reflects the change without a refresh
-    lag, and (on Stripe) PATCHes the Customer object so Stripe routes
-    receipts and dunning notices to the new address.  Accounts without
-    a Stripe customer yet get the local write only; their first
-    checkout will pick up the saved email.
+
+@router.post("/email/change/verify")
+async def billing_email_change_verify(
+    body: BillingEmailCodeRequest,
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """Step 2 — the code checks out; now ask the NEW address itself."""
+    _require_account_owner(user)
+    from interfaces.api.deps import get_current_db_user
+    db_user = await get_current_db_user(user, platform_db)
+    pending = await platform_db.pending_billing_email_change(user["account_id"])
+    if not pending:
+        raise HTTPException(status_code=404, detail="There is no change waiting.")
+    token = await platform_db.verify_billing_email_code(
+        user["account_id"], body.code,
+        requested_by=int(db_user.id) if db_user else None)
+    if not token:
+        # One answer for wrong, expired and not-yours: which one it is
+        # tells an attacker where they are.
+        raise HTTPException(
+            status_code=400,
+            detail="That code is wrong or has expired. Ask for a new one.")
+    sub = await platform_db.get_subscription(user["account_id"]) or {}
+    acct = await platform_db.get_account(user["account_id"])
+    from capabilities.platform.billing.contact_email import send_confirm_link
+    sent = await asyncio.to_thread(
+        lambda: send_confirm_link(
+            to=pending["new_email"], token=token,
+            account_name=getattr(acct, "name", "") or "",
+            old_email=str(sub.get("billing_email") or "")))
+    logger.info("billing contact change confirmed by owner acct=%s (link emailed=%s)",
+                user["account_id"], sent)
+    return {"pending": await platform_db.pending_billing_email_change(user["account_id"]),
+            "email_sent": sent}
+
+
+@router.delete("/email/change")
+async def billing_email_change_cancel(
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """Drop the request.  A link already sent stops working with it."""
+    _require_account_owner(user)
+    dropped = await platform_db.cancel_billing_email_change(user["account_id"])
+    if not dropped:
+        raise HTTPException(status_code=404, detail="There is no change waiting.")
+    return {"ok": True}
+
+
+@router.get("/email/confirm")
+async def billing_email_confirm(token: str = ""):
+    """Step 3 — opened at the NEW address, by whoever reads that inbox.
+
+    Deliberately unauthenticated: the person who must prove the address
+    is theirs may have no login here at all — an accountant, a
+    bookkeeper — and a link that lands on a sign-in wall proves nothing.
+    The token IS the credential: one use, 48 hours, and it names one
+    account and one address.
+
+    Answers HTML rather than JSON because a human opens it from their
+    mail client, and an unknown or spent token gets the same page as an
+    expired one — telling a stranger which is telling them something.
     """
-    email = body.email.strip()
-    if "@" not in email or "." not in email:
-        raise HTTPException(status_code=400, detail="Invalid email address")
+    from fastapi.responses import HTMLResponse
+    from infra.platform import get_platform_db as _get_db
+    platform_db = _get_db()
+    change = await platform_db.confirm_billing_email_change(token)
+    if not change:
+        return HTMLResponse(_confirm_page(
+            "This link is no longer valid",
+            "It may have been used already, cancelled, or it expired. Ask for "
+            "a new one from the Billing page — nothing has been changed."),
+            status_code=400)
     from capabilities.platform.billing import get_provider
-    provider = get_provider()
-    result = await provider.update_billing_email(
-        user["account_id"], platform_db, email,
-    )
-    return result
+    try:
+        await get_provider().update_billing_email(
+            change["account_id"], platform_db, change["new_email"])
+    except Exception:
+        logger.exception("billing contact confirmed but not applied acct=%s",
+                         change["account_id"])
+        return HTMLResponse(_confirm_page(
+            "We could not finish that just now",
+            "Your address is confirmed but something on our side failed. "
+            "Please try the change again from the Billing page, or contact "
+            "support."), status_code=502)
+    try:
+        await platform_db.add_platform_audit(
+            "billing_email_changed", account_id=change["account_id"],
+            actor=f"user:{change['requested_by']}",
+            details=json.dumps({"new_email": change["new_email"]}))
+    except Exception:
+        logger.exception("platform audit write failed for billing email change on %s",
+                         change["account_id"])
+    logger.info("billing contact changed acct=%s", change["account_id"])
+    return HTMLResponse(_confirm_page(
+        "Address confirmed",
+        f"Invoices and payment receipts will be sent to "
+        f"{html.escape(change['new_email'])} from now on. You can close this page."))
+
+
+def _confirm_page(title: str, body: str) -> str:
+    """A page for someone who may have never seen this product before."""
+    return (
+        '<!doctype html>\n'
+        f'<html lang="en"><head><meta charset="utf-8">'
+        f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<title>{html.escape(title)}</title></head>'
+        '<body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
+        'sans-serif;max-width:480px;margin:48px auto;padding:24px;color:#1f2937">'
+        f'<h1 style="font-size:18px">{html.escape(title)}</h1>'
+        f'<p style="font-size:14px;color:#6b7280;line-height:1.6">{body}</p>'
+        '</body></html>')
 
 
 # ── Comp accounts (system-owner only) ────────────────────────────

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users, Download } from '../../lib/icons';
 import { apiFetch, apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
+import { usePermissions } from '../../hooks/usePermissions';
 import { formatDay } from '../../utils/datetime';
 import { CardSkeleton, PageHeader, SectionHeader } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
@@ -15,6 +16,12 @@ import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { FEATURE_CATALOG } from '../../config/featureCatalog';
@@ -236,17 +243,38 @@ function InactiveVehiclesFooter({ summary }: { summary: BillingSummary }) {
 
 // ── Plan summary card ─────────────────────────────────────────────
 
-function SummaryCard({ summary }: { summary: BillingSummary }) {
+/** A billing-contact change between its two proofs — no secrets on the wire. */
+interface PendingContactChange {
+  new_email: string;
+  status: 'code_sent' | 'confirm_sent';
+  code_sent_to: string;
+  expires_at: string;
+  created_at: string;
+}
+
+function SummaryCard({ summary, canEditContact, onContactChanged }: {
+  summary: BillingSummary;
+  canEditContact: boolean;
+  onContactChanged: () => void;
+}) {
   const tz = useTimezone();
   const isOverLimit = summary.extra_vehicles > 0;
+  const [editingContact, setEditingContact] = useState(false);
   return (
     <Card className="mb-4">
       <div className="flex items-start justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground">{summary.account_name || 'Current Plan'}</h2>
-          {summary.billing_email && (
-            <p className="text-xs text-muted-foreground mt-0.5">Billing contact: {summary.billing_email}</p>
-          )}
+          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+            <span>Billing contact: {summary.billing_email || 'not set'}</span>
+            {canEditContact && (
+              <button
+                type="button"
+                onClick={() => setEditingContact(true)}
+                className="text-primary hover:underline min-h-tap"
+              >Change</button>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
@@ -354,7 +382,165 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
           <Badge tone="warn"><FlaskConical className="size-3" aria-hidden />No charges — payments are not switched on for this account yet</Badge>
         )}
       </div>
+      {editingContact && (
+        <BillingContactDialog
+          current={summary.billing_email || ''}
+          onClose={() => setEditingContact(false)}
+          onDone={() => { setEditingContact(false); onContactChanged(); }}
+        />
+      )}
     </Card>
+  );
+}
+
+
+/**
+ * Moving the address every bill goes to, in two proofs.
+ *
+ * This is the one place a customer writes something the billing system
+ * acts on, so it is not a field with a Save button.  A code goes to the
+ * owner's own sign-in address — a session someone else is holding
+ * cannot read that inbox — and only then does a link go to the NEW
+ * address, which is what actually moves the bills.  A typo never
+ * confirms and the old address keeps working, which is why the copy
+ * says "nothing has changed yet" at every step until it has.
+ */
+function BillingContactDialog({ current, onClose, onDone }: {
+  current: string; onClose: () => void; onDone: () => void;
+}) {
+  const [pending, setPending] = useState<PendingContactChange | null>(null);
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    apiJSON<{ pending: PendingContactChange | null }>('/billing/email/change')
+      .then((r) => setPending(r.pending))
+      .catch(() => { /* an unreadable request is the same as none: start fresh */ })
+      .finally(() => setLoaded(true));
+  }, []);
+
+  const call = async (fn: () => Promise<{ pending: PendingContactChange | null }>) => {
+    setBusy(true);
+    setErr('');
+    try {
+      setPending((await fn()).pending);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // apiFetch serialises an object body AND sets the JSON content type;
+  // handing it a string skips both, and the request arrives untyped.
+  const start = () => call(() => apiJSON('/billing/email/change', {
+    method: 'POST', body: { email: email.trim() },
+  }));
+  const verify = () => call(() => apiJSON('/billing/email/change/verify', {
+    method: 'POST', body: { code: code.trim() },
+  }));
+  const cancel = async () => {
+    setBusy(true);
+    try { await apiJSON('/billing/email/change', { method: 'DELETE' }); } catch { /* already gone */ }
+    setBusy(false);
+    onDone();
+  };
+
+  const step = pending?.status ?? 'idle';
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>Change the billing contact</DialogTitle>
+          <DialogDescription>
+            Invoices, payment receipts and any payment-failure notices go to this
+            address. It is currently {current || 'not set'}.
+          </DialogDescription>
+        </DialogHeader>
+
+        {err && <p className="text-sm text-danger" role="alert">{err}</p>}
+
+        {loaded && step === 'idle' && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => { e.preventDefault(); void start(); }}
+          >
+            <label className="block text-sm">
+              <span className="text-muted-foreground">New billing address</span>
+              <Input
+                type="email" value={email} required autoFocus
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="accounting@yourcompany.com"
+                className="mt-1"
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              We will email you a 6-digit code first, to check it is really you.
+              Nothing changes until the new address confirms itself.
+            </p>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+              <Button type="submit" disabled={busy || !email.trim()}>
+                {busy ? 'Sending…' : 'Send me the code'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+
+        {step === 'code_sent' && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => { e.preventDefault(); void verify(); }}
+          >
+            <p className="text-sm text-foreground">
+              We emailed a 6-digit code to <strong>{pending?.code_sent_to}</strong>.
+              Enter it to confirm you asked for this.
+            </p>
+            <Input
+              inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus
+              value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              placeholder="000000"
+              className="tracking-[0.4em] text-center font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Next we email <strong>{pending?.new_email}</strong> a link. The bills move
+              only when somebody there opens it — so if you typed the address wrong,
+              nothing happens and this one keeps working.
+            </p>
+            <DialogFooter>
+              <Button type="button" variant="ghost" disabled={busy} onClick={() => void cancel()}>
+                Cancel the change
+              </Button>
+              <Button type="submit" disabled={busy || code.length < 6}>
+                {busy ? 'Checking…' : 'Confirm it was me'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+
+        {step === 'confirm_sent' && (
+          <div className="space-y-3">
+            <p className="text-sm text-foreground">
+              We emailed <strong>{pending?.new_email}</strong> a link to confirm the
+              address. Bills move as soon as somebody there opens it.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The link works once and expires in 48 hours. Until then nothing has
+              changed — receipts still go to {current || 'the current address'}.
+            </p>
+            <DialogFooter>
+              <Button type="button" variant="ghost" disabled={busy} onClick={() => void cancel()}>
+                Cancel the change
+              </Button>
+              <Button type="button" onClick={onDone}>Done</Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -766,18 +952,24 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
   );
 }
 
-// NOTE: A billing-email edit control lived here briefly and was
-// removed.  Customers update billing details (including the receipt
-// email) via the Stripe Customer Portal — the "Manage payment" button
-// in the page header opens that.  Doing system-side writes from the
-// user dashboard mixes operator and customer surfaces, which we
-// explicitly want to avoid.  The ``PATCH /billing/email`` API endpoint
-// stays — it's used by the operator-only system.4truck.us console.
+// NOTE: the billing-contact control above is the ONE write on this
+// page, and it is deliberately not a system write.  It files a
+// REQUEST; the address moves only after a code proves the owner asked
+// and a link proves the new address is real.  Everything else here
+// stays observational — a customer changing their card or their
+// address in Stripe's own portal goes through "Manage payment", and
+// the customer.updated webhook syncs that choice back so our copy
+// cannot drift away from Stripe's.
 
 // ── Main Page ─────────────────────────────────────────────────────
 
 export default function Billing() {
   const { t } = useTranslation();
+  // Only the OWNER moves the billing address — an admin with
+  // can_manage_billing reads the bills but does not get to redirect
+  // where they are sent.  The API enforces the same; this only keeps
+  // the control from appearing where it would be refused.
+  const { role } = usePermissions();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [plans, setPlans] = useState<CustomerPlan[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot[]>([]);
@@ -975,7 +1167,13 @@ export default function Billing() {
       {summary?.past_due_since && !summary.is_comped && <PastDueBanner since={summary.past_due_since} />}
       {summary && <CompBanner summary={summary} />}
 
-      {summary && <SummaryCard summary={summary} />}
+      {summary && (
+        <SummaryCard
+          summary={summary}
+          canEditContact={role === 'owner'}
+          onContactChanged={load}
+        />
+      )}
 
       {summary?.ai_usage && summary.ai_usage.total_requests > 0 && (
         <AiUsageCard ai={summary.ai_usage} />

@@ -553,6 +553,22 @@ class StripeBillingProvider:
                     account_id, int(_field(data, "amount_paid", 0) or 0),
                 )
 
+        elif event_type == "customer.updated":
+            # The customer changed something in Stripe's own portal —
+            # the "Manage payment" button sends them there, and the
+            # billing email is the field they change.  Without this our
+            # row silently drifts: an account can sit on a stale address
+            # for months while Stripe holds the right one, which is
+            # exactly how PREMIER ended up reading unknown@4truck.us.
+            email = str(_field(data, "email", "") or "").strip()
+            sub = await db.get_subscription(account_id) or {}
+            held = str(sub.get("billing_email") or "").strip()
+            if email and email.lower() != held.lower():
+                await db.update_subscription(account_id, billing_email=email)
+                logger.info(
+                    "billing contact synced from Stripe acct=%s (was %r)",
+                    account_id, held)
+
         elif event_type == "invoice.payment_failed":
             await db.record_invoice(account_id, **self._invoice_fields(data))
             sub = await db.get_subscription(account_id)
@@ -1093,6 +1109,12 @@ class StripeBillingProvider:
                 pass
         if (cust := _field(data, "customer", "")):
             if (acct := await db.find_account_by_stripe_customer(cust)):
+                return acct
+        # A ``customer.*`` event carries the Customer ITSELF as the
+        # object, so there is no ``customer`` field to follow — the id
+        # on the object is the customer id.
+        if str(cid := _field(data, "id", "") or "").startswith("cus_"):
+            if (acct := await db.find_account_by_stripe_customer(cid)):
                 return acct
         if (sub := _field(data, "subscription", "")):
             if (acct := await db.find_account_by_stripe_subscription(sub)):

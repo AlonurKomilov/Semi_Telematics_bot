@@ -93,6 +93,7 @@ from .plan_rollouts import PlanRolloutsMixin
 from .plan_requests import PlanRequestsMixin
 from .plan_offers import PlanOffersMixin
 from .account_discounts import AccountDiscountsMixin
+from .billing_email_changes import BillingEmailChangesMixin
 from .geofence import GeofenceMixin
 from .custom_poi import CustomPoiMixin
 from .poi_directory import PoiDirectoryMixin
@@ -178,6 +179,7 @@ class Database(
     PlanRequestsMixin,
     PlanOffersMixin,
     AccountDiscountsMixin,
+    BillingEmailChangesMixin,
     CustomPoiMixin,
     PoiDirectoryMixin,
     ScorecardMixin,

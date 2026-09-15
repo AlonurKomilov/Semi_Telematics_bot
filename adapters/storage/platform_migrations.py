@@ -246,6 +246,7 @@ async def run_all(conn) -> None:
     await migrate_live_map_key_rename(conn)
     await migrate_plan_extra_price(conn)
     await migrate_account_discounts(conn)
+    await migrate_billing_email_changes(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -5165,6 +5166,41 @@ async def migrate_plan_extra_price(conn) -> None:
         # parser reads '' and checkout refuses a priced extras line
         # under Stripe — the safe side.
         logger.exception("plans.stripe_extra_price_id migration failed")
+
+
+async def migrate_billing_email_changes(conn) -> None:
+    """A billing-address change waiting on its two proofs.
+
+    The address every invoice, receipt and dunning notice goes to is
+    also the first thing a stolen session would change, so moving it
+    takes a code typed back by the person who asked AND a link opened
+    at the new address.  This table is that request between the two.
+    One per account; idempotent.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS billing_email_changes (
+                id                SERIAL  PRIMARY KEY,
+                account_id        INTEGER NOT NULL UNIQUE,
+                new_email         TEXT    NOT NULL,
+                requested_by      INTEGER NOT NULL,
+                requested_email   TEXT    NOT NULL DEFAULT '',
+                code_hash         TEXT    NOT NULL DEFAULT '',
+                code_expires_at   TEXT    NOT NULL DEFAULT '',
+                confirm_token     TEXT    NOT NULL DEFAULT '',
+                token_expires_at  TEXT    NOT NULL DEFAULT '',
+                status            TEXT    NOT NULL DEFAULT 'code_sent',
+                created_at        TEXT    NOT NULL,
+                updated_at        TEXT    NOT NULL
+            )
+        """)
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_email_changes_token "
+            "ON billing_email_changes(confirm_token) WHERE confirm_token <> ''")
+    except Exception:
+        # Boot must not fail for this: without the table no change can be
+        # started, and the billing address stays where it is.
+        logger.exception("billing_email_changes migration failed")
 
 
 async def migrate_account_discounts(conn) -> None:
