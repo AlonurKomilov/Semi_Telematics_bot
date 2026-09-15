@@ -613,14 +613,20 @@ const USAGE_COLUMNS: AnyColumn[] = [
  *  is opened in a new tab and revoked when the tab has taken it. */
 function InvoicePdfButton({ number }: { number: string }) {
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const open = async () => {
     setBusy(true);
+    setFailed(false);
     try {
       const res = await apiFetch(`/billing/invoices/${encodeURIComponent(number)}/pdf`);
-      if (!res.ok) return;
+      if (!res.ok) { setFailed(true); return; }
       const url = URL.createObjectURL(await res.blob());
       window.open(url, '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      // A bill that will not open and says nothing is the same as a
+      // bill that is not there — the reason has to reach the person.
+      setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -628,7 +634,8 @@ function InvoicePdfButton({ number }: { number: string }) {
   return (
     <button onClick={open} disabled={busy}
             className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap disabled:opacity-50">
-      <Download className="size-3" /> {busy ? 'Opening…' : 'PDF'}
+      <Download className="size-3" />
+      {busy ? 'Opening…' : failed ? "Couldn't open — retry" : 'PDF'}
     </button>
   );
 }
