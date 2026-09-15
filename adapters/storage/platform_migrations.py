@@ -5859,11 +5859,19 @@ async def migrate_eld_hos_live(conn) -> None:
     count DOWN — the first shape carried two "today" columns holding
     time USED, which an ELD does not report.
 
-    THREE separate try blocks, not one.  This function re-runs every
+    FOUR separate try blocks, not one.  This function re-runs every
     boot rather than being version-tracked, so a single swallowing
     except would let a persistent failure in any step leave the table
     half-built behind a repeating log line, with the later steps never
     attempted.  Each step says which one it was.
+
+    The ORDER of those blocks is load-bearing, and the fourth exists
+    because it was got wrong once: an index over a newly added column
+    was written into the first block, where a failure RETURNS.  On an
+    existing database the column was not there yet, the index raised,
+    the return fired, and the ALTER that would have added the column
+    was never reached — every boot, identically.  Anything that depends
+    on the column repair goes AFTER the column repair.
     """
     # ── the table ──
     try:
@@ -5892,14 +5900,6 @@ async def migrate_eld_hos_live(conn) -> None:
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hos_live_user "
             "ON driver_hos_live(account_id, user_id)")
-        # An account is several legal carriers and the page filters by
-        # one.  Deliberately NOT in the primary key: the provider's
-        # driver id is unique across companies on every vendor we have
-        # (checked against ORIENT's own filter semantics), and widening
-        # the key would re-home every existing row.
-        await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_hos_live_company "
-            "ON driver_hos_live(account_id, company_code)")
     except Exception:
         # Boot must not fail for this.  Without the table the ELD
         # surfaces say the feed is not connected, which is exactly what
@@ -5937,6 +5937,28 @@ async def migrate_eld_hos_live(conn) -> None:
             "DROP COLUMN IF EXISTS shift_seconds_remaining")
     except Exception:
         logger.exception("migrate_eld_hos_live: column repair failed")
+
+    # ── indexes that depend on a repaired column ──
+    #
+    # SEPARATE, and after the ALTER, because ordering here is not a
+    # style question.  This index was first written into the create
+    # block above, next to the other two — and on any database that
+    # already had the table, CREATE TABLE IF NOT EXISTS was a no-op, so
+    # the column did not exist yet, so the index raised, so that block's
+    # ``return`` fired and the ALTER that adds the column never ran.
+    # Every boot repeated it: /eld answered 500 with
+    # "column h.company_code does not exist" and the repair that would
+    # have fixed it was unreachable.
+    #
+    # The tests did not see it because a fresh database gets the column
+    # from CREATE TABLE.  Only an EXISTING one takes the ALTER path,
+    # which is the one production is always on.
+    try:
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hos_live_company "
+            "ON driver_hos_live(account_id, company_code)")
+    except Exception:
+        logger.exception("migrate_eld_hos_live: company index failed")
 
     # ── row-level security ──
     #
