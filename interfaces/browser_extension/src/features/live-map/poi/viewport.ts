@@ -127,6 +127,84 @@ export function filterToView(features: PoiFeature[], view: ViewBox): PoiFeature[
  */
 export const MARKER_BUDGET = 250;
 
+
+// ── clustering, without a plugin ──────────────────────────────────────
+//
+// THE MEASUREMENT ABOVE WENT STALE THE DAY THE PANEL STARTED HOLDING A
+// LAYER WHOLE.  It was taken when a pan fetched one viewport and the
+// server refused a box bigger than a few degrees — so a wide zoom drew
+// nothing at all, and 250 was never reached.  Holding the layer means a
+// country-wide view now filters 2,340 weigh stations into the draw, and
+// the cap bites every time: "Nearest 250 shown — zoom in for the rest",
+// on a map the dashboard shows whole.
+//
+// The dashboard's answer is the markercluster plugin.  The panel still
+// will not carry one — it bundles no Leaflet plugins and the column is
+// 320px — so it buckets by hand.  A GRID IN PIXEL SPACE, not in
+// degrees: a degree of longitude is a different number of pixels at
+// Montana than at Texas, and a degree grid draws visibly coarser
+// clusters as you go north.
+//
+// The cap stays as a floor under the CLUSTER count, where it cannot
+// bite: a 320x400 column holds about 60 cells of 44px.
+
+/** One drawn thing: a point, or a bubble standing for several. */
+export interface PoiCluster {
+  lat: number;
+  lng: number;
+  count: number;
+  /** The feature itself, when the bubble stands for exactly one — so a
+   *  single point keeps its popup and its DEF badge. */
+  one: PoiFeature | null;
+}
+
+/** Degrees of LONGITUDE that `px` screen pixels cover at this zoom.
+ *
+ *  Web Mercator puts 360 degrees across 256·2^zoom pixels, and that
+ *  relation is exact and constant for longitude — which is why the
+ *  latitude side is derived from it below rather than measured. */
+export function degreesPerPixel(zoom: number, px: number): number {
+  return (px * 360) / (256 * Math.pow(2, zoom));
+}
+
+/**
+ * Bucket features into a screen-square grid.
+ *
+ * Latitude cells are scaled by cos(lat) because Mercator stretches
+ * north-south as you leave the equator: without it a cell that is 44px
+ * wide is 44px tall in Texas and about 30px tall at the Canadian
+ * border, and the clusters visibly change shape across one screen.
+ *
+ * A bucket's position is the MEAN of its members, not the cell centre —
+ * a bubble that sits where its points are reads as those points; one
+ * pinned to a grid corner reads as a grid.
+ */
+export function clusterByGrid(
+  features: PoiFeature[], cellLng: number,
+): PoiCluster[] {
+  if (cellLng <= 0) {
+    return features.map((f) => ({
+      lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0],
+      count: 1, one: f,
+    }));
+  }
+  const buckets = new Map<string, { lat: number; lng: number; n: number; one: PoiFeature }>();
+  for (const f of features) {
+    const [lng, lat] = f.geometry.coordinates;
+    // cos(lat) never reaches 0 in any inhabited latitude, but a bad
+    // coordinate should not divide by one.
+    const cellLat = cellLng * Math.max(0.15, Math.cos((lat * Math.PI) / 180));
+    const key = `${Math.floor(lng / cellLng)}:${Math.floor(lat / cellLat)}`;
+    const b = buckets.get(key);
+    if (b) { b.lat += lat; b.lng += lng; b.n += 1; }
+    else buckets.set(key, { lat, lng, n: 1, one: f });
+  }
+  return [...buckets.values()].map((b) => ({
+    lat: b.lat / b.n, lng: b.lng / b.n, count: b.n,
+    one: b.n === 1 ? b.one : null,
+  }));
+}
+
 /** Squared degrees — no need for a real distance to rank by nearness. */
 function d2(f: PoiFeature, lat: number, lng: number): number {
   const [flng, flat] = f.geometry.coordinates;
@@ -137,6 +215,27 @@ function d2(f: PoiFeature, lat: number, lng: number): number {
   const dx = (flng - lng) * Math.cos((lat * Math.PI) / 180);
   return dy * dy + dx * dx;
 }
+
+/** The `cap` CLUSTERS closest to (lat, lng).
+ *
+ *  Its own function and not a cast of the one below: a cluster carries
+ *  `lat`/`lng` and a feature carries `geometry.coordinates`, so handing
+ *  one to the other type-checks only through `as unknown as` and then
+ *  reads `undefined.coordinates` the first time the cap actually bites.
+ *  Which is to say: at country zoom on a dense layer, in front of
+ *  somebody. */
+export function nearestClustersFirst(
+  clusters: PoiCluster[], lat: number, lng: number, cap: number = MARKER_BUDGET,
+): PoiCluster[] {
+  if (clusters.length <= cap) return clusters;
+  const d = (c: PoiCluster) => {
+    const dy = c.lat - lat;
+    const dx = (c.lng - lng) * Math.cos((lat * Math.PI) / 180);
+    return dy * dy + dx * dx;
+  };
+  return [...clusters].sort((a, b) => d(a) - d(b)).slice(0, cap);
+}
+
 
 /** The `cap` features closest to (lat, lng).  Returns the input
  *  untouched when it already fits — the common case, and the one that

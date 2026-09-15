@@ -32,7 +32,8 @@ import {
 import { planFor, readHeld, writeHeld } from './held';
 import {
   LS_FRESH_MS, MARKER_BUDGET, bboxCovers, bboxKey, bboxParam, brandMatch,
-  filterToView, lsFindCovering, lsRead, lsWrite, nearestFirst,
+  clusterByGrid, degreesPerPixel, filterToView, lsFindCovering, lsRead,
+  lsWrite, nearestClustersFirst,
   type PoiFeature, type ViewBox,
 } from './viewport';
 
@@ -46,6 +47,28 @@ const POI_TIMEOUT_MS = 90_000;
 const MOVE_DEBOUNCE_MS = 400;
 
 const HALO = '#fff', SHADOW = 'rgba(0,0,0,.45)';
+
+/** Grid cell for clustering, in screen pixels.  The dashboard's plugin
+ *  merges within 60px; 44 is tighter because this column is 320px wide
+ *  and a 60px cell would blur two states into one bubble. */
+const CLUSTER_PX = 44;
+
+/** The dashboard's three size buckets, so one product speaks one
+ *  language: a bubble means the same thing on both maps. */
+function clusterSize(n: number): number {
+  return n < 10 ? 28 : n < 100 ? 32 : 36;
+}
+
+function clusterHtml(def: PoiLayerDef, n: number): string {
+  const ink = readableOn(def.color);
+  const px = clusterSize(n);
+  const font = n < 100 ? 11 : 10;
+  return `<div style="display:flex;align-items:center;justify-content:center;`
+    + `gap:2px;width:${px}px;height:${px}px;border-radius:50%;`
+    + `background:${def.color};color:${ink};font-weight:700;font-size:${font}px;`
+    + `line-height:1;border:2px solid ${HALO};box-shadow:0 1px 4px ${SHADOW}">`
+    + `${glyphSvg(def.glyph, font + 1, ink)}<span>${n}</span></div>`;
+}
 
 export interface LayerCount {
   /** Markers actually on the map. */
@@ -232,33 +255,57 @@ export function usePoiLayers(
         }))
       : features;
 
+    // BUBBLES, so the whole country can be on screen at once.
+    //
+    // The panel holds the layer whole now, so a country view filters
+    // every point into the draw — 2,340 weigh stations — and the old
+    // nearest-N cap turned that into "Nearest 250 shown", on a map the
+    // dashboard shows entire.  Grouping by a screen-square grid draws
+    // the same map in about sixty markers; see clusterByGrid.
+    //
+    // The cap survives as a floor under the CLUSTERS, where a 320px
+    // column cannot reach it — kept rather than deleted because a
+    // pathological zoom is still a thing that can happen, and a
+    // stuttering panel is worse than a coarse one.
+    const zoom = map.getZoom();
     const c = map.getCenter();
-    const drawn = nearestFirst(matching, c.lat, c.lng);
+    const clusters = clusterByGrid(matching, degreesPerPixel(zoom, CLUSTER_PX));
+    const drawn = nearestClustersFirst(clusters, c.lat, c.lng);
+    // `shown` counts POINTS, not bubbles: the row says "in this view",
+    // and a person reading it means truck stops, not markers.
+    const shown = drawn.reduce((n, cl) => n + cl.count, 0);
     setCounts((prev) => ({
       ...prev,
-      [id]: { shown: drawn.length, total: matching.length, fetched: features.length },
+      [id]: { shown, total: matching.length, fetched: features.length },
     }));
 
     if (!groups.current[id]) groups.current[id] = Leaf.layerGroup().addTo(map);
     const group = groups.current[id];
     group.clearLayers();
 
-    const size = markerSize(map.getZoom());
-    for (const f of drawn) {
-      const [lng, lat] = f.geometry.coordinates;
-      const hasDef = (f.properties as Record<string, string> | null)?.['fuel:adblue'] === 'yes';
-      group.addLayer(
-        Leaf.marker([lat, lng], {
-          icon: Leaf.divIcon({
-            className: '', html: markerHtml(def, size, hasDef),
-            iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-          }),
-          // Under the trucks, always.  A fuel stop must never be the
-          // thing a person clicks when they meant the truck beside it.
-          zIndexOffset: -500,
-          keyboard: false,
-        }).bindPopup(def.popup ? def.popup(f, def) : osmPopup(f, def)),
-      );
+    const size = markerSize(zoom);
+    for (const cl of drawn) {
+      const f = cl.one;
+      const html = f
+        ? markerHtml(def, size, (f.properties as Record<string, string> | null)
+            ?.['fuel:adblue'] === 'yes')
+        : clusterHtml(def, cl.count);
+      const px = f ? size : clusterSize(cl.count);
+      const marker = Leaf.marker([cl.lat, cl.lng], {
+        icon: Leaf.divIcon({
+          className: '', html,
+          iconSize: [px, px], iconAnchor: [px / 2, px / 2],
+        }),
+        // Under the trucks, always.  A fuel stop must never be the
+        // thing a person clicks when they meant the truck beside it.
+        zIndexOffset: -500,
+        keyboard: false,
+      });
+      if (f) marker.bindPopup(def.popup ? def.popup(f, def) : osmPopup(f, def));
+      // A bubble is not a place, so it gets no popup — it ZOOMS, which
+      // is the only thing a reader can want from it.
+      else marker.on('click', () => map.flyTo([cl.lat, cl.lng], Math.min(zoom + 3, 14)));
+      group.addLayer(marker);
     }
   }, [mapRef, Leaf]);
 
