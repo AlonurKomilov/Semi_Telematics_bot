@@ -25,10 +25,33 @@
        is only 0.05 above its page, so what clarity reveals here is a
        thin difference to begin with. */
     --surface-alpha: 0.55;
-    /* 10px. Lower than it was, higher than dark's 8: blur is the knob
-       the contrast guard cannot see, so it is spent where the measured
-       margin is widest, and light's is still the narrower of the two. */
-    --surface-blur: 10px;
+    /* 3px, one value for both modes, and the number was CHOSEN BY
+       MEASUREMENT rather than by eye — which for this particular knob
+       took building something to measure with.
+       Blur is invisible to `glassContrast.test.ts`: it redistributes
+       light without moving the average, so the composite that guard
+       reads is identical at 14px and at 0. Everything about it was
+       therefore argued rather than measured, and the argument kept
+       landing on "spend it where the contrast margin is widest" — which
+       is reasoning about the wrong quantity, since blur does not spend
+       contrast at all.
+       What blur actually spends is SPATIAL DETAIL, and it spends it
+       unevenly: fine first, coarse last. The `gauge` wallpaper carries
+       three line scales for exactly this, and read through a surface at
+       45% it says how much of each survives:
+         blur   8px hatch   24px grid
+           0        100%        100%
+           2         27%        100%
+           3          1%         81%
+           4          1%         62%
+           8          1%         11%   <- what shipped, and read as fog
+          14          2%          7%
+       3px is the knee. It removes the finest scale COMPLETELY — the one
+       that sits at text frequencies and makes a pattern behind words
+       hard to read — while keeping four fifths of the structure that
+       makes a surface look like it is over something. Everything past
+       it pays structure for noise that is already gone. */
+    --surface-blur: 3px;
     /* Glass without a saturation boost reads as fog. */
     --surface-saturate: 1.5;
     /* HOW MUCH LIGHT THE EDGE CATCHES — one knob for the rim and the
@@ -105,16 +128,11 @@
        plane, not a tint. Below about 0.38 the card starts dissolving
        into the page and the rim is left carrying it alone. */
     --surface-alpha: 0.45;
-    /* Less blur, for the same reason and only here. Blur is the one
-       knob `glassContrast.test.ts` CANNOT see — it redistributes light
-       without moving the average, so the composite it measures is
-       unchanged and a guard that passed at 14px passes at 0. What blur
-       actually governs is how sharply a pattern's own edges read
-       through, and that is a risk only where the contrast budget is
-       already spent. Dark has 0.4:1 of headroom over the floor and
-       light has 0.06:1, so dark can afford to be clearer and light
-       cannot. */
-    --surface-blur: 8px;
+    /* No blur override here any more. It carried one while the
+       reasoning was "dark has more contrast headroom, so dark can
+       afford to be clearer" — and blur does not spend contrast, so that
+       was a per-mode answer to a question that is not per-mode. A
+       pattern's fine detail is fine detail in either mode. */
     /* A clearer pane shows more of the ground, so it can carry the
        ground's colour rather than replacing it with fog. */
     --surface-saturate: 1.7;
