@@ -46,12 +46,24 @@
            4          1%         62%
            8          1%         11%   <- what shipped, and read as fog
           14          2%          7%
-       3px is the knee. It removes the finest scale COMPLETELY — the one
-       that sits at text frequencies and makes a pattern behind words
-       hard to read — while keeping four fifths of the structure that
-       makes a surface look like it is over something. Everything past
-       it pays structure for noise that is already gone. */
-    --surface-blur: 3px;
+       3px was the knee by that table and it is not where this landed.
+       The knee is where blur stops being free, not where it stops being
+       wanted, and asked for the finest scale the owner's answer was the
+       other end: still not clear. So the question became whether the
+       floor is SAFE rather than where the curve bends, and that is
+       answerable — rendered at 0 over `gauge`, with the pattern at full
+       strength behind it, body text on the surface stays perfectly
+       legible. The stops a pattern may lay down are capped
+       (`PATTERN_STOPS`) and every pack is held under them, so the
+       sharpest thing that can ever be behind a surface is still a quiet
+       thing.
+       0px, then, and the value is worth having precisely because it is
+       an END rather than a preference: there is nothing clearer, so the
+       question stops being asked. `saturate` is why `backdrop-filter`
+       still earns its compositing layer here — the ground's colour
+       comes through richer, which is the half of this material that
+       was never about blur. */
+    --surface-blur: 0px;
     /* Glass without a saturation boost reads as fog. */
     --surface-saturate: 1.5;
     /* HOW MUCH LIGHT THE EDGE CATCHES — one knob for the rim and the
@@ -153,9 +165,16 @@
         rgb(0 0 0 / calc(0.55 * var(--light-strength, 1)));
   }
 
-  /* `backdrop-filter` is applied ONLY under glass. At blur 0 it would
-     still promote every one of 178 cards to its own compositing layer
-     for no visual effect — the solid path must cost exactly nothing. */
+  /* `backdrop-filter` is applied ONLY under glass, and that stays true
+     now that the blur itself is 0. The sentence here used to be "at
+     blur 0 it would promote every one of 178 cards to its own
+     compositing layer for no visual effect", which was right about the
+     cost and is now wrong about the effect: `saturate` is still in the
+     filter and still does work, so under glass the layer buys
+     something. Under SOLID it would buy nothing, which is the rule this
+     selector exists for — the solid path must cost exactly nothing,
+     and `material.test.ts` holds the base `.surface` to no backdrop
+     filter at all. */
   :root[data-material="glass"] .surface {
     background-color: color-mix(
       in oklab,
