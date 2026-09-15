@@ -798,6 +798,14 @@ async def system_put_plan(
             stripe_extra_price_id = made_x.get("stripe_extra_price_id", "")
             stripe_extra_product_id = made_x.get("stripe_extra_product_id") or None
             archived_extra = made_x.get("archived") or ""
+    # The fifth door, and the quietest: a retired plan made the trial
+    # default, or made public, would be back on sale without anyone
+    # saying "un-retire".  The state has to hold on the save path too.
+    if before.get("retired") and (body.trial_default or body.public):
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{tier}' is retired — it is closed to new accounts, so it cannot be made "
+                   "public or the trial default. Un-retire it first.")
     row = await platform_db.upsert_plan(
         tier, label=label, included=included, quotas=dict(body.quotas), updated_by=actor,
         price_monthly_cents=body.price_monthly_cents, base_vehicles=body.base_vehicles,
@@ -890,6 +898,15 @@ async def operator_set_account_plan(
     plan = await platform_db.get_plan(tier)
     if plan is None:
         raise HTTPException(status_code=404, detail=f"No plan named '{tier}' — create it on the Plans page first")
+    if plan.get("retired"):
+        # The fourth door onto a plan, and the only one a person opens by
+        # hand.  Retired means closed to new accounts by EVERY route, or
+        # the state means nothing the day someone moves an account here
+        # out of habit.
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{tier}' is retired — it is closed to new accounts. Move this account to a "
+                   "plan still being sold, or un-retire that one first.")
     previous = acc.tier or "free"
     if previous == tier:
         return {"id": account_id, "tier": tier, "changed": False}
@@ -932,6 +949,76 @@ async def operator_set_account_plan(
 # only through this: previewed, capped per call (the console calls again
 # while ``remaining`` is not zero), resumable, audited, and refused by
 # the engine when the plan's Stripe price does not say what the row says.
+
+
+class PlanRetireBody(BaseModel):
+    retired: bool
+
+
+@router.post("/plans/{tier}/retire")
+async def system_retire_plan(
+    tier: str,
+    body: PlanRetireBody,
+    user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Close a plan to new accounts without touching the ones on it.
+
+    The state between "we have stopped selling this" and "nobody is left
+    on it".  Deleting a plan an account sits on is not a downgrade — the
+    tier resolves to nothing and every sellable feature answers False —
+    so a plan with customers can only be sunset, never removed, and this
+    is how the selling stops while they migrate at their own pace.
+
+    Closed by all four doors at once: checkout and the customer's plan
+    list through ``offers.purchasable_plan``, an operator's account move,
+    a new offer, and a trial.  Nothing about an existing subscription
+    asks any of them, which is the point.
+
+    Reversible — ``retired: false`` puts it back on sale.  Refused for
+    the trial default, because new signups land there and closing it
+    would leave them nowhere; make another plan the trial default first.
+    """
+    plan = await platform_db.get_plan(tier)
+    if not plan:
+        raise HTTPException(status_code=404, detail="No such plan.")
+    if body.retired and plan.get("trial_default"):
+        raise HTTPException(
+            status_code=409,
+            detail="This is the trial default — new signups land on it, so it cannot be "
+                   "closed to new accounts. Make another plan the trial default first.")
+    if bool(plan.get("retired")) == bool(body.retired):
+        return {"tier": tier, "retired": bool(body.retired), "changed": False}
+
+    actor = f"tg:{user.get('sub')}"
+    from datetime import datetime as _dt, timezone as _tz
+    stamp = _dt.now(_tz.utc).isoformat() if body.retired else ""
+    row = await platform_db.upsert_plan(
+        tier, label=plan["label"], included=plan.get("included") or [],
+        quotas=plan.get("quotas") or {}, retired_at=stamp, updated_by=actor)
+    # Offers are doors onto the plan; retiring it and leaving them open
+    # would be the state contradicting itself on the one surface a
+    # customer actually sees.
+    withdrawn = 0
+    if body.retired:
+        withdrawn = await platform_db.revoke_all_plan_offers(tier)
+    from capabilities.permissions.plans import invalidate_plans
+    invalidate_plans()
+    counts = await platform_db.count_accounts_by_tier()
+    left = counts.get(tier, 0)
+    try:
+        await platform_db.add_platform_audit(
+            "plan.retired" if body.retired else "plan.unretired",
+            account_id=0, actor=actor,
+            details=json.dumps({"tier": tier, "accounts_still_on_it": left,
+                                "offers_withdrawn": withdrawn}))
+    except Exception:
+        logger.exception("platform audit write failed for retire on %s", tier)
+    logger.info("system: plan %s %s by %s (%s accounts still on it)",
+                tier, "retired" if body.retired else "un-retired", actor, left)
+    return {"tier": tier, "retired": bool(body.retired), "changed": True,
+            "accounts_still_on_it": left, "offers_withdrawn": withdrawn,
+            "plan": _plan_view(row, counts)}
 
 
 @router.delete("/plans/{tier}")

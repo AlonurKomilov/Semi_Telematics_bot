@@ -626,6 +626,15 @@ async def create_tables(conn) -> None:
             sort                INTEGER NOT NULL DEFAULT 0,
             -- the plan a self-serve signup's trial starts on (one row)
             trial_default       INTEGER NOT NULL DEFAULT 0,
+            -- When set, the plan is RETIRED: nobody new may land on it by
+            -- any route — not checkout, not an operator move, not an
+            -- offer, not a trial — while every account already on it goes
+            -- on working untouched.  It is the state between "we have
+            -- stopped selling this" and "nobody is left on it", which is
+            -- the only honest way to sunset a plan: deleting one an
+            -- account sits on does not downgrade them, it resolves their
+            -- tier to nothing and closes the whole product on them.
+            retired_at          TEXT    NOT NULL DEFAULT '',
             -- the Stripe Product this plan's Prices hang off (made on first use)
             stripe_product_id   TEXT    NOT NULL DEFAULT '',
             -- the per-extra-truck Price on that Product, made on save like

@@ -47,6 +47,8 @@ interface Plan {
   public: boolean;
   sort: number;
   trial_default: boolean;
+  /** closed to new accounts; the ones already on it are untouched */
+  retired: boolean;
   // the accounts a HIDDEN plan was offered to after a Contact-Sales
   // conversation — they see it on their Billing page, nobody else does
   offered_to: { account_id: number; account_name: string; request_id: number | null; created_at: string }[];
@@ -520,6 +522,27 @@ export default function PlansPage() {
     return key;
   }
 
+  async function setRetired(p: Plan, retired: boolean) {
+    const offers = (p.offered_to ?? []).length;
+    const msg = retired
+      ? `Retire "${p.label}"?  No new account can land on it — not by checkout, not by an `
+        + `operator move, not by an offer, not by a trial.`
+        + (p.accounts > 0 ? `  The ${p.accounts} already on it keep working, untouched.` : '')
+        + (offers ? `  ${offers} open offer${offers === 1 ? '' : 's'} will be withdrawn.` : '')
+      : `Put "${p.label}" back on sale?  New accounts will be able to land on it again.`;
+    if (!window.confirm(msg)) return;
+    setBusy(`ret:${p.tier}`);
+    setErr('');
+    try {
+      await apiJSON(`/system/plans/${p.tier}/retire`, { method: 'POST', body: { retired } });
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Could not change it');
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function removePlan(p: Plan) {
     const offers = (p.offered_to ?? []).length;
     // Names the two things that do NOT come back — the Stripe price is
@@ -699,6 +722,26 @@ export default function PlansPage() {
                         server refuses free, the trial default and any plan
                         an account still sits on, and a button that is
                         always refused teaches people to ignore the refusal. */}
+                    {p.retired && (
+                      <div className="mt-1 text-[11px] font-normal rounded bg-slate-700/40 text-slate-300 px-1.5 py-0.5">
+                        retired — closed to new accounts
+                        {p.accounts > 0 && `, ${p.accounts} still on it`}
+                      </div>
+                    )}
+                    {/* Retiring is what you do INSTEAD of deleting while
+                        accounts are still on it: deleting one they sit on
+                        does not downgrade them, it closes the product on
+                        them.  So it is offered exactly where delete is not. */}
+                    {p.tier !== 'free' && !p.trial_default && (p.accounts > 0 || p.retired) && (
+                      <Button size="sm" variant="ghost"
+                              className="mt-1 font-normal text-slate-500 hover:text-slate-200"
+                              disabled={busy === `ret:${p.tier}`}
+                              onClick={() => setRetired(p, !p.retired)}>
+                        {busy === `ret:${p.tier}`
+                          ? 'Saving…'
+                          : p.retired ? 'Put back on sale' : 'Retire — stop new accounts'}
+                      </Button>
+                    )}
                     {p.tier !== 'free' && !p.trial_default && p.accounts === 0 && (
                       <Button size="sm" variant="ghost"
                               className="mt-1 font-normal text-slate-500 hover:text-danger"

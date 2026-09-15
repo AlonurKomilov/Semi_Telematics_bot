@@ -31,6 +31,15 @@ async def purchasable_plan(db, tier: str, account_id: int) -> Optional[dict]:
     plan = await db.get_plan(tier)
     if plan is None:
         return None
+    if plan.get("retired"):
+        # Retired means closed to NEW accounts by every route.  Answered
+        # here rather than at each caller because this is the one
+        # question checkout, the customer's plan list and the switch
+        # path all ask — a plan that were buyable in one of them and not
+        # the others is the bug this module exists to prevent.  An
+        # account already on it is untouched: nothing about their
+        # subscription asks this.
+        return None
     if plan["public"]:
         return plan
     if await db.plan_offered_to(tier, int(account_id)):
@@ -49,6 +58,9 @@ def offer_refusal(plan: dict, all_plans: list[dict], *, provider: str) -> str:
     Price, so a Price shared with another plan would land the customer
     on that other plan's terms.
     """
+    if plan.get("retired"):
+        return ("This plan is retired — it is closed to new accounts. Un-retire it first "
+                "if you mean to sell it again.")
     if plan.get("public"):
         return "This plan is already on every customer's Billing page — nothing to offer."
     if int(plan.get("price_monthly_cents") or 0) <= 0:

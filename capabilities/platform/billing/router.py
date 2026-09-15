@@ -335,6 +335,13 @@ async def billing_plans(
     offered = set(await platform_db.offered_tiers_for_account(user["account_id"]))
     out = []
     for r in sorted(rows, key=lambda x: (x["sort"], x["tier"])):
+        # A retired plan is closed to new accounts, so it is not a choice
+        # — but it stays on the page of the account already ON it, which
+        # is their own plan and the only place they read what they pay
+        # for.  Their card shows "Current Plan" and offers no upgrade to
+        # itself, so nothing here invites them onto it.
+        if r.get("retired") and r["tier"] != current:
+            continue
         if not r["public"] and r["tier"] != current and r["tier"] not in offered:
             continue
         inc = r["included"]

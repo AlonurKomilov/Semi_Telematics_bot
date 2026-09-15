@@ -43,6 +43,8 @@ def _row(r) -> dict:
         "sort": _int("sort"),
         # the plan a self-serve signup's trial starts on (one row carries it)
         "trial_default": bool(_int("trial_default")),
+        "retired_at": str(r["retired_at"] or "") if "retired_at" in r.keys() else "",
+        "retired": bool(str(r["retired_at"] or "").strip()) if "retired_at" in r.keys() else False,
         # the Stripe Product this plan's Prices hang off
         "stripe_product_id": str(r["stripe_product_id"] or "") if "stripe_product_id" in keys else "",
         # the per-extra-truck Price, and the Product it is named after on
@@ -119,6 +121,7 @@ class PlansMixin:
         extra_vehicle_cents: Optional[int] = None, stripe_price_id: Optional[str] = None,
         public: Optional[bool] = None, sort: Optional[int] = None,
         trial_default: Optional[bool] = None, stripe_product_id: Optional[str] = None,
+        retired_at: Optional[str] = None,
         stripe_extra_price_id: Optional[str] = None, stripe_extra_product_id: Optional[str] = None,
     ) -> dict:
         """Create or replace a plan.  Label, included and quotas are always
@@ -130,14 +133,14 @@ class PlansMixin:
         pick = lambda v, k, d: (cur.get(k, d) if v is None else v)  # noqa: E731
         await self._db.execute(
             "INSERT INTO plans (tier, label, included, quotas, price_monthly_cents, base_vehicles, "
-            "extra_vehicle_cents, stripe_price_id, public, sort, trial_default, stripe_product_id, "
+            "extra_vehicle_cents, stripe_price_id, public, sort, trial_default, retired_at, stripe_product_id, "
             "stripe_extra_price_id, stripe_extra_product_id, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(tier) DO UPDATE SET label = excluded.label, included = excluded.included, "
             "quotas = excluded.quotas, price_monthly_cents = excluded.price_monthly_cents, "
             "base_vehicles = excluded.base_vehicles, extra_vehicle_cents = excluded.extra_vehicle_cents, "
             "stripe_price_id = excluded.stripe_price_id, public = excluded.public, sort = excluded.sort, "
-            "trial_default = excluded.trial_default, stripe_product_id = excluded.stripe_product_id, "
+            "trial_default = excluded.trial_default, retired_at = excluded.retired_at, stripe_product_id = excluded.stripe_product_id, "
             "stripe_extra_price_id = excluded.stripe_extra_price_id, "
             "stripe_extra_product_id = excluded.stripe_extra_product_id, "
             "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
@@ -149,6 +152,7 @@ class PlansMixin:
              1 if pick(public, "public", False) else 0,
              int(pick(sort, "sort", 0)),
              1 if pick(trial_default, "trial_default", False) else 0,
+             str(pick(retired_at, "retired_at", "") or ""),
              str(pick(stripe_product_id, "stripe_product_id", "") or ""),
              str(pick(stripe_extra_price_id, "stripe_extra_price_id", "") or ""),
              str(pick(stripe_extra_product_id, "stripe_extra_product_id", "") or ""),
@@ -173,8 +177,14 @@ class PlansMixin:
         """The plan a self-serve signup's trial starts on — the one row
         flagged ``trial_default`` — or ``None`` when the operator has
         flagged none (then no trial starts: an account signs up on Free)."""
+        # A retired plan is closed to new accounts, and a trial IS a new
+        # account landing on one.  Belt to the route's braces: the flag
+        # cannot be set on a retired plan, and retiring the trial default
+        # is refused — but if either were ever bypassed, signups must not
+        # start on a plan we have stopped selling.
         cur = await self._db.execute(
-            "SELECT tier FROM plans WHERE trial_default = 1 ORDER BY sort, tier LIMIT 1")
+            "SELECT tier FROM plans WHERE trial_default = 1 AND COALESCE(retired_at, '') = '' "
+            "ORDER BY sort, tier LIMIT 1")
         r = await cur.fetchone()
         return r["tier"] if r else None
 

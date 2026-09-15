@@ -5503,6 +5503,9 @@ async def migrate_plans_catalog(conn) -> None:
         "public INTEGER NOT NULL DEFAULT 0",
         "sort INTEGER NOT NULL DEFAULT 0",
         "trial_default INTEGER NOT NULL DEFAULT 0",
+        # a plan being sunset: closed to new accounts, untouched for the
+        # ones already on it
+        "retired_at TEXT NOT NULL DEFAULT ''",
     )
     try:
         for c in cols:

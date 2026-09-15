@@ -595,3 +595,95 @@ async def test_a_dependent_count_we_cannot_read_refuses_rather_than_guesses(syst
     assert "subscriptions" in r.json()["detail"]
     assert "refusing rather than guessing" in r.json()["detail"]
     assert await s["db"].get_plan("unknowable"), "and nothing was deleted"
+
+
+# ── retiring: closed to new accounts, untouched for the old ────────
+
+@pytest.mark.asyncio
+async def test_retiring_closes_every_door_and_leaves_the_accounts_alone(system_app):
+    """The state between "we stopped selling this" and "nobody is left
+    on it".  A plan with customers can only be sunset — deleting one
+    they sit on resolves their tier to nothing and closes the product."""
+    s = system_app
+    await s["db"].upsert_plan("sunset", label="Sunset", included=["*"],
+                              price_monthly_cents=5000, public=True)
+    staying = await s["db"].create_account("Staying Co", tier="sunset")
+    await s["db"].get_or_create_subscription(staying.id)
+    await s["db"].update_subscription(staying.id, tier="sunset")
+    newcomer = await s["db"].create_account("Newcomer Co", tier="free")
+
+    r = await s["client"].post("/api/system/plans/sunset/retire", headers=s["op"],
+                               json={"retired": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["retired"] is True and r.json()["accounts_still_on_it"] == 1
+
+    # door 1 — checkout and the customer's plan list, through the one gate
+    from capabilities.platform.billing.offers import purchasable_plan
+    assert await purchasable_plan(s["db"], "sunset", newcomer.id) is None
+    # door 2 — an operator moving an account by hand
+    r = await s["client"].patch(f"/api/system/accounts/{newcomer.id}/plan",
+                                headers=s["op"], json={"tier": "sunset"})
+    assert r.status_code == 409 and "retired" in r.json()["detail"]
+    # door 3 — an offer
+    from capabilities.platform.billing.offers import offer_refusal
+    plan = await s["db"].get_plan("sunset")
+    assert "retired" in offer_refusal(plan, [plan], provider="stub")
+    # door 4 — a trial
+    assert await s["db"].trial_plan() != "sunset"
+    # door 5 — the save path putting it back on sale sideways
+    r = await s["client"].put("/api/system/plans/sunset", headers=s["op"],
+                              json={"label": "Sunset", "included": ["*"], "quotas": {},
+                                    "public": True})
+    assert r.status_code == 409 and "Un-retire it first" in r.json()["detail"]
+
+    # and the account already on it is untouched
+    acct = await s["db"].get_account(staying.id)
+    assert acct.tier == "sunset"
+    sub = await s["db"].get_subscription(staying.id)
+    assert sub["tier"] == "sunset"
+
+
+@pytest.mark.asyncio
+async def test_a_retired_plan_stays_on_the_page_of_the_account_that_is_on_it(system_app):
+    """Their own plan is the one thing on that page they need to read.
+    Hiding it would tell a paying customer their plan had vanished."""
+    s = system_app
+    from adapters.storage import Role
+    from interfaces.api.auth import create_jwt
+    await s["db"].upsert_plan("sunset2", label="Sunset Two", included=["*"],
+                              price_monthly_cents=5000, public=True)
+    mine = await s["db"].create_account("On It Co", tier="sunset2")
+    other = await s["db"].create_account("Not On It Co", tier="free")
+    owner = await s["db"].create_user(980001, mine.id, role=Role.OWNER)
+    stranger = await s["db"].create_user(980002, other.id, role=Role.OWNER)
+    await s["client"].post("/api/system/plans/sunset2/retire", headers=s["op"],
+                           json={"retired": True})
+
+    def hdr(u, a):
+        return {"Authorization": f"Bearer {create_jwt(u.telegram_id, a.id, 'owner')}"}
+    seen = (await s["client"].get("/api/billing/plans", headers=hdr(owner, mine))).json()
+    tiers = {p["tier"]: p for p in seen["plans"]}
+    assert "sunset2" in tiers and tiers["sunset2"]["current"] is True
+
+    theirs = (await s["client"].get("/api/billing/plans", headers=hdr(stranger, other))).json()
+    assert "sunset2" not in {p["tier"] for p in theirs["plans"]}, "not a choice for anyone else"
+
+
+@pytest.mark.asyncio
+async def test_the_trial_default_cannot_be_retired_and_un_retiring_reopens(system_app):
+    s = system_app
+    await s["db"].upsert_plan("trialish", label="Trialish", included=["*"], trial_default=True)
+    r = await s["client"].post("/api/system/plans/trialish/retire", headers=s["op"],
+                               json={"retired": True})
+    assert r.status_code == 409 and "trial default" in r.json()["detail"]
+
+    await s["db"].upsert_plan("reopen", label="Reopen", included=["*"],
+                              price_monthly_cents=100, public=True)
+    acct = await s["db"].create_account("Reopen Co", tier="free")
+    await s["client"].post("/api/system/plans/reopen/retire", headers=s["op"], json={"retired": True})
+    from capabilities.platform.billing.offers import purchasable_plan
+    assert await purchasable_plan(s["db"], "reopen", acct.id) is None
+    r = await s["client"].post("/api/system/plans/reopen/retire", headers=s["op"],
+                               json={"retired": False})
+    assert r.status_code == 200 and r.json()["retired"] is False
+    assert await purchasable_plan(s["db"], "reopen", acct.id) is not None, "back on sale"
