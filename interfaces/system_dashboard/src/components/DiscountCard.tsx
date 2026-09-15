@@ -64,6 +64,10 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
   const [granting, setGranting] = useState(false);
   const [month, setMonth] = useState(lastMonth());
   const [issued, setIssued] = useState('');
+  //: Backfilling history should be silent — the customer did not get
+  //: these at the time, and four receipts landing at once for periods
+  //: that closed months ago reads as a billing system in trouble.
+  const [emailIt, setEmailIt] = useState(true);
 
   const load = useCallback(async () => {
     setErr('');
@@ -100,7 +104,8 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
     setIssued('');
     try {
       const r = await apiJSON<{ invoice: { number: string } }>(
-        `/system/accounts/${accountId}/invoice?month=${encodeURIComponent(month)}`,
+        `/system/accounts/${accountId}/invoice?month=${encodeURIComponent(month)}`
+        + `&send=${emailIt ? 'true' : 'false'}`,
         { method: 'POST' });
       setIssued(r.invoice.number);
       await load();
@@ -173,9 +178,15 @@ export function DiscountCard({ accountId, isComped }: { accountId: number; isCom
                 {busy ? 'Writing…' : 'Issue invoice'}
               </Button>
             </div>
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+              <input type="checkbox" className="min-h-tap accent-accent"
+                     checked={emailIt} onChange={(e) => setEmailIt(e.target.checked)} />
+              Email it to the customer
+            </label>
             {issued && (
               <p className="text-xs text-ok mt-2">
-                {issued} written and sent — it is on the customer's Billing page now.
+                {issued} written{emailIt ? ' and sent' : ''} — it is on the customer's
+                Billing page now.
               </p>
             )}
           </div>

@@ -135,7 +135,8 @@ async def snapshot_account_billing(
 
 
 async def issue_local_invoice(account_id: int, *, now: datetime | None = None,
-                              period: tuple[str, str] | None = None) -> dict | None:
+                              period: tuple[str, str] | None = None,
+                              send: bool = True) -> dict | None:
     """Write, render and send one Absolute 0 account's monthly invoice.
 
     Stripe bills nobody here, so nothing would otherwise be written: no
@@ -168,7 +169,13 @@ async def issue_local_invoice(account_id: int, *, now: datetime | None = None,
     await platform_db.record_invoice(account_id, invoice["number"], **row)
     logger.info("Absolute 0 invoice %s written for account %s (covered %s cents)",
                 invoice["number"], account_id, invoice["subtotal_cents"])
-    await _send_local_invoice(account_id, platform_db, invoice)
+    # ``send=False`` writes the record without mailing it.  Backfilling
+    # months an account spent unbilled is the case: those invoices are
+    # being created so the history is there to read, and four receipts
+    # arriving at once for periods that closed months ago reads as a
+    # billing system that has lost track of itself.
+    if send:
+        await _send_local_invoice(account_id, platform_db, invoice)
     return {"number": invoice["number"], **row}
 
 
@@ -222,9 +229,14 @@ async def _send_local_invoice(account_id: int, platform_db, invoice: dict) -> bo
         if not to:
             logger.info("Absolute 0 invoice %s: no address on file", invoice["number"])
             return False
-        pdf = await asyncio.to_thread(
-            _inv.render_pdf, invoice,
-            {"name": (os.getenv("SMTP_FROM_NAME") or "4truck"), "support": receipt_email.reply_to()})
+        # ``issuer`` is keyword-only.  Passed positionally this raised
+        # TypeError, the except below swallowed it, and every Absolute 0
+        # receipt was silently never sent — the invoice row was written,
+        # the customer heard nothing, and only a traceback in the log
+        # said so.
+        issuer = {"name": (os.getenv("SMTP_FROM_NAME") or "4truck"),
+                  "support": receipt_email.reply_to()}
+        pdf = await asyncio.to_thread(lambda: _inv.render_pdf(invoice, issuer=issuer))
         sent = await asyncio.to_thread(
             receipt_email.send_local, to=to, account_name=invoice.get("account_name") or "",
             invoice=invoice, pdf=pdf)

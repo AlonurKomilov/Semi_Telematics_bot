@@ -412,3 +412,34 @@ async def test_a_past_month_is_billed_on_that_months_truck_count(api, monkeypatc
     june = r.json()["invoice"]
     assert june["subtotal_cents"] == 9900, "the plan, and no trucks on the registry"
     assert june["subtotal_cents"] != july["subtotal_cents"]
+
+
+@pytest.mark.asyncio
+async def test_backfilling_history_can_be_written_without_mailing_it(api, monkeypatch):
+    """Months that closed long ago are written so the record exists, not
+    to tell the customer something.  Four receipts arriving at once for
+    periods nobody billed reads as a billing system in trouble."""
+    c, db = api["client"], api["db"]
+    monkeypatch.setenv("BILLING_RECEIPT_EMAIL", "1")
+    sent: list[str] = []
+    import capabilities.platform.billing.receipt_email as _re
+    monkeypatch.setattr(_re, "send_local", lambda **kw: (sent.append(kw["to"]), True)[1])
+
+    acct = await db.create_account("Quiet Backfill Co", tier="pro")
+    await db.get_or_create_subscription(acct.id)
+    await db.update_subscription(acct.id, tier="pro", monthly_base_usd=9900,
+                                 base_vehicles=10, extra_vehicle_cents=299,
+                                 billing_email="owner@quiet.com")
+    row = await db.create_account_discount(acct.id, kind=ABSOLUTE, reason="partner")
+    await db.mark_account_discount(int(row["id"]), status="active")
+
+    for month in ("2026-05", "2026-06"):
+        r = await c.post(f"/api/system/accounts/{acct.id}/invoice?month={month}&send=false")
+        assert r.status_code == 200, r.text
+    assert len(await db.get_invoices(acct.id)) == 2, "the record is there"
+    assert sent == [], "and nobody was emailed about a month that closed long ago"
+
+    # the ordinary monthly path still tells them
+    r = await c.post(f"/api/system/accounts/{acct.id}/invoice?month=2026-07")
+    assert r.status_code == 200
+    assert sent == ["owner@quiet.com"], "a current invoice is still sent"

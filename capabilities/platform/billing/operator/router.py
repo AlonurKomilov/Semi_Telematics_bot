@@ -68,6 +68,9 @@ async def force_sync_quantity(
 async def system_issue_local_invoice(
     account_id: int,
     month: str = Query(default="", description="YYYY-MM; default is the month just closed"),
+    send: bool = Query(default=True,
+                       description="Email the invoice + receipt. Turn OFF when "
+                                   "backfilling months that closed long ago."),
     user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
@@ -96,7 +99,7 @@ async def system_issue_local_invoice(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     try:
-        row = await issue_local_invoice(account_id, period=period)
+        row = await issue_local_invoice(account_id, period=period, send=send)
     except Exception as e:
         logger.exception("system: local invoice failed acct=%s", account_id)
         raise HTTPException(status_code=502, detail=f"The invoice could not be written: {e}")
@@ -105,8 +108,8 @@ async def system_issue_local_invoice(
             status_code=409,
             detail="This account has no Absolute 0 discount — its bills are Stripe's to issue. "
                    "Grant Absolute 0 first if 4truck is covering the cost.")
-    logger.info("system: local invoice %s issued acct=%s by operator_tg=%s",
-                row.get("number"), account_id, user.get("sub"))
+    logger.info("system: local invoice %s issued acct=%s by operator_tg=%s (emailed=%s)",
+                row.get("number"), account_id, user.get("sub"), send)
     return {"invoice": row}
 
 
