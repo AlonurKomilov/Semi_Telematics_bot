@@ -251,6 +251,38 @@ describe('the grid does not tick once per row', () => {
     });
   }
 
+  /**
+   * And the three ways out of a dialog say the same word.
+   *
+   * Escape and a backdrop press produce no click on anything the
+   * classifier knows, so they sounded `surface_close`. The X button is
+   * a `<Button>`, so it sounded `press` — and the document listener
+   * runs in the capture phase, so it got there first and the 90ms floor
+   * dropped the close behind it. One act, three exits, two different
+   * sounds, and no meaning in the difference.
+   */
+  for (const [what, file] of [
+    ['dialog', 'dialog.tsx'], ['sheet', 'sheet.tsx'],
+  ] as const) {
+    it(`the ${what}'s X button is a close, not a press`, () => {
+      const src = readFileSync(
+        join(__dirname, '..', '..', 'components', 'ui', file), 'utf8');
+      // The slot name appears twice — once on the re-exported wrapper,
+      // once on the X itself, which is the later of the two and the one
+      // that renders a Button.
+      const at = src.lastIndexOf(`data-slot="${what}-close"`);
+      expect(at, `the ${what} close button moved — this reader is stale`)
+        .toBeGreaterThan(-1);
+      const button = src.slice(at, at + 900);
+      expect(button, 'not the rendered X — this reader is stale').toContain('<Button');
+      expect(
+        button,
+        `the ${what}'s X lost its \`data-cue="none"\`, so closing by the button `
+          + 'sounds different from closing by Escape.',
+      ).toContain('data-cue="none"');
+    });
+  }
+
   it('and the marker is what the classifier honours', () => {
     // The positive control for all three: if `data-cue="none"` ever
     // stops suppressing, the assertions above are checking a string

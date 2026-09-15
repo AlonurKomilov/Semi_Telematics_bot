@@ -96,6 +96,9 @@ function SheetContent({
             render={
               <Button
                 variant="ghost"
+                // Not a press — this surface closing. Same reason as
+                // `dialog.tsx`, same one word for all three ways out.
+                data-cue="none"
                 className="absolute top-3 right-3"
                 size="icon-sm"
               />

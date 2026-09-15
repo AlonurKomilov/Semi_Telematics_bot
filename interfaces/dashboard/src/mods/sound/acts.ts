@@ -135,11 +135,46 @@ let lastAt = -Infinity;
 let streakName: ActName | null = null;
 let streakCount = 0;
 
+/**
+ * What this session has actually HEARD, per act.
+ *
+ * Every per-shift number behind this axis is a derivation — there is no
+ * click telemetry in this product, and there is deliberately none being
+ * added for a convenience feature. So the instrument is the smallest
+ * honest one: a count in memory, on this tab, shown to the person whose
+ * ears it is about.
+ *
+ * It answers the question the design could only estimate — is a press
+ * five hundred times a shift, or two thousand? — and it answers a
+ * second one the person asks themselves: "how much of this am I
+ * actually hearing?" A number they can read is a better basis for
+ * keeping it on than a feeling.
+ *
+ * Counted where a cue was PLAYED, past every gate and every floor, so
+ * it reports what reached the room rather than what was attempted.
+ * Nothing leaves the tab and nothing is stored.
+ */
+const heard = new Map<ActName, number>();
+let heardTotal = 0;
+
+export function noteHeard(name: ActName): void {
+  heard.set(name, (heard.get(name) ?? 0) + 1);
+  heardTotal += 1;
+}
+
+/** The tally, newest count included. Total is separate so a reader does
+ *  not have to sum a map to answer the first question. */
+export function heardSoFar(): { total: number; byAct: ReadonlyMap<ActName, number> } {
+  return { total: heardTotal, byAct: heard };
+}
+
 /** Test seam — the rate limiter is module state, like the context. */
 export function resetActSoundForTests(): void {
   lastAt = -Infinity;
   streakName = null;
   streakCount = 0;
+  heard.clear();
+  heardTotal = 0;
 }
 
 /** What a repeated act is scaled by, given how many came before it. */

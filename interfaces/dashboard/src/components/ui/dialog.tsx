@@ -132,6 +132,15 @@ function DialogContent({
             render={
               <Button
                 variant="ghost"
+                // Silent as a PRESS, because it is not one: it is this
+                // surface closing, and that has its own word. Without
+                // the marker the delegated listener classifies the X as
+                // a press, gets there first (capture phase) and the
+                // 90ms floor drops the `surface_close` behind it — so
+                // closing by X sounded different from closing by
+                // Escape or by the backdrop, for no reason anybody
+                // could hear a meaning in.
+                data-cue="none"
                 className="absolute top-2 right-2"
                 size="icon-sm"
               />

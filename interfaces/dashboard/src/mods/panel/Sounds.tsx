@@ -20,7 +20,7 @@
  * folder was cut out of.
  */
 import { useOffered } from '../store/useOffered';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, RotateCcw, Volume2, VolumeX } from '../../lib/icons';
 import { Slider } from '../../components/ui/slider';
@@ -31,7 +31,7 @@ import { armAudio, playCue, type SoundPack } from '../sound/engine';
 import { KEY_LIMITS } from '../sound/keys';
 import { SOUND_PACKS, soundPackById } from '../store/items/sound';
 import { ACT_PACKS, actPackById } from '../store/items/acts';
-import { ACT_LIMITS } from '../sound/acts';
+import { ACT_LIMITS, heardSoFar } from '../sound/acts';
 import { KEY_PACKS, keyPackById } from '../store/items/keys';
 import { AMBIENCE_PACKS, ambienceById } from '../store/items/ambience';
 import { Chip } from './Chip';
@@ -440,6 +440,23 @@ export function ActSoundItem() {
 
   const snoozed = Date.now() < snoozeUntil;
 
+  /**
+   * What this tab has actually heard.
+   *
+   * POLLED, not subscribed. This is a settings page a person opens on
+   * purpose, and a second is far below the rate anything here changes —
+   * a subscription would be more machinery for a number nobody watches
+   * tick. It stops while the switch is off, so an axis nobody turned on
+   * costs no timer.
+   */
+  const [tally, setTally] = useState(() => heardSoFar());
+  useEffect(() => {
+    if (!on) return;
+    const id = setInterval(() => setTally(heardSoFar()), 1_000);
+    return () => clearInterval(id);
+  }, [on]);
+  const loudest = [...tally.byAct.entries()].sort((a, b) => b[1] - a[1])[0];
+
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
@@ -519,6 +536,19 @@ export function ActSoundItem() {
           <p className="text-2xs text-muted-foreground mt-1.5">
             {actPackById(pack)?.description ?? ''}
           </p>
+          {/* The only measurement this axis has. Every per-shift figure
+              behind its design is a derivation — there is no click
+              telemetry here and none is being added for a convenience
+              feature — so the instrument is the smallest honest one: a
+              count on this tab, shown to the person whose ears it is
+              about. Nothing leaves the tab and nothing is stored. */}
+          {tally.total > 0 && (
+            <p className="text-2xs text-muted-foreground mt-1 tabular-nums">
+              {t('mods.acts_heard', 'Heard on this tab: {{n}}', { n: tally.total })}
+              {loudest && ` · ${t('mods.acts_heard_top', 'mostly {{act}} ({{n}})',
+                { act: loudest[0].replace('_', ' '), n: loudest[1] })}`}
+            </p>
+          )}
         </>
       )}
     </div>

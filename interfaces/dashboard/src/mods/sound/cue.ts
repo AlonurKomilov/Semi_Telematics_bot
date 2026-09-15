@@ -22,7 +22,7 @@
 import { preferences } from '../../preferences';
 import { armAudio, lastNotifyAt, playCue, type CueName } from './engine';
 import { pickKeyCue, KEY_LIMITS, lastKeyAt } from './keys';
-import { pickActCue, ACT_LIMITS, ACT_FAMILY, type ActName } from './acts';
+import { pickActCue, noteHeard, ACT_LIMITS, ACT_FAMILY, type ActName } from './acts';
 import { soundPackById } from '../store/items/sound';
 import { keyPackById } from '../store/items/keys';
 import { actPackById } from '../store/items/acts';
@@ -151,7 +151,12 @@ export function playActCue(name: ActName): void {
   );
   // The ACTION bus: everything here is something you did, so it ducks
   // when the app needs to say something.
-  if (picked) playCue(picked.cue, volume * picked.scale, ACT_LIMITS, 'action');
+  if (!picked) return;
+  playCue(picked.cue, volume * picked.scale, ACT_LIMITS, 'action');
+  // Counted HERE and not at the call site: this is the last line before
+  // a sound reaches the room, so the tally reports what was heard
+  // rather than what was asked for.
+  noteHeard(name);
 }
 
 

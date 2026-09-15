@@ -25,7 +25,8 @@ vi.mock('./engine', async (orig) => ({
   playCue, armAudio,
 }));
 
-import { playUiCue, armIfWanted, playKeyCue } from './cue';
+import { playUiCue, armIfWanted, playKeyCue, playActCue } from './cue';
+import { resetActSoundForTests, heardSoFar } from './acts';
 import { resetKeySoundForTests, KEY_LIMITS } from './keys';
 import { keyPackById } from '../store/items/keys';
 import { preferences } from '../../preferences';
@@ -181,5 +182,87 @@ describe('the keyboard is its own switch', () => {
     keys(true);
     armIfWanted();
     expect(armAudio, 'the keyboard gate does not arm audio — it would be silent').toHaveBeenCalled();
+  });
+});
+
+/**
+ * The act axis has five gates and a tally, and they are the same
+ * mechanism: nothing is counted that was not heard.
+ *
+ * Every per-shift figure behind this axis is a derivation — there is no
+ * click telemetry in this product and none is being added for a
+ * convenience feature — so the count on the panel is the only
+ * measurement it has. A count that included refused acts would be a
+ * measurement of the wrong thing, and worse than none, because somebody
+ * would design against it.
+ */
+describe('an act is heard, or it is not counted', () => {
+  const acts = (on: boolean, extra: Record<string, unknown> = {}) => {
+    preferences.set('mods.sound.acts', on);
+    preferences.set('mods.sound.acts.controls', true);
+    preferences.set('mods.sound.acts.places', true);
+    preferences.set('mods.sound.acts.selection', true);
+    preferences.set('mods.sound.acts.pack', 'chime');
+    preferences.set('mods.sound.snoozeUntil', 0);
+    for (const [k, v] of Object.entries(extra)) preferences.set(k as never, v as never);
+    resetActSoundForTests();
+  };
+
+  it('plays and counts when every gate is open', () => {
+    acts(true);
+    playActCue('press');
+    expect(playCue).toHaveBeenCalledTimes(1);
+    expect(heardSoFar().total).toBe(1);
+    expect(heardSoFar().byAct.get('press')).toBe(1);
+  });
+
+  /** Its OWN master, not a wider reading of `mods.sound.ui`. That gate
+   *  is about thirty cues a shift; this axis is two orders of magnitude
+   *  more, and folding them would have taken every device that opted in
+   *  from thirty to roughly nineteen hundred with no new consent. */
+  it('and the interface gate does not open it', () => {
+    acts(false);
+    set(true);
+    playActCue('press');
+    expect(playCue, 'the act axis rode in on the answer gate').not.toHaveBeenCalled();
+    expect(heardSoFar().total).toBe(0);
+  });
+
+  it('a closed family is silent, and uncounted', () => {
+    acts(true, { 'mods.sound.acts.places': false });
+    playActCue('page_open');
+    expect(playCue).not.toHaveBeenCalled();
+    expect(heardSoFar().total).toBe(0);
+    // …and its neighbours still speak.
+    playActCue('press');
+    expect(playCue).toHaveBeenCalledTimes(1);
+  });
+
+  it('a snooze is silent, and uncounted', () => {
+    acts(true, { 'mods.sound.snoozeUntil': Date.now() + 60_000 });
+    playActCue('press');
+    expect(playCue).not.toHaveBeenCalled();
+    expect(heardSoFar().total).toBe(0);
+  });
+
+  it('and so is zero volume', () => {
+    acts(true);
+    preferences.set('mods.sound.volume', 0);
+    playActCue('press');
+    expect(playCue).not.toHaveBeenCalled();
+    expect(heardSoFar().total).toBe(0);
+  });
+
+  /**
+   * The floor is the one a naive tally gets wrong: the act HAPPENED,
+   * the person did it, and nothing reached the room. Counting it would
+   * report a volume nobody experienced.
+   */
+  it('and an act the floor dropped is not counted either', () => {
+    acts(true);
+    playActCue('press');
+    playActCue('press');
+    expect(playCue, 'two cues inside the floor overlapped').toHaveBeenCalledTimes(1);
+    expect(heardSoFar().total, 'the tally counted an act nobody heard').toBe(1);
   });
 });
