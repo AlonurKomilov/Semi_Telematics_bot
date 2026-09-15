@@ -26,6 +26,19 @@
        not ask an element to be positioned any more than it may
        position one. */
     --glass-sheen: 1;
+    /* THE RIM IS TWO COLOURS, and they are not the same one at two
+       strengths. The first version used white for both modes and was
+       invisible in light for a reason no amount of tuning fixes:
+       `--card` and `--background` are BOTH `oklch(1 0 0)` there, so a
+       white highlight sits on white.
+       What gives a white pane thickness on a white ground is not a
+       brighter top — there is nothing brighter than white — it is a
+       DARKER foot. So light leans on the foot and barely touches the
+       top; dark does the opposite, because there the pane is lighter
+       than the ground and the top edge is the only thing separating it
+       from the pane behind. */
+    --glass-rim-top: rgb(255 255 255 / calc(0.10 * var(--light-strength, 1)));
+    --glass-rim-foot: rgb(0 0 0 / calc(0.12 * var(--light-strength, 1)));
     /* The light's terms, not literals. This rule out-specifies the
        `.surface` rung in index.css — deliberately, so it can beat the
        `shadow-lg` a dialog carries — which meant that CHOOSING GLASS
@@ -51,6 +64,8 @@
        from the dark pane behind it; in light the surface already has
        its own contrast and the rim only has to hint. */
     --glass-sheen: 1.6;
+    --glass-rim-top: rgb(255 255 255 / calc(0.55 * var(--light-strength, 1)));
+    --glass-rim-foot: rgb(0 0 0 / calc(0.45 * var(--light-strength, 1)));
     --surface-shadow:
       0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1))
         rgb(0 0 0 / calc(0.40 * var(--light-strength, 1))),
@@ -97,8 +112,8 @@
        the one thing a translucent rectangle does not have, and the
        reason the first version of this pack read as frosted plastic. */
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / calc(0.45 * var(--glass-sheen) * var(--light-strength, 1))),
-      inset 0 -1px 0 rgb(0 0 0 / calc(0.08 * var(--glass-sheen) * var(--light-strength, 1))),
+      inset 0 1px 0 var(--glass-rim-top),
+      inset 0 -1px 0 var(--glass-rim-foot),
       var(--surface-shadow);
   }
 

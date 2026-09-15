@@ -122,6 +122,42 @@ describe('what the solid path costs', () => {
       .toMatch(/var\(--ground/);
   });
 
+  /**
+   * THE RIM IS TWO COLOURS, and this is the test my own first version
+   * would have failed.
+   *
+   * It used white for the top edge in both modes, and in light that is
+   * invisible — not faint, INVISIBLE: `--card`, `--background` and
+   * `--popover` are all `oklch(1 0 0)` there, so a white highlight sits
+   * on white. No amount of tuning the number fixes a colour that is the
+   * same as the thing under it.
+   *
+   * What gives a white pane thickness on a white ground is a DARKER
+   * foot, because there is nothing brighter than white to put on top.
+   * Dark is the opposite case: the pane is lighter than the ground, so
+   * the top edge is the only thing separating it from the pane behind.
+   */
+  it('gives light and dark different rims, because they are not the same problem', () => {
+    const rimOf = (sel: string) => {
+      const block = new RegExp(sel + '\\[data-material="glass"\\]\\s*\\{([\\s\\S]*?)\\n {2}\\}')
+        .exec(CODE)?.[1] ?? '';
+      return {
+        top: (/--glass-rim-top:([^;]*);/.exec(block)?.[1] ?? '').trim(),
+        foot: (/--glass-rim-foot:([^;]*);/.exec(block)?.[1] ?? '').trim(),
+      };
+    };
+    const light = rimOf(':root');
+    const dark = rimOf('\\.dark');
+    expect(light.top, 'the light rim is gone').not.toBe('');
+    expect(dark.top, 'the dark rim is gone').not.toBe('');
+    expect(
+      light.top,
+      'both modes declare the same top edge. In light every surface token is '
+        + '`oklch(1 0 0)`, so a white highlight is invisible there — the two modes '
+        + 'are not one problem at two strengths.',
+    ).not.toBe(dark.top);
+  });
+
   it('and no pseudo-element, because 21 surfaces are not positioned', () => {
     expect(
       CODE,
