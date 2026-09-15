@@ -1028,11 +1028,14 @@ class BillingMixin:
             if off > 0:
                 promo_label = describe(discount_row)
                 promo_until = str(discount_row.get("ends_at") or "")
-                reason = str(discount_row.get("reason") or "").strip()
-                line_items.append({
-                    "label": f"Promotion — {reason}" if reason else "Promotion",
-                    "amount_cents": -off,
-                })
+                # NOT a line item.  ``line_items`` is what the account is
+                # CHARGED for; the page does subtotal → discount → total
+                # underneath from ``discount_cents``, and putting the
+                # promotion in both printed the deduction twice on a real
+                # bill.  The grant's ``reason`` stays out of the customer's
+                # view on purpose — it is an operator's note to themselves
+                # ("From the Adam Anderson sides"), not a line a customer
+                # should have to interpret on their own invoice.
                 discount = off
         amount_due = 0 if is_comped else max(0, subtotal - discount)
         return {

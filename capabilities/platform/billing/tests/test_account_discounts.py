@@ -224,9 +224,12 @@ async def test_the_customers_page_shows_the_number_stripe_will_charge_by(pg_db):
     assert with_promo["amount_due_cents"] == 35900, "the $359 the card is charged"
     assert with_promo["promotion_label"] == "$100.00 off"
     assert with_promo["promotion_until"].startswith("2026-12-14")
-    line = [i for i in with_promo["line_items"] if i["amount_cents"] < 0]
-    assert line and line[0]["label"] == "Promotion — onboarding help"
-    assert line[0]["amount_cents"] == -10000
+    # the deduction is stated ONCE, under the charges — line_items are
+    # what the account is charged for, and the operator's private reason
+    # never reaches the customer's bill
+    assert not [i for i in with_promo["line_items"] if i["amount_cents"] < 0]
+    assert "onboarding help" not in str(with_promo["line_items"])
+    assert "onboarding help" not in with_promo["promotion_label"]
 
 
 @pytest.mark.asyncio

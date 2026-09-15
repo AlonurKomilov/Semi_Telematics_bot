@@ -60,7 +60,10 @@ def test_the_whole_bill_comes_off():
     grant = {"kind": ABSOLUTE, "status": "active"}
     assert effective_off(grant, 40398) == 40398
     assert effective_off(grant, 0) == 0
-    assert describe(grant) == "Absolute 0 — nothing to pay"
+    # what the CUSTOMER reads — the operator console keeps the internal
+    # name, the bill says what happened
+    assert describe(grant) == "Covered by 4truck — nothing to pay"
+    assert "Absolute 0" not in describe(grant)
     # and a grant that is over takes nothing off, like any other
     assert effective_off({**grant, "status": "ended"}, 40398) == 0
 
@@ -73,7 +76,8 @@ def test_the_invoice_says_what_was_used_and_what_was_covered():
     labels = [line["label"] for line in inv["lines"]]
     assert labels[0].startswith("Pro plan (10 trucks included)")
     assert labels[1] == "Extra trucks"
-    assert labels[2] == "Absolute 0 — partner since 2025"
+    assert labels[2] == "Covered by 4truck", \
+        "the operator's private reason never reaches the invoice"
     assert [line["amount_cents"] for line in inv["lines"]] == [9900, 30498, -40398]
     assert inv["subtotal_cents"] == 40398 and inv["discount_cents"] == 40398
     assert inv["total_cents"] == 0, "nothing to pay"
@@ -84,7 +88,7 @@ def test_a_plan_with_nothing_above_the_included_count_has_no_extras_line():
                   billing={**BILLING, "extras": 0}, discount={},
                   period_start=PERIOD[0], period_end=PERIOD[1])
     assert [line["label"] for line in inv["lines"]] == [
-        "Pro plan (10 trucks included)", "Absolute 0"]
+        "Pro plan (10 trucks included)", "Covered by 4truck"]
     # a free plan owes nothing to begin with: no lines, and nothing to zero
     free = L.build(account_id=7, account_name="Free Co",
                    billing={"tier": "free", "base_cents": 0, "included": 0,
@@ -192,9 +196,10 @@ async def test_the_customers_page_reads_nothing_to_pay(pg_db):
     s = await db.get_billing_summary(acct.id)
     assert s["subtotal_cents"] == 9900
     assert s["discount_cents"] == 9900 and s["amount_due_cents"] == 0
-    assert s["promotion_label"] == "Absolute 0 — nothing to pay"
-    line = [i for i in s["line_items"] if i["amount_cents"] < 0]
-    assert line and line[0]["label"] == "Promotion — partner"
+    assert s["promotion_label"] == "Covered by 4truck — nothing to pay"
+    assert not [i for i in s["line_items"] if i["amount_cents"] < 0], \
+        "the deduction belongs under the charges, not among them"
+    assert "partner" not in str(s["line_items"]), "the operator's reason is not the customer's"
 
 
 # ── the operator's grant, and the customer's download ──────────────

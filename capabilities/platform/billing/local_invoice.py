@@ -61,8 +61,11 @@ def build(*, account_id: int, account_name: str, billing: dict, discount: dict,
                       "qty": extras, "unit_cents": extra_unit,
                       "amount_cents": extras * extra_unit})
     subtotal = sum(int(line["amount_cents"]) for line in lines)
-    reason = str(discount.get("reason") or "").strip()
-    off_label = "Absolute 0" + (f" — {reason}" if reason else "")
+    # The grant's ``reason`` is the operator's note to themselves
+    # ("From the Adam Anderson sides") — it explains the deal to us, not
+    # the bill to them, and an invoice is the last place to make somebody
+    # decode an internal shorthand.  Same for the kind's name.
+    off_label = "Covered by 4truck"
     if subtotal > 0:
         lines.append({"label": off_label, "qty": 1,
                       "unit_cents": -subtotal, "amount_cents": -subtotal})

@@ -57,7 +57,10 @@ def describe(discount: dict | None) -> str:
     if not discount:
         return ""
     if discount.get("kind") == ABSOLUTE:
-        return "Absolute 0 — nothing to pay"
+        # "Absolute 0" is OUR word for the kind of grant, not a phrase a
+        # customer's bookkeeper has ever met.  The operator console keeps
+        # it (they chose it); the bill says what actually happened.
+        return "Covered by 4truck — nothing to pay"
     if discount.get("kind") == "percent":
         return f"{int(discount.get('percent_off') or 0)}% off"
     return f"${int(discount.get('amount_off_cents') or 0) / 100:,.2f} off"
