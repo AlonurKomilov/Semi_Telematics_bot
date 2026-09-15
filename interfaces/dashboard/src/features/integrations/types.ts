@@ -161,6 +161,12 @@ export interface ProviderCompaniesResponse {
   account_id: number;
   provider_id: string;
   health_summary: ProviderHealthSummary;
+  /** True when ONE account-level key is currently running the
+   *  integration because no per-company key is set yet — the state a
+   *  fresh connect lands in, since the connect form has one field.
+   *  Without this the panel would show every company as "needs a key"
+   *  while the feed works perfectly, which reads as a broken setup. */
+  account_level_key?: boolean;
   companies: ProviderCompanyEntry[];
 }
 

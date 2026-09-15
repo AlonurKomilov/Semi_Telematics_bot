@@ -22,7 +22,7 @@ import {
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import { toneClasses } from '../../lib/status';
+import { toneClasses, toneText } from '../../lib/status';
 import {
   getBackfillStatus,
   getProviderFeeds,
@@ -840,6 +840,11 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
               {summary.healthy} of {summary.total} healthy
             </Badge>
           )}
+          {/* Stays `warn` in both states.  A company with no key of
+              its own reports nothing, whether or not another company's
+              key happens to be connected — the count is the same hole
+              either way, and softening it was a first draft that read
+              as "all set" while drivers went unmonitored. */}
           {missingKeys > 0 && (
             <Badge tone="warn">
               {missingKeys} need a key
@@ -860,6 +865,30 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
         </span>
       }
     >
+      {/* Why every row can say "no key" while the integration works.
+          Stated once above the list rather than per row: it is one fact
+          about the account, and the rows are where the ACTION is.
+
+          The wording is deliberate and was wrong once.  "One key is
+          serving every company" is the reassuring reading and it is
+          FALSE for a vendor that issues a key per company: that key
+          opens exactly the company it was issued for, and the others
+          report nothing at all.  An operator told their data is merely
+          "not separated yet" would conclude every company's drivers
+          are being tracked, on a page about hours of service.  So this
+          says which companies are covered and leads with the gap.  It
+          takes `warn` rather than muted for the same reason — missing
+          companies is a real hole, not a cosmetic one. */}
+      {data?.account_level_key && (
+        <p className={`px-3 py-2 text-2xs border-b border-border ${toneText('warn')}`}>
+          Only one key is set, and it covers just the company it was
+          issued for
+          {missingKeys > 0 && (
+            <> — the other {missingKeys === 1 ? 'company reports' : `${missingKeys} companies report`} nothing here</>
+          )}
+          . Give each company its own key below so all of them report in.
+        </p>
+      )}
       <ul className="divide-y divide-border">
         {companies.map((co) => (
           <CompanyKeyRow
