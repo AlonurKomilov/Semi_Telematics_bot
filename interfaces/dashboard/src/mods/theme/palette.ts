@@ -31,6 +31,9 @@ import {
   parseHex, toHex, srgbToOklch, srgbInGamut, contrastRatio,
   clampLightness, AA_TEXT, type RGB,
 } from './contrast';
+// TYPE only, and the direction is deliberate: `depth.ts` is the
+// CONTRACT for a ladder, not a ladder. The engine still holds none.
+import type { Plane } from '../depth';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -40,40 +43,21 @@ export interface ThemeSeed {
   canvas: string;
   /** `--primary`: the accent everything interactive is tinted with. */
   brand: string;
+  /**
+   * How far each plane stands from the canvas — a PACK, handed in.
+   *
+   * The engine holds no ladder of its own. It takes one, derives from
+   * it, measures the result and refuses a seed that makes text
+   * unreadable; which numbers to derive FROM is a design decision and
+   * lives in `mods/depth/`.
+   */
+  ladder: Ladder;
 }
 
-/**
- * The surface ladder, as OKLab lightness offsets from the canvas.
- *
- * Measured from index.css. The two modes are not mirror images and that
- * is a real design fact, not an oversight: light's canvas is pure white,
- * so a card cannot be brighter than the page and elevation is carried by
- * SHADOW — `--card` sits at +0.000 and only the recessed surfaces move.
- * Dark's canvas is near the floor, so the whole ladder rises off it.
- * Averaging the two, or deriving one from the other, would flatten the
- * light theme's cards into the page.
- */
-type Plane = { dL: number; C: number };
-const LADDER: Record<ThemeMode, Record<string, Plane>> = {
-  light: {
-    card:          { dL:  0.000, C: 0.000 },
-    popover:       { dL:  0.000, C: 0.000 },
-    secondary:     { dL: -0.030, C: 0.000 },
-    muted:         { dL: -0.030, C: 0.000 },
-    accent:        { dL: -0.030, C: 0.000 },
-    sidebar:       { dL: -0.035, C: 0.004 },
-    sidebarAccent: { dL: -0.065, C: 0.006 },
-  },
-  dark: {
-    card:          { dL:  0.175, C: 0.000 },
-    popover:       { dL:  0.220, C: 0.000 },
-    secondary:     { dL:  0.200, C: 0.000 },
-    muted:         { dL:  0.140, C: 0.000 },
-    accent:        { dL:  0.240, C: 0.015 },
-    sidebar:       { dL:  0.115, C: 0.022 },
-    sidebarAccent: { dL:  0.200, C: 0.025 },
-  },
-};
+/** One mode's worth of steps. The shape is `depth/index.ts`'s; named here so
+ *  the two signatures below can say it in one word. */
+export type Ladder = Readonly<Record<ThemeMode, Readonly<Record<string, Plane>>>>;
+
 
 /**
  * The sidebar plane is COOL, and that is a signature rather than an
@@ -304,11 +288,11 @@ export type GroundId = keyof typeof GROUND_PLANES;
  * in the control that writes.
  */
 export function deriveGround(
-  id: GroundId, seedHex: string, mode: ThemeMode,
+  id: GroundId, seedHex: string, mode: ThemeMode, ladder: Ladder,
 ): Record<string, string> | null {
   const ground = parseHex(seedHex);
   if (!ground) return null;
-  const L = LADDER[mode], B = BOUNDARY[mode], T = INK_TARGET[mode];
+  const L = ladder[mode], B = BOUNDARY[mode], T = INK_TARGET[mode];
   const hex = (c: RGB) => toHex(c);
   // Picked against THIS plane, not against the page: a near-black card
   // on a white page has to carry light text, and the page's ink would
@@ -342,7 +326,7 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   const brand = parseHex(seed.brand);
   if (!canvas || !brand) return null;
 
-  const L = LADDER[seed.mode], B = BOUNDARY[seed.mode];
+  const L = seed.ladder[seed.mode], B = BOUNDARY[seed.mode];
   const T = INK_TARGET[seed.mode];
   // The ink is picked by measurement rather than from `mode`, so a light
   // theme handed a dark canvas still gets readable text instead of a

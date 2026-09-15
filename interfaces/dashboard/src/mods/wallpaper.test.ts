@@ -26,6 +26,7 @@ import {
   LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
   WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, WALLPAPER_PAGE_ATTR, pageWallpaperFor,
 } from './wallpaper';
+import { DEFAULT_DEPTH } from './depth/packs';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -657,7 +658,7 @@ describe('a pattern over a custom canvas', () => {
       for (const p of THEME_PACKS)
         for (const c of CANVASES) {
           if (!fitCanvas(c, mode).rgb) continue;
-          const pal = derivePalette({ mode, canvas: c, brand: p.seed[mode] })!;
+          const pal = derivePalette({ mode, canvas: c, brand: p.seed[mode], ladder: DEFAULT_DEPTH.ladder })!;
           const onPattern = parseHex(pal['--muted-foreground-on-pattern'])!;
           const raw = parseHex(pal['--muted-foreground'])!;
           for (const g of patternGrounds(parseHex(c)!, parseHex(p.seed[mode])!)) {

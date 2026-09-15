@@ -17,6 +17,7 @@ import {
   applyModTokens, modStyleText, isSafeValue, isModToken, MOD_TOKENS, seedTokens,
 } from './inject';
 import { DERIVED_TOKENS, derivePalette } from './theme/palette';
+import { DEFAULT_DEPTH } from './depth/packs';
 
 const sheet = () => document.getElementById('mod-tokens');
 
@@ -256,7 +257,8 @@ describe('telling the app that something changed', () => {
 describe('a seed all the way to the sheet', () => {
   it('derives, filters and installs in one path', () => {
     const tokens = seedTokens(
-      { mode: 'dark', canvas: '#0b0d10', brand: '#0796ae' }, derivePalette)!;
+      { mode: 'dark', canvas: '#0b0d10', brand: '#0796ae', ladder: DEFAULT_DEPTH.ladder },
+      derivePalette)!;
     expect(tokens).not.toBeNull();
     // Everything the palette derives is installable, and nothing else
     // got through.
@@ -278,7 +280,7 @@ describe('a seed all the way to the sheet', () => {
     // purpose is the day the palette grows a token and this list has not:
     // the boundary should drop it, not half-install a palette.
     const rogue = seedTokens(
-      { mode: 'dark', canvas: '#0b0d10', brand: '#0796ae' },
+      { mode: 'dark', canvas: '#0b0d10', brand: '#0796ae', ladder: DEFAULT_DEPTH.ladder },
       (seed) => ({ ...derivePalette(seed)!, '--danger': '#00ff00', '--chart-1': '#fff' }),
     )!;
     expect(rogue['--danger']).toBeUndefined();
@@ -287,7 +289,7 @@ describe('a seed all the way to the sheet', () => {
   });
 
   it('returns null rather than half a palette', () => {
-    expect(seedTokens({ mode: 'dark', canvas: 'nope', brand: '#fff' }, derivePalette)).toBeNull();
+    expect(seedTokens({ mode: 'dark', canvas: 'nope', brand: '#fff', ladder: DEFAULT_DEPTH.ladder }, derivePalette)).toBeNull();
   });
 });
 

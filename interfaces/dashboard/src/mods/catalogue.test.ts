@@ -43,6 +43,7 @@ import { MOTION_PACKS } from './store/items/motion';
 import { AMBIENCE_PACKS } from './store/items/ambience';
 import { derivePalette } from './theme/palette';
 import { oklchToSrgb, parseHex, srgbToOklch, toHex, type RGB } from './theme/contrast';
+import { DEFAULT_DEPTH } from './depth/packs';
 
 const CSS = assembledCss()
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -116,7 +117,7 @@ describe('every pack is its own seed', () => {
         expect(src, `no CSS block for ${cell} — a pack without a block paints the base`)
           .not.toBe('');
 
-        const pal = derivePalette({ mode, canvas: toHex(CANVAS[mode]), brand: pack.seed[mode] })!;
+        const pal = derivePalette({ mode, canvas: toHex(CANVAS[mode]), brand: pack.seed[mode], ladder: DEFAULT_DEPTH.ladder })!;
         expect(pal, `${pack.id}: seed ${pack.seed[mode]} did not parse`).not.toBeNull();
 
         for (const name of PACK_TOKENS) {

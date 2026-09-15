@@ -111,6 +111,8 @@ const digest = (s: string): string => {
  * one slot. Surfaces, text, boundaries, the accent family and the new
  * material axis — nothing else.
  */
+import type { ThemeSeed } from './theme/palette';
+
 export const MOD_TOKENS: readonly string[] = [
   // surfaces and their inks
   '--background', '--foreground',
@@ -318,8 +320,8 @@ export function modStyleText(doc: Document = document): string | null {
  * should fail loudly at the boundary rather than half-install.
  */
 export function seedTokens(
-  seed: { mode: 'dark' | 'light'; canvas: string; brand: string },
-  derive: (s: typeof seed) => Record<string, string> | null,
+  seed: ThemeSeed,
+  derive: (s: ThemeSeed) => Record<string, string> | null,
 ): Record<string, string> | null {
   const palette = derive(seed);
   if (!palette) return null;

@@ -38,6 +38,7 @@ import type { IconPack } from '../../lib/icons';
 import { ICON_PACKS, iconPackById, BASE_PACK } from '../store/items/icons';
 import { WALLPAPERS, wallpaperById } from '../store/items/wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../store/items/cursor';
+import { DEFAULT_DEPTH } from '../depth/packs';
 
 /** The caps label above a group. The popover runs smaller — seven of
  *  them stack inside `w-56`. */
@@ -275,6 +276,7 @@ export function ColorGroup({ label, compact = false }: { label: LabelClass; comp
   const groundFallback = useMemo(() => {
     const pal = derivePalette({
       mode: theme.mode, canvas: theme.canvas ?? CANVAS_SEED[theme.mode], brand: seedBrand,
+      ladder: DEFAULT_DEPTH.ladder,
     });
     return {
       card: pal?.['--card'] ?? CANVAS_SEED[theme.mode],

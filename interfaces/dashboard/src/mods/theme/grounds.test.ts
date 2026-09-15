@@ -16,10 +16,11 @@ import { CANVAS_SEED, worstTone, paletteTokens } from './canvas';
 import { parseHex, distance, contrastRatio, AA_TEXT, AA_LARGE, toHex } from './contrast';
 import { THEME_PACKS } from '../store/items/theme';
 import { isModToken, isSafeValue } from '../inject';
+import { DEFAULT_DEPTH } from '../depth/packs';
 
 const MODES = ['light', 'dark'] as const;
 const palette = (mode: 'light' | 'dark', brand: string) =>
-  derivePalette({ mode, canvas: CANVAS_SEED[mode], brand })!;
+  derivePalette({ mode, canvas: CANVAS_SEED[mode], brand, ladder: DEFAULT_DEPTH.ladder })!;
 
 describe('what a ground owns', () => {
   it('is a family of real tokens, and no two grounds share one', () => {
@@ -39,7 +40,7 @@ describe('what a ground owns', () => {
   it('emits exactly the family it declares, and nothing else', () => {
     for (const mode of MODES)
       for (const id of GROUND_IDS) {
-        const out = deriveGround(id, '#808080', mode)!;
+        const out = deriveGround(id, '#808080', mode, DEFAULT_DEPTH.ladder)!;
         expect(Object.keys(out).sort(), `${id}/${mode}`).toEqual([...GROUND_PLANES[id]].sort());
       }
   });
@@ -47,7 +48,7 @@ describe('what a ground owns', () => {
   it('and every value it emits is one the injector will install', () => {
     for (const mode of MODES)
       for (const id of GROUND_IDS)
-        for (const [k, v] of Object.entries(deriveGround(id, '#3a4750', mode)!)) {
+        for (const [k, v] of Object.entries(deriveGround(id, '#3a4750', mode, DEFAULT_DEPTH.ladder)!)) {
           expect(isModToken(k), `${k} is not a token a mod may set`).toBe(true);
           expect(isSafeValue(v), `${k}: ${v} would be refused by the injector`).toBe(true);
         }
@@ -90,7 +91,7 @@ describe('seeding a plane with the colour it already has', () => {
         const pal = palette(mode, pack.seed[mode]);
         for (const id of GROUND_IDS) {
           const own = pal[id === 'card' ? '--card' : '--sidebar'];
-          const out = deriveGround(id, own, mode)!;
+          const out = deriveGround(id, own, mode, DEFAULT_DEPTH.ladder)!;
           for (const t of GROUND_PLANES[id]) {
             const d = distance(parseHex(pal[t])!, parseHex(out[t])!);
             checked++;
@@ -107,7 +108,7 @@ describe('seeding a plane with the colour it already has', () => {
     // is watching.
     const pal = palette('light', THEME_PACKS[0].seed.light);
     for (const t of Object.keys(EXPECTED_DRIFT)) {
-      const out = deriveGround('sidebar', pal['--sidebar'], 'light')!;
+      const out = deriveGround('sidebar', pal['--sidebar'], 'light', DEFAULT_DEPTH.ladder)!;
       expect(distance(parseHex(pal[t])!, parseHex(out[t])!),
         `${t} no longer drifts — drop it from the table`).toBeGreaterThan(0.001);
     }
@@ -119,7 +120,7 @@ describe('a seeded plane carries its own ink', () => {
     for (const mode of MODES)
       for (const seed of ['#0b0f14', '#f7f7f7', '#3a4750', '#c8d3e0']) {
         for (const id of GROUND_IDS) {
-          const out = deriveGround(id, seed, mode)!;
+          const out = deriveGround(id, seed, mode, DEFAULT_DEPTH.ladder)!;
           const ground = id === 'card' ? out['--card'] : out['--sidebar'];
           const ink = id === 'card' ? out['--card-foreground'] : out['--sidebar-foreground'];
           expect(contrastRatio(parseHex(ink)!, parseHex(ground)!),
@@ -128,14 +129,14 @@ describe('a seeded plane carries its own ink', () => {
       }
     // The headline case: a near-black card on the white page takes light
     // text, where the page's own ink would be invisible.
-    const dark = deriveGround('card', '#101418', 'light')!;
+    const dark = deriveGround('card', '#101418', 'light', DEFAULT_DEPTH.ladder)!;
     expect(parseHex(dark['--card-foreground'])![0], 'a dark card kept the page ink').toBeGreaterThan(0.5);
   });
 
   it('and the hover fill inside a seeded plane is a shade of THAT plane', () => {
     // Not of the page: a dark sidebar with the page's pale hover fill is
     // a white strip on a black rail.
-    const out = deriveGround('sidebar', '#101418', 'light')!;
+    const out = deriveGround('sidebar', '#101418', 'light', DEFAULT_DEPTH.ladder)!;
     const d = distance(parseHex(out['--sidebar'])!, parseHex(out['--sidebar-accent'])!);
     expect(d, 'the hover fill is nowhere near its own rail').toBeLessThan(12);
     expect(contrastRatio(parseHex(out['--sidebar-accent-foreground'])!,

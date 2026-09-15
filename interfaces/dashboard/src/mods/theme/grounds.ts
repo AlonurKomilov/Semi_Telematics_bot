@@ -18,6 +18,7 @@
  */
 import { deriveGround, GROUND_PLANES, type GroundId, type ThemeMode } from './palette';
 import { fitCanvas, type CanvasResult } from './canvas';
+import { DEFAULT_DEPTH } from '../depth/packs';
 
 export type { GroundId };
 
@@ -81,7 +82,7 @@ export const groundById = (id: string): Ground | undefined =>
 export function groundTokens(id: GroundId, hex: string, mode: ThemeMode): CanvasResult {
   const fit = fitCanvas(hex, mode);
   if (!fit.rgb) return { tokens: null, breaks: fit.breaks, ratio: fit.ratio };
-  const tokens = deriveGround(id, hex, mode);
+  const tokens = deriveGround(id, hex, mode, DEFAULT_DEPTH.ladder);
   return tokens ? { tokens } : { tokens: null };
 }
 

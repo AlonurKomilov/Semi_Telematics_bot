@@ -23,6 +23,7 @@ import { applyModTokens, seedTokens } from './inject';
 import { derivePalette } from './theme/palette';
 import { THEME_PACKS } from './store/items/theme';
 import { assembledCss } from '../test/stylesheet';
+import { DEFAULT_DEPTH } from './depth/packs';
 
 /** The accent presets, exactly as they ship — one pack file each, in
  *  `mods/store/items/theme/`. Read from the assembled sheet rather than the
@@ -95,7 +96,7 @@ describe('an authored accent beats the preset it replaces', () => {
     for (const accent of BLOCKED)
       for (const mode of ['dark', 'light'] as const) {
         wear(mode, accent);
-        const tokens = seedTokens({ mode, canvas: mode === 'dark' ? '#0a0a0a' : '#ffffff', brand: '#ff6a00' }, derivePalette);
+        const tokens = seedTokens({ mode, canvas: mode === 'dark' ? '#0a0a0a' : '#ffffff', brand: '#ff6a00', ladder: DEFAULT_DEPTH.ladder }, derivePalette);
         expect(tokens, `${mode}/${accent} seeded nothing`).not.toBeNull();
         const res = applyModTokens(tokens);
         expect(res.applied, `${mode}/${accent}`).toBeGreaterThan(0);
@@ -107,7 +108,7 @@ describe('an authored accent beats the preset it replaces', () => {
   it('and the preset comes back the moment the mod is removed', () => {
     wear('dark', 'purple');
     const preset = primary();
-    applyModTokens(seedTokens({ mode: 'dark', canvas: '#0a0a0a', brand: '#ff6a00' }, derivePalette));
+    applyModTokens(seedTokens({ mode: 'dark', canvas: '#0a0a0a', brand: '#ff6a00', ladder: DEFAULT_DEPTH.ladder }, derivePalette));
     expect(primary()).not.toBe(preset);
     applyModTokens(null);
     expect(root().hasAttribute('data-mod-accent')).toBe(false);

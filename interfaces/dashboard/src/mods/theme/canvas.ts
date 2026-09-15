@@ -39,6 +39,7 @@ import {
 } from './contrast';
 import { derivePalette, deriveGround, patternGrounds, DERIVED_TOKENS } from './palette';
 import { TONES, type AccentMode } from './accent';
+import { DEFAULT_DEPTH } from '../depth/packs';
 
 /**
  * The canvas each mode already paints, as a hex.
@@ -140,10 +141,10 @@ export function paletteTokens(
 ): CanvasResult {
   const fit = fitCanvas(canvas, mode);
   if (!fit.rgb) return { tokens: null, breaks: fit.breaks, ratio: fit.ratio };
-  const palette = derivePalette({ mode, canvas, brand });
+  const palette = derivePalette({ mode, canvas, brand, ladder: DEFAULT_DEPTH.ladder });
   if (palette && underPattern) {
     const seeded = sidebarSeed && fitCanvas(sidebarSeed, mode).rgb
-      ? deriveGround('sidebar', sidebarSeed, mode)
+      ? deriveGround('sidebar', sidebarSeed, mode, DEFAULT_DEPTH.ladder)
       : null;
     const effective = seeded ?? palette;
     const sidebar = parseHex(effective['--sidebar'])!, ink = parseHex(effective['--sidebar-foreground'])!;

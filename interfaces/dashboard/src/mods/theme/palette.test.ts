@@ -11,10 +11,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { derivePalette, DERIVED_TOKENS } from './palette';
+import { derivePalette, DERIVED_TOKENS, type ThemeSeed } from './palette';
 import {
   oklchToSrgb, over, parseHex, toHex, contrastRatio, type RGB,
 } from './contrast';
+import { DEFAULT_DEPTH } from '../depth/packs';
+import { PLANES } from '../depth';
 
 const CSS = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
@@ -75,7 +77,7 @@ describe('regenerating the themes we ship', () => {
       expect(canvas, `${sel} has no --background — did index.css move?`).not.toBeNull();
       expect(brand, `${sel} has no --primary`).not.toBeNull();
 
-      const pal = derivePalette({ mode, canvas: toHex(canvas!), brand: toHex(brand!) })!;
+      const pal = derivePalette({ mode, canvas: toHex(canvas!), brand: toHex(brand!), ladder: DEFAULT_DEPTH.ladder })!;
       expect(pal).not.toBeNull();
 
       const gaps: string[] = [];
@@ -107,7 +109,7 @@ describe('regenerating the themes we ship', () => {
 });
 
 describe('the seed space at large', () => {
-  const SEEDS: { mode: 'dark' | 'light'; canvas: string; brand: string }[] = [];
+  const SEEDS: ThemeSeed[] = [];
   for (let i = 0; i < 256; i += 32)
     for (let j = 0; j < 256; j += 64)
       for (const mode of ['dark', 'light'] as const)
@@ -115,6 +117,7 @@ describe('the seed space at large', () => {
           mode,
           canvas: toHex([i / 255, j / 255, ((i + j) % 256) / 255]),
           brand: toHex([j / 255, ((i * 2) % 256) / 255, i / 255]),
+          ladder: DEFAULT_DEPTH.ladder,
         });
 
   it('never returns half a palette', () => {
@@ -124,8 +127,8 @@ describe('the seed space at large', () => {
         expect(pal[t], `${t} missing for ${s.canvas}`).toMatch(/^#[0-9a-f]{6}$/);
     }
     // Half a theme applied over the other half is worse than none.
-    expect(derivePalette({ mode: 'dark', canvas: 'nope', brand: '#123456' })).toBeNull();
-    expect(derivePalette({ mode: 'dark', canvas: '#123456', brand: '' })).toBeNull();
+    expect(derivePalette({ mode: 'dark', canvas: 'nope', brand: '#123456', ladder: DEFAULT_DEPTH.ladder })).toBeNull();
+    expect(derivePalette({ mode: 'dark', canvas: '#123456', brand: '', ladder: DEFAULT_DEPTH.ladder })).toBeNull();
   });
 
   it('keeps body text legible on any canvas', () => {
@@ -198,7 +201,7 @@ describe('what the seed is not allowed to touch', () => {
       '--size-text', '--size-control', '--size-layout', '--size-panel',
       '--pin-shadow-left', '--pin-shadow-right',
     ];
-    const pal = derivePalette({ mode: 'dark', canvas: '#101014', brand: '#c2410c' })!;
+    const pal = derivePalette({ mode: 'dark', canvas: '#101014', brand: '#c2410c', ladder: DEFAULT_DEPTH.ladder })!;
     for (const t of forbidden)
       expect(Object.keys(pal), `the seed reached ${t}`).not.toContain(t);
     expect(Object.keys(pal).sort()).toEqual([...DERIVED_TOKENS].sort());
@@ -214,5 +217,47 @@ describe('what the seed is not allowed to touch', () => {
     expect(DERIVED_TOKENS).not.toContain('--ring');
     expect(CSS, '--ring stopped being derived — the seed must set it now')
       .toMatch(/--ring:\s*var\(--primary\)/);
+  });
+});
+
+/**
+ * THE ENGINE KEEPS NO LADDER, and this is the guard that makes it stay
+ * that way.
+ *
+ * The steps between planes used to be a table inside `palette.ts`. That
+ * is the wrong side of this repo's own line — the engine keeps the
+ * contract and knows nothing about which packs exist — and moving them
+ * out is only half the fix: a table put back tomorrow would derive the
+ * SAME numbers, so no output test could ever see it. The one thing that
+ * can is the source itself.
+ *
+ * Comments are blanked first, or this file's own prose about `dL` would
+ * count as a violation of the rule it documents.
+ */
+describe('the ladder is a resource, not part of the machine', () => {
+  const ENGINE = ['palette.ts', 'canvas.ts', 'grounds.ts'];
+  /** Comments out, string bodies kept — a step is a number, not a word. */
+  const codeOnly = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+       .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+
+  it('no engine file states a step of its own', () => {
+    for (const f of ENGINE) {
+      const src = codeOnly(readFileSync(join(__dirname, f), 'utf8'));
+      expect(src.match(/\bdL\s*:\s*-?[\d.]/g) ?? [], `${f} holds a ladder`).toEqual([]);
+    }
+  });
+
+  it('and the pack states all of them', () => {
+    // The control. Without it the sweep above passes just as happily
+    // when `dL` has been renamed and it is measuring nothing.
+    const pack = codeOnly(readFileSync(join(__dirname, '..', 'depth', 'flat.ts'), 'utf8'));
+    expect((pack.match(/\bdL\s*:\s*-?[\d.]/g) ?? []).length,
+      'the pack lost its steps').toBe(PLANES.length * 2);
+    // And every plane the contract names is positioned in both modes,
+    // so a pack cannot ship a half-ladder the derivation reads as 0.
+    for (const mode of ['light', 'dark'] as const)
+      for (const plane of PLANES)
+        expect(DEFAULT_DEPTH.ladder[mode][plane], `${mode}/${plane} unpositioned`).toBeTruthy();
   });
 });
