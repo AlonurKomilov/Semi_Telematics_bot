@@ -222,6 +222,26 @@ class HosSnapshot:
     """Vendor-reported name, for diagnostics when a link is missing.
     Display always prefers OUR roster name."""
 
+    provider_vehicle: str = ""
+    """The truck the DEVICE says this driver is on, in the vendor's own
+    words — kept apart from our roster's ``truck_num`` on purpose.
+
+    ORIENT sends it on every tracking row and we were dropping it, so
+    an account with sixty-nine unlinked drivers showed sixty-nine
+    dashes in the Truck column — on a page where "which truck" is half
+    of what dispatch is asking.
+
+    It is for DISPLAY, and it is NOT a scope rung.  A bare unit number
+    cannot decide who may see a driver: numbers are reused across the
+    companies inside one account, so "103" names two trucks and
+    admitting this as identity would hand a company-restricted
+    dispatcher the other company's driver.  Scope stays on the vehicle
+    identity ladder, which splits the twins.
+
+    Blank is normal and honest — Samsara's clocks endpoint carries no
+    vehicle, so its rows leave this empty and the surface falls back to
+    what our own roster knows."""
+
     company_code: str = ""
     """Which of OUR companies this reading belongs to.
 

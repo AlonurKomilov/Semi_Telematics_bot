@@ -463,3 +463,20 @@ async def test_every_request_carries_it():
         assert session.headers.get("x-api-key") == "k"
     finally:
         await client.close()
+
+
+def test_the_truck_the_device_reported_survives_the_mapping():
+    """ORIENT sends it on every row and the first version dropped it,
+    so sixty-nine drivers showed sixty-nine dashes in the Truck column
+    while the answer was in the payload all along."""
+    assert to_snapshot(_row()).provider_vehicle == "001"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (None, ""), ("", ""), ("  ", ""), (" 6729 ", "6729"), (243, "243"),
+])
+def test_a_missing_or_padded_unit_number_is_normalised(raw, expected):
+    """Blank must stay blank: a surface falls back to our roster on an
+    empty string, and whitespace masquerading as a truck would stop
+    that fallback while displaying nothing."""
+    assert to_snapshot(_row(vehicle_number=raw)).provider_vehicle == expected

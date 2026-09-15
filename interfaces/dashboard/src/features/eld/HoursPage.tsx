@@ -27,8 +27,8 @@ import { Freshness, Tip } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
 import { statusTone, toneText } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import { CLOCK_ORDER, DUTY_LABELS, clockCoverage, clockText, countLowOnDrive, useHours }
-  from './useHours';
+import { CLOCK_ORDER, DUTY_LABELS, clockCoverage, clockText, countLowOnDrive,
+  statusFor, useHours } from './useHours';
 import type { DriverHours, HosClockId, HoursResponse } from './useHours';
 
 /**
@@ -89,16 +89,51 @@ const identityColumns = (showUnlinked: boolean): AnyColumn[] => [
       );
     },
   },
-  { key: 'vehicle', label: 'Truck', sortable: true,
-    render: (v) => <span className="tabular-nums">{String(v || '—')}</span> },
+  {
+    key: 'vehicle',
+    label: 'Truck',
+    sortable: true,
+    render: (v, row) => {
+      const r = row as unknown as DriverHours;
+      if (!v) return <span className="text-muted-foreground">—</span>;
+      // An assignment somebody made and a device's report of where the
+      // tractor is are not the same fact. The roster's answer stands
+      // plain; the device's is marked, because it can be right about
+      // the truck and wrong about who should be driving it.
+      return r.vehicle_from === 'eld' ? (
+        <Tip label="Reported by the ELD, not from a truck assignment on your roster">
+          <span className="tabular-nums text-muted-foreground cursor-help">
+            {String(v)}
+          </span>
+        </Tip>
+      ) : (
+        <span className="tabular-nums">{String(v)}</span>
+      );
+    },
+  },
   {
     key: 'duty_status',
     label: 'Duty status',
     sortable: true,
-    render: (v) => {
+    render: (v, row) => {
+      const r = row as unknown as DriverHours;
       const status = String(v || 'unknown');
+      const held = statusFor(r.since);
+      // On a device that reports no countdowns, HOW LONG is the whole
+      // answer. "Sleeper berth" says almost nothing; "Sleeper berth ·
+      // 6h 20m" says when they can drive again. It was stored from the
+      // first commit and never rendered.
       return (
-        <Badge tone={statusTone(status)}>{DUTY_LABELS[status] ?? status}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone={statusTone(status)}>
+            {DUTY_LABELS[status] ?? status}
+          </Badge>
+          {held && (
+            <span className="text-2xs text-muted-foreground tabular-nums">
+              {held}
+            </span>
+          )}
+        </div>
       );
     },
   },
@@ -313,9 +348,18 @@ function HeaderMeta({ data }: { data: HoursResponse }) {
           reader concludes these drivers have no truck. */}
       {allUnlinked(data) && (
         <span className="text-muted-foreground">
-          No driver here is linked to a member of your team yet, so the
-          Truck column is empty. Link them on each driver's Integrations
-          tab.
+          {data.drivers.some((d) => d.vehicle_from === 'eld')
+            // The device fills the Truck column now, so the sentence
+            // must stop claiming it is empty — and must say what is
+            // actually still missing: these drivers are not people on
+            // your roster yet, which is what their HOS tab, their
+            // assignments and your vehicle access all hang off.
+            ? <>No driver here is linked to a member of your team yet — trucks
+               are as the ELD reports them, not from your assignments. Link
+               them on each driver&apos;s Integrations tab.</>
+            : <>No driver here is linked to a member of your team yet, so the
+               Truck column is empty. Link them on each driver&apos;s
+               Integrations tab.</>}
         </span>
       )}
 

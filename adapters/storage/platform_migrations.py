@@ -5890,6 +5890,7 @@ async def migrate_eld_hos_live(conn) -> None:
                 driver_name             TEXT    NOT NULL DEFAULT '',
                 source_ts               TEXT    NOT NULL DEFAULT '',
                 company_code            TEXT    NOT NULL DEFAULT '',
+                provider_vehicle        TEXT    NOT NULL DEFAULT '',
                 updated_at              TEXT    NOT NULL,
                 PRIMARY KEY (account_id, provider_id, provider_driver_id)
             )
@@ -5928,7 +5929,8 @@ async def migrate_eld_hos_live(conn) -> None:
             "ADD COLUMN IF NOT EXISTS shift_remaining_seconds INTEGER, "
             "ADD COLUMN IF NOT EXISTS cycle_remaining_seconds INTEGER, "
             "ADD COLUMN IF NOT EXISTS break_in_seconds INTEGER, "
-            "ADD COLUMN IF NOT EXISTS company_code TEXT NOT NULL DEFAULT ''")
+            "ADD COLUMN IF NOT EXISTS company_code TEXT NOT NULL DEFAULT '', "
+            "ADD COLUMN IF NOT EXISTS provider_vehicle TEXT NOT NULL DEFAULT ''")
         await conn.execute(
             "ALTER TABLE driver_hos_live "
             "DROP COLUMN IF EXISTS drive_seconds_today, "

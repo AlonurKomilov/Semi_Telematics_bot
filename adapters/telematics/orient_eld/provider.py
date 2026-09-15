@@ -150,6 +150,10 @@ def to_snapshot(row: dict) -> HosSnapshot | None:
             or utc_iso(row.get("datetime_utc"))
         ),
         driver_name=_driver_name(row),
+        # The truck the device says they are on.  Display only — a bare
+        # unit number cannot decide scope, because two companies in one
+        # account run the same numbers.
+        provider_vehicle=str(row.get("vehicle_number") or "").strip(),
         # Which of OUR companies this key belongs to.  The fan-out tags
         # every row with it; dropping it here is what would leave five
         # carriers' drivers in one undifferentiated list.

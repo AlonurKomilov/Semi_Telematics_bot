@@ -24,7 +24,12 @@ export interface DriverHours {
   /** False when the provider reports this driver but nobody has
    *  matched them to our roster yet. */
   linked: boolean;
+  /** OUR roster's truck when we have one, the DEVICE's otherwise. */
   vehicle: string;
+  /** Which of the two the `vehicle` above actually is. An assignment
+   *  somebody made and a device's report of where the tractor is are
+   *  not the same fact, and a surface must not show them as one. */
+  vehicle_from: 'roster' | 'eld' | '';
   duty_status: string;
   since: string;
   /** Every clock counts DOWN.  `null` means the ELD did not report it,
@@ -186,6 +191,37 @@ export function countLowOnDrive(drivers: DriverHours[]): number {
     (d) => d.drive_remaining !== null
       && d.drive_remaining.seconds < LOW_DRIVE_SECONDS,
   ).length;
+}
+
+/**
+ * How long they have been in this duty status.
+ *
+ * `since` has always been stored and never shown, and on a device that
+ * reports NO countdowns it is the most useful thing we have. "Sleeper
+ * berth" says almost nothing; "Sleeper berth · 6h 20m" says when they
+ * can drive again.
+ *
+ * Computed here rather than stored, so it stays current between the
+ * 60-second refetches instead of freezing at whatever it was when the
+ * row was written — the same reason the provider's own
+ * `status_duration` is deliberately not kept.
+ */
+export function statusFor(since: string | undefined, now = Date.now()): string {
+  if (!since) return '';
+  const started = Date.parse(since);
+  if (Number.isNaN(started)) return '';
+  const secs = Math.floor((now - started) / 1000);
+  // A clock that has not started yet is a clock skew, not a negative
+  // duration — say nothing rather than something impossible.
+  if (secs < 0) return '';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h >= 24) {
+    const d = Math.floor(h / 24);
+    return `${d}d ${h % 24}h`;
+  }
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 /** `11h 30m` — or an em dash when the ELD did not report this clock. */

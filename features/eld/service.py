@@ -200,7 +200,25 @@ def project(row: dict, *, now=None) -> dict:
         # only because the feature shipped against one company.
         "company": row.get("company_code") or "",
         "linked": bool(row.get("linked")),
-        "vehicle": row.get("truck_num") or "",
+        # OUR roster's truck first, the DEVICE's second.
+        #
+        # Sixty-nine drivers, sixty-nine dashes: the column read only
+        # our roster, and an unlinked driver has no roster truck — while
+        # the ELD had been telling us which truck they were on all
+        # along.  Preferring ours is still right when we have it: an
+        # assignment is a decision somebody made, where the device's
+        # answer is wherever the tractor happens to be.
+        #
+        # ``vehicle_from`` says which one this is, because a surface
+        # must not present a device's guess and an operator's decision
+        # as the same fact.
+        "vehicle": (row.get("truck_num") or "").strip()
+                   or (row.get("provider_vehicle") or "").strip(),
+        "vehicle_from": (
+            "roster" if (row.get("truck_num") or "").strip()
+            else "eld" if (row.get("provider_vehicle") or "").strip()
+            else ""
+        ),
         "duty_status": row.get("duty_status") or "unknown",
         "since": row.get("last_status_change") or "",
         # Four countdowns, named for what they are.  There is no
