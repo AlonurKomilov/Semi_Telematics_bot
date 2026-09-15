@@ -363,15 +363,26 @@ def test_the_version_a_client_compares_is_still_the_import_time():
 # needs the network is a guard that gets skipped.
 
 
-def _brand_patterns() -> list[str]:
+def _brand_patterns_by_layer() -> dict[str, list[str]]:
+    """layer → every brand pattern its query sends.
+
+    BY LAYER and not a flat list, because the patterns are no longer
+    interchangeable: `Petro` has its own clause now, so no single one of
+    them sorts every brand and a per-pattern assertion would demand that
+    each does.  What has to be true is that the LAYER's union does.
+    """
     from features.live_map.poi.layers import POI_OVERPASS_QUERIES
-    out = []
-    for clauses in POI_OVERPASS_QUERIES.values():
-        for c in clauses:
-            m = re.search(r'"brand"~"([^"]+)"', c)
-            if m:
-                out.append(m.group(1))
+    out: dict[str, list[str]] = {}
+    for layer, clauses in POI_OVERPASS_QUERIES.items():
+        pats = [m.group(1) for c in clauses
+                if (m := re.search(r'"brand"~"([^"]+)"', c))]
+        if pats:
+            out[layer] = pats
     return out
+
+
+def _admits(pats: list[str], brand: str) -> bool:
+    return any(re.match(p, brand, re.IGNORECASE) for p in pats)
 
 
 #: Every `Petro…` brand value the imported layers actually held on
@@ -401,30 +412,58 @@ REAL_PETRO_BRANDS = {
 
 
 def test_the_brand_allowlists_admit_the_chains_they_name():
-    """The fix must not cost us the brand it was aimed at."""
-    pats = _brand_patterns()
-    assert pats, "no brand allowlist found — the query shape moved"
-    for pat in pats:
-        rx = re.compile(pat, re.IGNORECASE)
+    """The fix must not cost us the brands it was aimed at."""
+    by_layer = _brand_patterns_by_layer()
+    assert by_layer, "no brand allowlist found — the query shape moved"
+    for layer, pats in by_layer.items():
         for good in ("Pilot Travel Center", "Flying J Travel Center",
                      "Love's Travel Stop"):
-            assert rx.match(good), f"{pat!r} no longer admits {good!r}"
+            assert _admits(pats, good), f"{layer} no longer admits {good!r}"
 
 
-def test_the_brand_allowlists_sort_every_petro_the_data_holds():
+def test_every_layer_sorts_every_petro_the_data_holds():
     """One test over the measured values, both directions at once — so a
-    pattern cannot pass by being generous in the half nobody listed."""
-    pats = _brand_patterns()
-    for pat in pats:
-        rx = re.compile(pat, re.IGNORECASE)
+    pattern cannot pass by being generous in the half nobody listed.
+
+    Asked of the LAYER's whole union: `Petro` rides its own clause now,
+    so no single pattern answers for all of them.
+    """
+    for layer, pats in _brand_patterns_by_layer().items():
+        # The truck_stop clause has no Petro twin on purpose (that tag is
+        # one node in the US extract) — so only ask layers that reach
+        # fuel stations at all, which is every layer that has a Petro
+        # clause or should have one.
         for brand, ours in REAL_PETRO_BRANDS.items():
-            got = bool(rx.match(brand))
-            assert got is ours, (
-                f"{pat!r} {'refuses' if ours else 'matches'} {brand!r} — "
-                + ("that is the American chain the entry exists for"
-                   if ours else
-                   "a prefix is not a brand, and this class of leak put "
-                   "1,201 foreign stations on a US truck map"))
+            got = _admits(pats, brand)
+            if ours and not got:
+                raise AssertionError(
+                    f"{layer} refuses {brand!r} — that is the American "
+                    "chain the entry exists for")
+            if not ours and got:
+                raise AssertionError(
+                    f"{layer} matches {brand!r} — a prefix is not a brand, "
+                    "and this class of leak put 1,201 foreign stations on "
+                    "a US truck map")
+
+
+def test_no_pattern_hides_a_dollar_in_the_middle():
+    """A `$` is an anchor at the END of a POSIX ERE and undefined
+    elsewhere — and these patterns are evaluated by a THIRD PARTY, not
+    by the `re` module this file tests them with.
+
+    One of them carried `Petro($| )` inside an alternation for a day.  It
+    behaved in Python; what Overpass would have made of it was never
+    established, and a brand clause that silently matches nothing would
+    have emptied a layer on the next weekly import.  The construct was
+    replaced with a clause anchored `^…$`, and this keeps it replaced.
+    """
+    for layer, pats in _brand_patterns_by_layer().items():
+        for pat in pats:
+            body = pat[:-1] if pat.endswith("$") else pat
+            assert "$" not in body, (
+                f"{layer}'s pattern {pat!r} carries a `$` that is not the "
+                "final anchor — portable only by accident.  Give the brand "
+                "its own `^…$` clause instead.")
 
 
 def test_a_mixed_chain_is_not_on_the_fuel_allowlist():

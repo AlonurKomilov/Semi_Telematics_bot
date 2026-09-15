@@ -308,10 +308,18 @@ async def test_the_cheapest_queries_are_tried_first(store):
     """Which layers get tried AT ALL, when a mirror is refusing.
 
     The breaker stops after two dead layers, so the order decides what
-    is reached.  The registry lists the two most expensive first —
-    fuel_station and def_station, four clauses each with brand regexes —
-    so on 2026-09-13 a struggling mirror refused both and the run ended
-    before rest_area, two clauses and no regex, was ever asked.
+    is reached.  The registry lists the most expensive first — fuel and
+    DEF, each several clauses with brand regexes — so on 2026-09-13 a
+    struggling mirror refused both and the run ended before rest_area,
+    two clauses and no regex, was ever asked.
+
+    NO LAYER IS NAMED HERE any more.  This asserted the literal pair
+    `["rest_area", "shower"]`, which was true until Showers became a
+    chain inference and grew a regex; the rule had not changed but the
+    snapshot of it had rotted.  What is asserted now is the RULE — the
+    cheapest go first — plus the independent fact that everything
+    reached is cheaper than everything skipped, which does not re-derive
+    the sort it is checking.
     """
     from features.live_map.poi.layers import POI_OVERPASS_QUERIES
 
@@ -330,9 +338,19 @@ async def test_the_cheapest_queries_are_tried_first(store):
         await importer.import_all(store, stamp="2026-09-13T16:00:00Z")
 
     # Only the two the breaker allows — and they are the two CHEAPEST.
-    assert order == ["rest_area", "shower"], order
     cheapest = sorted(POI_OVERPASS_QUERIES, key=importer._query_cost)[:2]
-    assert order == cheapest
+    assert order == cheapest, order
+
+    # Said again without the sort, so this cannot pass by agreeing with
+    # itself: everything reached is cheaper than everything skipped.
+    reached = max(importer._query_cost(l)[0] for l in order)
+    skipped = min(importer._query_cost(l)[0]
+                  for l in POI_OVERPASS_QUERIES if l not in order)
+    assert reached < skipped, (
+        f"a layer costing {reached} was tried while one costing {skipped} "
+        "was not — the breaker is spending its two attempts on the "
+        "expensive end, which is the starvation this ordering exists to "
+        "stop")
 
 
 # ── how old the data is, as opposed to when we fetched it ──────────────

@@ -92,11 +92,26 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     # test_poi_layers_are_not_silently_empty.py now iterates the values
     # the table actually holds.  Naming the two real American forms is
     # what closes it: a suffix cannot be enumerated, but a brand can.
+    #
+    # AND PETRO GETS ITS OWN CLAUSE rather than an entry in the
+    # alternation, because the second fix needed a `$` and a `$` in the
+    # MIDDLE of a pattern is not portable: POSIX ERE defines it as an
+    # anchor only at the end, and what an engine does with it elsewhere
+    # is that engine's business.  This one is sent to a THIRD PARTY and
+    # verified here with Python's `re`, which is not the same engine —
+    # so the construct was replaced rather than tested harder.  A
+    # separate clause anchored `^…$` is unambiguous everywhere, and the
+    # cost is one more filter in a union that already has several.
+    #
+    # (The `truck_stop` brand clause below has no Petro twin on purpose:
+    # `amenity=truck_stop` is one node in the whole US extract, so a
+    # fourth clause could match nothing and would only cost the mirror.)
     "fuel_station": [
         'node["amenity"="fuel"]["fuel:diesel"="yes"]',
         'node["amenity"="fuel"]["hgv"="yes"]',
         'nwr["amenity"="truck_stop"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger|Bosselman|Ambest)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|TravelCenters|Sapp Bros|Road Ranger|Bosselman|Ambest)",i]',
+        'node["amenity"="fuel"]["brand"~"^Petro( (Stopping|Travel).*)?$",i]',
     ],
     # ── DEF / AdBlue Stations ─────────────────────────────────────────────────
     # fuel:adblue=yes has ~15-25% coverage; brand allowlist catches the rest.
@@ -108,8 +123,9 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     "def_station": [
         'node["amenity"="fuel"]["fuel:adblue"="yes"]',
         'nwr["amenity"="truck_stop"]["fuel:adblue"="yes"]',
-        'nwr["amenity"="truck_stop"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger)",i]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'nwr["amenity"="truck_stop"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^Petro( (Stopping|Travel).*)?$",i]',
     ],
     # ── Truck parking ─────────────────────────────────────────────────────────
     # Node-only — way/relation queries silently timeout on large bboxes.
@@ -143,7 +159,8 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     "shower": [
         'node["amenity"="fuel"]["shower"="yes"]',
         'nwr["amenity"="truck_stop"]["shower"="yes"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|Petro( (Stopping|Travel).*)?$|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|TravelCenters|Sapp Bros|Road Ranger)",i]',
+        'node["amenity"="fuel"]["brand"~"^Petro( (Stopping|Travel).*)?$",i]',
     ],
     # ── Rest areas ────────────────────────────────────────────────────────────
     "rest_area": [
