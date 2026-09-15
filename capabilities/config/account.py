@@ -133,6 +133,23 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "disagree.  Engine: capabilities/source; surface: the Vehicles "
         "page gear.",
     ),
+    # ── ELD (its own feature, its own config) ───────────────────────
+    #
+    # Its own key rather than a second field on the vehicle one: hours
+    # of service is a different domain with different permissions and a
+    # different page, and one feature's setting must not live inside
+    # another's.  Written by ``/eld/config``, read by the Hours of
+    # Service list.
+    SettingOwner(
+        "field_precedence:driver_hos", "can_manage_config_all",
+        "config", "eld",
+        "Which ELD wins when ONE driver is reported by more than one "
+        "connected device — normally none, since two ELDs report "
+        "different drivers.  The WHOLE reading moves, never a field: a "
+        "duty status and its clocks are one observation from one "
+        "certified device.  '__newest__' is a selectable rule, not the "
+        "default — whose hours are authoritative is the owner's call.",
+    ),
     SettingOwner(
         "source_lifecycle:*", "can_manage_config_all",
         "config", "vehicles",

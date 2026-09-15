@@ -20,6 +20,9 @@ from typing import Any, Optional
 from adapters.telematics.catalog import PROVIDER_CATALOG
 from adapters.telematics.protocol import Capability, HosClock
 from adapters.telematics.registry import get_provider, is_registered
+#: Kept here rather than imported from features.eld.config, which is an
+#: interface module — the service must not depend on a router.
+_NEWEST = "__newest__"
 from capabilities.data_lifecycle.staleness import data_age_minutes
 
 logger = logging.getLogger(__name__)
@@ -238,6 +241,63 @@ def project(row: dict, *, now=None) -> dict:
     }
 
 
+
+def collapse_overlap(rows: list[dict], order: list[str]) -> list[dict]:
+    """One driver on two devices: keep one WHOLE reading, by the owner's rule.
+
+    Two ELDs normally report different drivers and the union needs no
+    arbitration — this is for the overlap, a driver logged on both
+    mid-migration, where two certified devices are each authoritative
+    about the same person's hours.
+
+    THE WHOLE READING MOVES, never a field. A duty status and its clocks
+    are one observation from one device at one instant; taking the
+    status from A and the drive clock from B produces a reading neither
+    device ever reported, on the surface that must never invent a state.
+
+    Only LINKED drivers can overlap. An unlinked row is a person we have
+    not matched to our roster, so we cannot know two of them are the
+    same human — guessing would merge two people, which is worse than
+    showing two rows.
+
+    ``order`` is the account's choice, first wins.  ``__newest__`` means
+    the most recent reading takes it regardless of device; an unreadable
+    or missing ``source_ts`` sorts last, because "we cannot date this"
+    must never beat a reading we can.
+    """
+    if not order:
+        return rows
+    by_user: dict[int, list[dict]] = {}
+    out: list[dict] = []
+    for r in rows:
+        uid = r.get("user_id")
+        if uid is None:
+            # Unlinked — cannot be shown to be the same person.
+            out.append(r)
+        else:
+            by_user.setdefault(int(uid), []).append(r)
+
+    newest_first = order and order[0] == _NEWEST
+    for uid, group in by_user.items():
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        if newest_first:
+            out.append(max(group, key=lambda r: str(r.get("source_ts") or "")))
+            continue
+        rank = {pid: i for i, pid in enumerate(order)}
+        out.append(min(
+            group,
+            # A provider the order has never heard of ranks after every
+            # one it has, but still beats nothing at all.
+            key=lambda r: (rank.get(str(r.get("provider_id") or ""), len(order)),
+                           # Ties break on freshness, so the answer is
+                           # deterministic rather than dict-order.
+                           -len(str(r.get("source_ts") or ""))),
+        ))
+    return out
+
+
 async def get_hours(
     db: Any,
     account_id: int,
@@ -245,6 +305,7 @@ async def get_hours(
     user_id: Optional[int] = None,
     vehicle_scope: Optional[list[str]] = None,
     feed: Optional[dict] = None,
+    reading_order: Optional[list[str]] = None,
 ) -> dict:
     """The account's duty clocks, narrowed to this caller.
 
@@ -278,6 +339,11 @@ async def get_hours(
     # account with nothing connected.
     if feed is None:
         feed = await feed_status(account_id)
+
+    # Collapse an overlap BEFORE anything counts rows: a driver shown
+    # twice would be counted twice, hidden twice, and warned about
+    # twice.
+    rows = collapse_overlap(rows, list(reading_order or []))
 
     before_scope = len(rows)
     if vehicle_scope is not None:

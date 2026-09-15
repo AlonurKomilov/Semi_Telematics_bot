@@ -28,9 +28,13 @@ status is the only acceptable direction to fail.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from features.eld.service import get_hours
+
+logger = logging.getLogger(__name__)
 from capabilities.permissions.vehicle_scope import (
     VehicleScope, build_vehicle_scope,
 )
@@ -68,15 +72,38 @@ async def _vehicle_scope(user: dict, tenant_db) -> VehicleScope | None:
     return await build_vehicle_scope(tenant_db, int(user["account_id"]), trucks)
 
 
+
+async def _reading_order(tenant_db, account_id: int) -> list[str]:
+    """The account's choice of which device wins an overlap.
+
+    Best-effort: a settings read that fails must not take Hours of
+    Service down with it.  An empty list means "no opinion", and
+    ``collapse_overlap`` then leaves both readings visible — which is
+    the behaviour before anybody set this, and the safe direction: two
+    readings a dispatcher can see beats one we picked by guessing.
+    """
+    try:
+        from capabilities import source as reconciliation
+        from features.eld.config import ELD_ENTITY, READING_FIELD
+        prec = await reconciliation.get_precedence(
+            tenant_db, account_id, ELD_ENTITY)
+        return list(prec.get(READING_FIELD) or ())
+    except Exception:
+        logger.exception("eld: reading order lookup failed acct=%d", account_id)
+        return []
+
+
 @router.get("/hours")
 async def hours(
     user: dict = Depends(_VIEW),
     tenant_db=Depends(get_tenant_db),
 ):
     """Current duty clocks for every driver this caller may see."""
+    account_id = int(user["account_id"])
     return await get_hours(
-        tenant_db, int(user["account_id"]),
+        tenant_db, account_id,
         vehicle_scope=await _vehicle_scope(user, tenant_db),
+        reading_order=await _reading_order(tenant_db, account_id),
     )
 
 
@@ -98,10 +125,12 @@ async def driver_hours(
     ``connected`` field still tells the page whether an ELD is wired
     at all, which is a fact about the account and not about a person.
     """
+    account_id = int(user["account_id"])
     answer = await get_hours(
-        tenant_db, int(user["account_id"]),
+        tenant_db, account_id,
         user_id=user_id,
         vehicle_scope=await _vehicle_scope(user, tenant_db),
+        reading_order=await _reading_order(tenant_db, account_id),
     )
     if not answer["drivers"]:
         if not answer["connected"]:

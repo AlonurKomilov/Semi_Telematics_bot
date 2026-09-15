@@ -53,6 +53,7 @@ from capabilities.object_storage import router as object_storage_routes
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
 from features.inventory import router as inventory_routes
+from features.eld import config as eld_config
 from features.eld import router as eld_routes
 from features.cameras import router as cameras_routes
 from features.live_map import router as maps
@@ -90,6 +91,7 @@ from features.coaching import router as coaching_routes
 from features.drivers import router as drivers_routes
 from interfaces.api.auth import router as auth_router
 from interfaces.api.rate_limit import limiter
+from interfaces.api.static_files import public_file_path
 from adapters.telematics.errors import NoTelematicsClientError
 
 logger = logging.getLogger(__name__)
@@ -320,19 +322,12 @@ class QuarantineMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if quarantine.is_open_path(path):
             return await call_next(request)
-        from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt
-        from jose import JWTError
-        token = ""
-        auth_h = request.headers.get("authorization", "")
-        if auth_h.startswith("Bearer "):
-            token = auth_h[7:]
-        if not token:
-            token = request.cookies.get(AUTH_COOKIE_NAME, "")
-        if not token:
-            return await call_next(request)
+        from interfaces.api.deps import resolve_request_identity
         try:
-            payload = decode_jwt(token)
-        except JWTError:
+            payload = await resolve_request_identity(request)
+        except HTTPException:
+            # Public routes remain public; protected routes raise the
+            # cached authentication failure through get_current_user.
             return await call_next(request)
         # ``uid``, not ``user_id``: the claim is named for the wire, and
         # reading the Python parameter name instead let every held
@@ -384,24 +379,15 @@ class BillingEnforcementMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if any(path.endswith(s) for s in _ENFORCEMENT_BYPASS_SUFFIXES):
             return await call_next(request)
-        # Pull the JWT — header OR cookie — same fallback order the
-        # ``get_current_user`` dependency uses, so a request the route
-        # would consider authenticated is the same set this middleware
-        # blocks.  Decode failures are treated as "no auth" and fall
-        # through to the route (which will 401 if it needs auth).
-        from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt
-        from jose import JWTError
-        token = ""
-        auth_h = request.headers.get("authorization", "")
-        if auth_h.startswith("Bearer "):
-            token = auth_h[7:]
-        if not token:
-            token = request.cookies.get(AUTH_COOKIE_NAME, "")
-        if not token:
-            return await call_next(request)
+        # Use the same credential decision as quarantine and the route.
+        # An invalid or revoked Bearer may select a valid cookie instead;
+        # enforcement must follow that selected identity.
+        from interfaces.api.deps import resolve_request_identity
         try:
-            payload = decode_jwt(token)
-        except JWTError:
+            payload = await resolve_request_identity(request)
+        except HTTPException:
+            # Public routes remain public; protected routes raise the
+            # cached authentication failure through get_current_user.
             return await call_next(request)
         account_id = payload.get("account_id")
         if not account_id:
@@ -650,6 +636,11 @@ def create_api() -> FastAPI:
         # The pre-move ``/vehicles/…`` addresses, kept working while
         # anything still holds one.  Same handlers; out of the schema.
         app.include_router(inventory_routes.legacy, prefix=prefix)
+        # BEFORE the feature router, the same rule vehicles/config
+        # carries: FastAPI matches in registration order across the app,
+        # so a parametric route in the feature router would swallow
+        # /eld/config and nothing in a route-count check would notice.
+        app.include_router(eld_config.router, prefix=prefix)
         app.include_router(eld_routes.router, prefix=prefix)
         app.include_router(loads_routes.router, prefix=prefix)
         app.include_router(kpi_config.router, prefix=prefix)
@@ -827,7 +818,7 @@ def create_api() -> FastAPI:
         # SPA catch-all: serve index.html for any /miniapp/* path (Vite base is '/miniapp/')
         @app.get("/miniapp/{full_path:path}")
         async def miniapp_spa(full_path: str):
-            file_path = os.path.join(miniapp_dir, full_path)
+            file_path = public_file_path(miniapp_dir, full_path)
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
             # no-store so the browser always fetches fresh HTML after a deploy
@@ -870,7 +861,7 @@ def create_api() -> FastAPI:
         @app.get("/dashboard/{full_path:path}")
         async def dashboard_spa(full_path: str):
             # If the path maps to a real file (JS/CSS/images), serve it
-            file_path = os.path.join(dashboard_dir, full_path)
+            file_path = public_file_path(dashboard_dir, full_path)
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
             # /dashboard/assets/* are hash-named bundles emitted by Vite.

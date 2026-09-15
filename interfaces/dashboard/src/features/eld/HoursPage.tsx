@@ -22,6 +22,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Plug } from '../../lib/icons';
 import DataGrid from '../../components/datagrid';
+import EldSourcePanel from './EldSourcePanel';
 import { PageHeader, CardSkeleton, EmptyState, ErrorState } from '../../components/shell';
 import { Freshness, Tip } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
@@ -410,6 +411,13 @@ export default function HoursPage() {
         }
         meta={data?.connected ? <HeaderMeta data={data} /> : undefined}
       />
+
+      {/* Only when the account really has two devices reporting — a
+          picker for a contest that cannot happen is a decision somebody
+          has to make and can get wrong for nothing. */}
+      {!isLoading && !isError && (
+        <EldSourcePanel deviceCount={data?.feed?.connected?.length ?? 0} />
+      )}
 
       {isLoading && <CardSkeleton />}
 
