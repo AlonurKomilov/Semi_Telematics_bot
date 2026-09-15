@@ -845,6 +845,13 @@ async def create_tables(conn) -> None:
             provider_data       TEXT    NOT NULL DEFAULT '{}',
             -- JSON blob for provider-specific fields
             trial_ends_at       TEXT,
+            -- When the account's ONE trial began.  Set once and never
+            -- cleared — ``trial_ends_at`` goes to NULL the moment the
+            -- window closes, so after an expiry nothing else on the row
+            -- can tell a used trial from a never-used one, and a second
+            -- trial would look perfectly legitimate to any code that
+            -- asked.  This is the memory that makes "once" mean once.
+            trial_started_at    TEXT    NOT NULL DEFAULT '',
             current_period_start TEXT,
             current_period_end   TEXT,
             canceled_at         TEXT,

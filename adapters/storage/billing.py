@@ -95,7 +95,7 @@ class BillingMixin:
             "monthly_base_usd", "extra_vehicle_cents", "billing_email",
             "provider", "provider_customer_id", "provider_subscription_id",
             "provider_base_item_id", "provider_extra_item_id", "provider_base_price_id",
-            "provider_data", "trial_ends_at", "current_period_start",
+            "provider_data", "trial_ends_at", "trial_started_at", "current_period_start",
             "current_period_end", "canceled_at", "past_due_since",
             "billed_quantity", "billed_at",
         }
@@ -110,6 +110,41 @@ class BillingMixin:
             values,
         )
         await self._db.commit()
+
+    async def trial_eligibility(self, account_id: int) -> dict:
+        """Whether this account may start a trial, and why not.
+
+        A trial is once per account, and "once" has to survive the trial
+        ending: ``trial_ends_at`` is cleared the moment the window
+        closes, so it cannot be the memory.  ``trial_started_at`` is,
+        and it is never cleared.
+
+        Paying is the other disqualifier, and it is the one the operator
+        asked for: an account that has been billed — or that carries a
+        provider subscription at all — must not be able to come back
+        round to a free fortnight, whatever route asks for one.
+
+        Returns ``{"eligible": bool, "reasons": [str]}``; the reasons are
+        for the log and the operator, never for a customer, who would
+        learn from them exactly which condition to avoid.
+        """
+        sub = await self.get_subscription(account_id) or {}
+        reasons: list[str] = []
+        if str(sub.get("trial_started_at") or "").strip():
+            reasons.append("this account has already had its trial")
+        if (sub.get("status") or "") == "trialing":
+            reasons.append("a trial is already running")
+        if str(sub.get("provider_subscription_id") or "").strip():
+            reasons.append("this account has a payment subscription")
+        try:
+            if await self.get_invoices(account_id, limit=1):
+                reasons.append("this account has been invoiced before")
+        except Exception:
+            # A history we cannot read is not proof of innocence: refuse
+            # rather than hand out a trial on a failed query.
+            logger.exception("trial eligibility: invoice history unreadable for %s", account_id)
+            reasons.append("the billing history could not be read")
+        return {"eligible": not reasons, "reasons": reasons}
 
     async def start_trial(
         self, account_id: int, *, tier: Optional[str] = None, days: int = 14,
@@ -137,7 +172,17 @@ class BillingMixin:
             if not tier:
                 return None
         await self.get_or_create_subscription(account_id)
-        ends = datetime.now(timezone.utc) + timedelta(days=days)
+        # Asked HERE rather than at the callers, so a route added later
+        # cannot forget it.  Both of today's callers create an account
+        # and are best-effort; None is the answer they already handle
+        # for "no plan is flagged for trials".
+        verdict = await self.trial_eligibility(account_id)
+        if not verdict["eligible"]:
+            logger.info("trial refused for account %s: %s",
+                        account_id, "; ".join(verdict["reasons"]))
+            return None
+        now = datetime.now(timezone.utc)
+        ends = now + timedelta(days=days)
         ends_iso = ends.isoformat()
         pricing = await self._pricing(tier)
         await self.update_subscription(
@@ -145,6 +190,8 @@ class BillingMixin:
             tier=tier,
             status="trialing",
             trial_ends_at=ends_iso,
+            # the memory that outlives the window
+            trial_started_at=now.isoformat(),
             base_vehicles=pricing["base_vehicles"],
             monthly_base_usd=pricing["monthly_base_cents"],
             extra_vehicle_cents=pricing["extra_vehicle_cents"],
@@ -180,6 +227,9 @@ class BillingMixin:
                 r["account_id"],
                 tier="free",
                 status="active",
+                # ``trial_ends_at`` goes; ``trial_started_at`` stays, and
+                # is what stops a second trial being handed out to an
+                # account whose first one merely ended.
                 trial_ends_at=None,
                 base_vehicles=free["base_vehicles"],
                 monthly_base_usd=free["monthly_base_cents"],

@@ -246,6 +246,7 @@ async def run_all(conn) -> None:
     await migrate_live_map_key_rename(conn)
     await migrate_plan_extra_price(conn)
     await migrate_account_discounts(conn)
+    await migrate_trial_started_at(conn)
     await migrate_billing_email_changes(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
@@ -5201,6 +5202,27 @@ async def migrate_billing_email_changes(conn) -> None:
         # Boot must not fail for this: without the table no change can be
         # started, and the billing address stays where it is.
         logger.exception("billing_email_changes migration failed")
+
+
+async def migrate_trial_started_at(conn) -> None:
+    """The memory that makes a trial once-per-account.
+
+    ``trial_ends_at`` is cleared when the window closes, so a row that
+    finished a trial is indistinguishable from one that never had one —
+    and any future caller of ``start_trial`` would hand out a second.
+    Backfilled from the rows still trialing; older finished trials
+    cannot be recovered, which is stated rather than guessed at.
+    Idempotent.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS "
+            "trial_started_at TEXT NOT NULL DEFAULT ''")
+        await conn.execute(
+            "UPDATE subscriptions SET trial_started_at = COALESCE(created_at, now()::text) "
+            "WHERE trial_started_at = '' AND status = 'trialing'")
+    except Exception:
+        logger.exception("trial_started_at migration failed")
 
 
 async def migrate_account_discounts(conn) -> None:
