@@ -175,6 +175,33 @@ describe('the occlusion escape hatch', () => {
   });
 
   /**
+   * AND THE FRAME IS NOT GLASS.
+   *
+   * `.chrome-pane` is by definition the surface that steps aside for a
+   * wallpaper: with a pattern on it is transparent, so there is nothing
+   * of its own to frost, and with no pattern it is an opaque
+   * full-height rail, so the blur has nothing behind it to show.
+   *
+   * It paid for both in the only currency that matters here.
+   * `backdrop-filter` creates a stacking context and a containing block
+   * for positioned descendants, and the sidebar, the header and the
+   * content envelope are the three ancestors every menu in this product
+   * opens inside — the persona list, the avatar menu, the mods panel.
+   * All three went wrong under Glass and were correct under Solid, and
+   * this is the only property that differs between them there.
+   */
+  it('and the three shell rails carry no backdrop filter', () => {
+    const selectors = /([^{}]*)\{[^}]*backdrop-filter:\s*none[^}]*\}/.exec(CODE)?.[1] ?? '';
+    expect(
+      selectors,
+      'the shell rails are frosted again. `backdrop-filter` on the sidebar, the '
+        + 'header or the content envelope makes each a containing block and a '
+        + 'stacking context for every menu that opens inside it — for a blur that '
+        + 'shows a transparent pane under a wallpaper and an opaque rail without one.',
+    ).toMatch(/\.surface\.chrome-pane/);
+  });
+
+  /**
    * `.surface.surface-popover`, never `.surface-popover` alone.
    *
    * The glass rung is `:root[data-material="glass"] .surface` at

@@ -99,11 +99,25 @@
      in the tree are `after:absolute` and Leaflet's inline CSS, neither
      of which is a position class on an element — so three selectors
      cover thirteen sites with no call-site edits. */
+  /* THE FRAME IS NOT GLASS, and that is the other half of the same
+     idea. `.chrome-pane` is BY DEFINITION the surface that steps aside
+     for a wallpaper: with a pattern on it is `background-color:
+     transparent`, so there is nothing of its own to frost, and with no
+     pattern it is an opaque full-height rail, so the blur has nothing
+     behind it to show. It paid for both in the only currency that
+     matters here — `backdrop-filter` creates a stacking context and a
+     containing block for positioned descendants, and the sidebar, the
+     header and the content envelope are the three ancestors that every
+     menu in this product opens inside.
+     Whatever the exact mechanism, it is the ONLY property that differs
+     between Solid and Glass on those three elements, and Solid is the
+     mode where the menus work. */
   :root[data-material="glass"] .surface-opaque,
   :root[data-material="glass"] .surface.surface-popover,
   :root[data-material="glass"] .surface.absolute,
   :root[data-material="glass"] .surface.fixed,
-  :root[data-material="glass"] .surface.sticky {
+  :root[data-material="glass"] .surface.sticky,
+  :root[data-material="glass"] .surface.chrome-pane {
     background-color: var(--surface-base, var(--card));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
