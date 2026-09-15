@@ -34,11 +34,12 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-from adapters.telematics.catalog import PROVIDER_CATALOG
+from adapters.telematics.catalog import assert_declarations_agree
 from adapters.telematics.protocol import (
     Capability,
     ConnectionStatus,
     DutyStatus,
+    HosClock,
     HosSnapshot,
     TelematicsProvider,
 )
@@ -116,6 +117,12 @@ class SamsaraProvider:
         # integration toggle.  See catalog._SAMSARA_DEFAULTS.
         Capability.HISTORY_BACKFILL,
     })
+
+    # Samsara reports all four countdowns.  Declared rather than
+    # inferred from a payload, so a mapping regression that silently
+    # produced None would fail the shared guard instead of quietly
+    # removing a column from Hours of Service.
+    hos_clocks_reported: frozenset[str] = HosClock.ALL
 
     def __init__(self, client: MultiCompanyClient) -> None:
         self._client = client
@@ -460,20 +467,10 @@ class SamsaraProvider:
 _PROVIDER_PROTOCOL_CHECK: type[TelematicsProvider] = SamsaraProvider
 
 
-# ── Catalog drift guard ──────────────────────────────────────────
+# ── Declaration drift guard ──────────────────────────────────────
 #
-# If the catalog's declared capability set ever drifts from the
-# provider's own ``supported_capabilities``, surface that as a clear
-# ImportError so it can never silently disagree at runtime.
+# Capability set must match the catalog, and the declared HOS clocks
+# must be a legal subset.  Shared with every provider so the invariant
+# is written once — see adapters/telematics/catalog.py.
 
-_catalog_caps = PROVIDER_CATALOG["samsara"].capabilities
-_provider_caps = SamsaraProvider.supported_capabilities
-if _catalog_caps != _provider_caps:
-    only_catalog = _catalog_caps - _provider_caps
-    only_provider = _provider_caps - _catalog_caps
-    raise ImportError(
-        "samsara provider capability mismatch — "
-        f"catalog has {sorted(only_catalog)!r}, "
-        f"provider has {sorted(only_provider)!r}; "
-        "update the catalog or the provider so both agree."
-    )
+assert_declarations_agree(SamsaraProvider)

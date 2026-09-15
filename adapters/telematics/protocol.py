@@ -118,6 +118,49 @@ class DutyStatus:
     })
 
 
+class HosClock:
+    """The four countdown clocks, named so a provider can say which of
+    them it actually reports.
+
+    ``supported_capabilities`` answers *do we fetch hours of service
+    from this provider* — a yes/no about the FEED.  This answers a
+    different question the same declaration cannot: *which of the four
+    numbers does this vendor ever put in the payload*.  They are not the
+    same question, and the second one has an answer before a single row
+    is fetched.
+
+    It has to be declared rather than observed.  Deriving it from
+    ingested rows conflates three unrelated things: a vendor that never
+    reports a clock, a driver who has not started their day, and a
+    driver the ELD has no session for — so the set would change shape
+    with who happens to be on shift.  Worse, a mapping bug in an adapter
+    that silently produced ``None`` would HIDE the broken column instead
+    of showing it.  Declared, the same bug is a failing test.
+
+    Empty is a legitimate answer.  An ELD that reports duty status and
+    nothing else is a real product, not a broken integration, and the
+    surfaces above must be able to say "this device does not report
+    remaining hours" instead of showing four blanks that read as zero.
+    """
+
+    DRIVE = "drive"
+    SHIFT = "shift"
+    CYCLE = "cycle"
+    BREAK = "break"
+
+    ALL: frozenset[str] = frozenset({DRIVE, SHIFT, CYCLE, BREAK})
+
+    FIELDS: dict[str, str] = {
+        DRIVE: "drive_remaining_seconds",
+        SHIFT: "shift_remaining_seconds",
+        CYCLE: "cycle_remaining_seconds",
+        BREAK: "break_in_seconds",
+    }
+    """Clock id → the :class:`HosSnapshot` field it fills.  Keeping the
+    two names joined here is what lets a guard check a provider's claim
+    against the snapshots it actually returns."""
+
+
 @dataclass(frozen=True)
 class HosSnapshot:
     """One driver's hours-of-service clocks, as one provider reports them.
@@ -219,6 +262,24 @@ class TelematicsProvider(Protocol):
 
     supported_capabilities: frozenset[str]
     """The set of ``Capability.*`` values this provider implements."""
+
+    hos_clocks_reported: frozenset[str]
+    """Which of :class:`HosClock`'s four countdowns this provider ever
+    populates.
+
+    Invariants, enforced by each adapter's own import-time guard:
+
+      * a subset of ``HosClock.ALL``;
+      * EMPTY when the provider does not declare
+        ``Capability.DRIVER_HOS`` — nothing to report if we never ask;
+      * MAY be empty when it does.  ORIENT ELD is the worked example:
+        it reports duty status and when it began, and no countdown at
+        all.
+
+    Read this through the registry, never by comparing a provider id.
+    A surface that says "which clocks am I able to show" must keep
+    working when the third ELD reports two of the four.
+    """
 
     # ── Lifecycle ─────────────────────────────────────────────────
 

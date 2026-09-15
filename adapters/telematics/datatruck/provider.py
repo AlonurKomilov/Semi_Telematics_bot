@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from adapters.telematics.catalog import PROVIDER_CATALOG
+from adapters.telematics.catalog import assert_declarations_agree
 from adapters.telematics.protocol import (
     Capability,
     ConnectionStatus,
@@ -50,6 +50,10 @@ class DatatruckProvider:
         Capability.TMS_ORDERS_SYNC,
         Capability.TMS_WORK_ORDERS_SYNC,
     })
+
+    # A TMS knows who the drivers are, not what their duty clocks read
+    # — it never declares DRIVER_HOS, so this must be empty.
+    hos_clocks_reported: frozenset[str] = frozenset()
 
     def __init__(self, client: DatatruckClient) -> None:
         self._client = client
@@ -184,17 +188,8 @@ class DatatruckProvider:
 _PROVIDER_PROTOCOL_CHECK: type[TelematicsProvider] = DatatruckProvider
 
 
-# Catalog drift guard — refuse to import if the catalog and the
-# provider disagree on capabilities.  Cheap insurance against
-# accidentally adding a capability in one place but not the other.
-_catalog_caps = PROVIDER_CATALOG["datatruck"].capabilities
-_provider_caps = DatatruckProvider.supported_capabilities
-if _catalog_caps != _provider_caps:
-    only_catalog = _catalog_caps - _provider_caps
-    only_provider = _provider_caps - _catalog_caps
-    raise ImportError(
-        "datatruck provider capability mismatch — "
-        f"catalog has {sorted(only_catalog)!r}, "
-        f"provider has {sorted(only_provider)!r}; "
-        "update the catalog or the provider so both agree.",
-    )
+# Declaration drift guard — capability set must match the catalog, and
+# the declared HOS clocks must be legal.  Shared with every provider;
+# see adapters/telematics/catalog.py.
+
+assert_declarations_agree(DatatruckProvider)

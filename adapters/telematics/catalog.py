@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .protocol import Capability
+from .protocol import Capability, HosClock
 
 
 class ProviderStatus(str, Enum):
@@ -252,6 +252,22 @@ def resolve_capability_cadence(
     return dict(entry.feature_defaults.get(capability) or {})
 
 
+# ORIENT ELD reports ONE feed: who is on what duty status, since when.
+# Nothing else in the capability vocabulary is on offer — no safety
+# events, no fault codes, no efficiency — so this map is one line long,
+# and that is the honest size of it.  The cadence matches Samsara's HOS
+# because the staleness rule the feature applies (15 minutes) is the
+# same rule regardless of who is behind it.
+_ORIENT_ELD_DEFAULTS: dict[str, dict] = {
+    Capability.DRIVER_HOS: {"enabled": True, "interval_min": 5},
+}
+
+_ORIENT_ELD_FEED_SPECS: tuple[FeedSpec, ...] = (
+    FeedSpec(Capability.DRIVER_HOS, "driver_hos_live", "updated_at",
+             feature="ELD", component="Hours of service"),
+)
+
+
 PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
     "samsara": ProviderCatalogEntry(
         provider_id="samsara",
@@ -271,6 +287,29 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
         status=ProviderStatus.AVAILABLE,
         feature_defaults=_SAMSARA_DEFAULTS,
         feeds=_SAMSARA_FEED_SPECS,
+    ),
+
+    "orient_eld": ProviderCatalogEntry(
+        provider_id="orient_eld",
+        display_name="ORIENT ELD",
+        tagline="Duty status and driver logs from ORIENT ELD",
+        description=(
+            "Connects to ORIENT ELD for each driver's current duty "
+            "status, when it began, and the truck they are on.  "
+            "ORIENT ELD reports duty status only — it does not "
+            "publish remaining drive, shift, cycle or break time, so "
+            "those columns stay empty on Hours of Service and the "
+            "page says so rather than showing blanks.  Each company "
+            "uses its own ORIENT ELD API key, issued from that "
+            "company's profile in the ORIENT web app."
+        ),
+        capabilities=frozenset(_ORIENT_ELD_DEFAULTS.keys()),
+        auth_kind="api_token",
+        docs_url="https://publicapi.mgkeld.com/redoc",
+        icon="Clock",
+        status=ProviderStatus.AVAILABLE,
+        feature_defaults=_ORIENT_ELD_DEFAULTS,
+        feeds=_ORIENT_ELD_FEED_SPECS,
     ),
 
     # ── Coming-soon placeholders ──
@@ -375,3 +414,64 @@ PROVIDER_CATALOG: dict[str, ProviderCatalogEntry] = {
         },
     ),
 }
+
+
+def assert_declarations_agree(provider_cls) -> None:
+    """Refuse to import a provider whose claims disagree with the catalog.
+
+    Called at module scope from each adapter's ``provider.py``, so a
+    mismatch is an ImportError at boot rather than a wrong toggle on
+    somebody's Integrations page.  It lives here, taking the class as an
+    argument, because the alternative — the same fifteen lines copied
+    into every adapter — is how the second half of a two-part invariant
+    gets left out of the third vendor.
+
+    Two claims are checked:
+
+      ``supported_capabilities`` must equal the catalog entry's, because
+      the catalog is what renders toggles and the provider is what
+      answers them.
+
+      ``hos_clocks_reported`` must be a subset of ``HosClock.ALL``, and
+      must be empty unless the provider declares
+      ``Capability.DRIVER_HOS``.  Claiming a clock on a feed you never
+      fetch is a promise a surface will render and nothing will fill.
+    """
+    pid = getattr(provider_cls, "provider_id", "")
+    entry = PROVIDER_CATALOG.get(pid)
+    if entry is None:
+        raise ImportError(
+            f"provider {pid!r} has no PROVIDER_CATALOG entry — add one "
+            "before registering it, or the dashboard cannot render it.",
+        )
+
+    catalog_caps = entry.capabilities
+    provider_caps = provider_cls.supported_capabilities
+    if catalog_caps != provider_caps:
+        raise ImportError(
+            f"{pid} provider capability mismatch — "
+            f"catalog has {sorted(catalog_caps - provider_caps)!r}, "
+            f"provider has {sorted(provider_caps - catalog_caps)!r}; "
+            "update the catalog or the provider so both agree.",
+        )
+
+    clocks = getattr(provider_cls, "hos_clocks_reported", None)
+    if clocks is None:
+        raise ImportError(
+            f"{pid} provider does not declare hos_clocks_reported — "
+            "every provider states which HOS countdowns it reports, "
+            "and frozenset() is the right answer for one that reports "
+            "none.",
+        )
+    unknown = set(clocks) - HosClock.ALL
+    if unknown:
+        raise ImportError(
+            f"{pid} declares unknown HOS clocks {sorted(unknown)!r} — "
+            f"valid ids are {sorted(HosClock.ALL)!r}.",
+        )
+    if clocks and Capability.DRIVER_HOS not in provider_caps:
+        raise ImportError(
+            f"{pid} declares HOS clocks {sorted(clocks)!r} without "
+            "Capability.DRIVER_HOS — a clock on a feed that is never "
+            "fetched is a column nothing will ever fill.",
+        )

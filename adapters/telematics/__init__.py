@@ -5,13 +5,13 @@ implements, the registry that maps ``provider_id`` strings to
 implementation classes, and the catalog of provider metadata the
 dashboard renders.
 
-Today's only registered provider is Samsara (re-exported from
-``adapters.samsara`` until the source files relocate under
-``adapters/telematics/samsara/``).  Future providers (Motive, Geotab,
-Datatruck) plug in by registering against this module without any
-changes to consumers — scheduler jobs, capabilities, dashboard routes
-all go through the registry rather than importing a vendor module
-directly.
+Registered today: Samsara (telematics), Datatruck (TMS) and ORIENT
+ELD (electronic logging device).  A provider plugs in by registering
+against this module without any change to consumers — scheduler
+jobs, capabilities and dashboard routes all go through the registry
+rather than importing a vendor module directly.  ORIENT ELD was the
+first one added after that claim was made, and it cost no change
+under ``features/``.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from .catalog import (
 from .protocol import (
     Capability,
     ConnectionStatus,
+    HosClock,
     TelematicsProvider,
 )
 from .registry import (
@@ -40,10 +41,12 @@ from .registry import (
 # module is enough to wire every available vendor in.
 from . import samsara as _samsara_provider  # noqa: F401
 from . import datatruck as _datatruck_provider  # noqa: F401
+from . import orient_eld as _orient_eld_provider  # noqa: F401
 
 __all__ = [
     "Capability",
     "ConnectionStatus",
+    "HosClock",
     "PROVIDER_CATALOG",
     "ProviderCatalogEntry",
     "ProviderStatus",

@@ -178,6 +178,30 @@ async def get_telematics_client(
                 "api_token — reconnect from the dashboard",
             )
         client = DatatruckClient(company_subdomain=sub, api_token=tok)
+    elif provider_id == "orient_eld":
+        # ORIENT ELD issues one API key PER COMPANY, like Samsara and
+        # unlike Datatruck — so the client is a fan-out, built from the
+        # integration row's ``credentials.companies`` map.  A single-
+        # company account may store a bare ``api_key`` instead; the
+        # builder accepts both.
+        from adapters.telematics.orient_eld.client import (
+            build_multi_company_orient_client,
+        )
+        from infra.platform import get_platform_db as _pdb
+        integ = await _pdb().get_account_integration(account_id, "orient_eld")
+        if integ is None or not integ.credentials:
+            raise NotImplementedError(
+                "orient_eld integration is not configured for this "
+                "account — connect from the dashboard first",
+            )
+        client = build_multi_company_orient_client(
+            integ.credentials, account_id=account_id,
+        )
+        if not len(client):
+            raise NotImplementedError(
+                "orient_eld credentials hold no usable API key — "
+                "reconnect from the dashboard",
+            )
     else:
         # Defensive: a registered-but-unhandled provider should
         # surface as a clear error rather than crash with

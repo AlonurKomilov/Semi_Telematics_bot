@@ -19,7 +19,7 @@ import capabilities.integrations.shared.resolver as resolver
 import features.eld.ingest as ingest
 from adapters.telematics.catalog import ProviderCatalogEntry, ProviderStatus
 from adapters.telematics.protocol import (
-    Capability, DutyStatus, HosSnapshot, TelematicsProvider,
+    Capability, DutyStatus, HosClock, HosSnapshot, TelematicsProvider,
 )
 
 
@@ -28,6 +28,12 @@ class FakeEldProvider:
 
     provider_id = "fake_eld"
     supported_capabilities = frozenset({Capability.DRIVER_HOS})
+    # Every provider states which countdowns it fills.  This one fills
+    # all four (see ``_snap``), and saying so is not optional: the
+    # protocol requires the declaration, because a surface that cannot
+    # tell "reports nothing" from "reported nothing today" will print
+    # one as the other.
+    hos_clocks_reported = HosClock.ALL
 
     def __init__(self, snapshots):
         self._snapshots = snapshots
