@@ -19,7 +19,7 @@ import { INPUT_CLS as inputCls } from './ui/Input';
 
 interface Discount {
   id: number;
-  kind: 'amount' | 'percent';
+  kind: 'amount' | 'percent' | 'absolute';
   amount_off_cents: number;
   percent_off: number;
   months: number;
@@ -37,6 +37,11 @@ const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : '—');
 
 function describe(d: Discount): string {
+  if (d.kind === 'absolute') {
+    return d.months > 0
+      ? `Absolute 0 — nothing to pay, for ${d.months} month${d.months === 1 ? '' : 's'}`
+      : 'Absolute 0 — nothing to pay, until revoked';
+  }
   const off = d.kind === 'percent' ? `${d.percent_off}% off` : `${usd(d.amount_off_cents)} off`;
   const how_long = d.months > 0 ? `for ${d.months} month${d.months === 1 ? '' : 's'}` : 'until revoked';
   return `${off} ${how_long}`;
@@ -161,7 +166,7 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
 function GrantDiscountDialog({ accountId, onClose, onDone }: {
   accountId: number; onClose: () => void; onDone: () => void;
 }) {
-  const [kind, setKind] = useState<'amount' | 'percent'>('amount');
+  const [kind, setKind] = useState<'amount' | 'percent' | 'absolute'>('amount');
   const [amount, setAmount] = useState('100');
   const [percent, setPercent] = useState('20');
   const [months, setMonths] = useState('3');
@@ -198,15 +203,23 @@ function GrantDiscountDialog({ accountId, onClose, onDone }: {
   return (
     <Dialog title="Grant a discount" onClose={onClose} size="lg">
       <div className="space-y-4">
-        <fieldset className="flex gap-2">
-          {(['amount', 'percent'] as const).map((k) => (
-            <label key={k} className={`flex-1 rounded border px-3 py-2 cursor-pointer text-sm ${
+        <fieldset className="grid grid-cols-3 gap-2">
+          {([['amount', 'A fixed amount off'],
+             ['percent', 'A percentage off'],
+             ['absolute', 'Absolute 0']] as const).map(([k, label]) => (
+            <label key={k} className={`rounded border px-3 py-2 cursor-pointer text-sm ${
               kind === k ? 'border-accent bg-accent/10 text-slate-100' : 'border-slate-800 text-slate-400'}`}>
               <input type="radio" name="kind" className="mr-2" checked={kind === k} onChange={() => setKind(k)} />
-              {k === 'amount' ? 'A fixed amount off' : 'A percentage off'}
+              {label}
             </label>
           ))}
         </fieldset>
+        {kind === 'absolute' ? (
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wide text-slate-500">Months (0 = until revoked)</span>
+            <input className={inputCls} value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" />
+          </label>
+        ) : (
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="text-[11px] uppercase tracking-wide text-slate-500">
@@ -221,18 +234,32 @@ function GrantDiscountDialog({ accountId, onClose, onDone }: {
             <input className={inputCls} value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" />
           </label>
         </div>
+        )}
         <label className="block">
           <span className="text-[11px] uppercase tracking-wide text-slate-500">Reason</span>
           <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)}
                  placeholder="What the customer is being thanked for — they read this on their bill" />
         </label>
         <p className="text-sm text-slate-300">
-          {off} off each bill, {span}.
+          {kind === 'absolute'
+            ? `This account pays nothing, ${span}.`
+            : `${off} off each bill, ${span}.`}
         </p>
         <p className="text-[12px] text-slate-500">
-          More than a month's bill is not carried forward — Stripe makes that invoice zero and the
-          rest is not credited. The customer sees the line on their Billing page, their invoice and
-          their receipt.
+          {kind === 'absolute' ? (
+            <>
+              Their costs are still worked out every month and written down — the plan, the trucks,
+              and one line that takes the total to zero — and 4truck sends the invoice and the
+              receipt. Stripe is not involved at all: no subscription, no card, and nothing about
+              this customer in Stripe's own reporting.
+            </>
+          ) : (
+            <>
+              More than a month's bill is not carried forward — Stripe makes that invoice zero and
+              the rest is not credited. The customer sees the line on their Billing page, their
+              invoice and their receipt.
+            </>
+          )}
         </p>
         {err && <p className="text-sm text-danger" role="alert">{err}</p>}
         <div className="flex justify-end gap-2">

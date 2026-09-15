@@ -87,6 +87,7 @@ _JOB_META = {
     "billing_comp_expiry_sweep":      ("Platform billing", "Expire lapsed comp accounts + send reminders"),
     "billing_quantity_sync":          ("Platform billing", "Push each account's billable vehicle count to the payment provider"),
     "discount_reconcile":             ("Platform billing", "Make each live discount row say what Stripe holds — a repeating coupon ends on Stripe's clock"),
+    "local_invoices":                 ("Platform billing", "Write and send the monthly invoice for every Absolute 0 account — Stripe bills none of them"),
     # ── Reporting ──
     "scheduled_reports_send":         ("Reporting", "Send due scheduled reports"),
     # ── Integrations ──
@@ -387,6 +388,17 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         run_monthly_billing_snapshots, "cron",
         day=1, hour=2, minute=30, args=[app], id="billing_snapshot_monthly",
         max_instances=1, coalesce=True,
+    )
+
+    # An Absolute 0 account is billed by us, not by Stripe: nothing
+    # would otherwise be written for it — no invoice, no receipt, no
+    # record an accountant could find.  Runs after the snapshots, on
+    # the same morning, so the month it bills is the one just closed.
+    from capabilities.platform.billing.jobs import run_local_invoices
+    scheduler.add_job(
+        run_local_invoices, "cron",
+        day=1, hour=2, minute=45, args=[app], id="local_invoices",
+        replace_existing=True, misfire_grace_time=7200,
     )
 
     # ── daily comp-expiry sweep ──────────────────────────

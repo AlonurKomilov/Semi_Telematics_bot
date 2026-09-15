@@ -2643,7 +2643,7 @@ async def system_revoke_plan_offer(
 
 class DiscountBody(BaseModel):
     account_id: int = Field(..., gt=0)
-    kind: str = Field(..., pattern="^(amount|percent)$")
+    kind: str = Field(..., pattern="^(amount|percent|absolute)$")
     #: cents off each bill, for kind=amount
     amount_off_cents: int = Field(default=0, ge=0, le=10_000_000)
     #: 1..100, for kind=percent
@@ -2712,129 +2712,25 @@ async def system_grant_discount(
             reason=body.reason.strip(), granted_by=actor)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    from capabilities.platform.billing import get_provider
-    try:
-        written = await get_provider().apply_discount(account_id, platform_db, row)
-    except Exception as e:
-        logger.exception("discount %s: the provider refused for account %s", row.get("id"), account_id)
-        await platform_db.mark_account_discount(int(row["id"]), status="revoked")
-        raise HTTPException(status_code=502, detail=f"The billing provider refused the discount: {e}")
-    await platform_db.mark_account_discount(int(row["id"]), **written)
-    try:
-        await platform_db.add_platform_audit(
-            "discount_granted", account_id=account_id, actor=actor,
-            details=json.dumps({"kind": body.kind, "amount_off_cents": body.amount_off_cents,
-                                "percent_off": body.percent_off, "months": body.months,
-                                "reason": body.reason.strip()}),
-        )
-    except Exception:
-        logger.exception("platform audit write failed for discount on %s", account_id)
-    logger.info("system: discount granted acct=%s by %s (%s)", account_id, actor, written.get("status"))
-    return {"discount": await platform_db.live_account_discount(account_id)}
-
-
-@router.delete("/accounts/{account_id}/discount")
-async def system_revoke_discount(
-    account_id: int,
-    user: dict = Depends(require_system_owner),
-    platform_db=Depends(get_platform_db),
-):
-    """Take the price break off.  Bills already issued keep it — this
-    changes what the NEXT one comes to."""
-    row = await platform_db.live_account_discount(account_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="This account has no discount to revoke.")
-    from capabilities.platform.billing import get_provider
-    try:
-        await get_provider().remove_discount(account_id, platform_db, row)
-    except Exception:
-        # Stripe may have ended it already; the row must still close, or
-        # the operator cannot grant a replacement.
-        logger.exception("discount %s: the provider could not remove it", row.get("id"))
-    await platform_db.mark_account_discount(int(row["id"]), status="revoked")
-    actor = f"operator:{user.get('sub') or user.get('telegram_id')}"
-    try:
-        await platform_db.add_platform_audit(
-            "discount_revoked", account_id=account_id, actor=actor,
-            details=json.dumps({"discount_id": row.get("id")}),
-        )
-    except Exception:
-        logger.exception("platform audit write failed for discount revoke on %s", account_id)
-    logger.info("system: discount revoked acct=%s by %s", account_id, actor)
-    return {"ok": True}
-
-
-class DiscountBody(BaseModel):
-    account_id: int = Field(..., gt=0)
-    kind: str = Field(..., pattern="^(amount|percent)$")
-    #: cents off each bill, for kind=amount
-    amount_off_cents: int = Field(default=0, ge=0, le=10_000_000)
-    #: 1..100, for kind=percent
-    percent_off: int = Field(default=0, ge=0, le=100)
-    #: how many bills it covers; 0 = until revoked
-    months: int = Field(default=0, ge=0, le=60)
-    reason: str = Field(default="", max_length=200)
-
-
-@router.get("/accounts/{account_id}/discount")
-async def system_account_discount(
-    account_id: int,
-    _user: dict = Depends(require_system_owner),
-    platform_db=Depends(get_platform_db),
-):
-    """The account's live price break and what came before it, plus what
-    the provider says the next bill comes to.
-
-    The preview is the operator's answer to "what will they actually be
-    charged" — Stripe's own arithmetic rather than ours, and only here,
-    never on a customer request path.
-    """
-    live = await platform_db.live_account_discount(account_id)
-    history = await platform_db.account_discount_history(account_id)
-    preview = None
-    from capabilities.platform.billing import get_provider
-    provider = get_provider()
-    if hasattr(provider, "preview_discounted_invoice"):
+    from adapters.storage.account_discounts import ABSOLUTE
+    if body.kind == ABSOLUTE:
+        # Absolute 0 is billed by us, not by Stripe: no coupon, no
+        # subscription, no card.  The monthly job writes the invoice and
+        # sends it; the provider is never asked anything.
+        from datetime import datetime as _dt, timezone as _tz
+        await platform_db.mark_account_discount(
+            int(row["id"]), status="active",
+            starts_at=_dt.now(_tz.utc).isoformat())
         try:
-            preview = await provider.preview_discounted_invoice(account_id, platform_db)
+            await platform_db.add_platform_audit(
+                "discount_granted", account_id=account_id, actor=actor,
+                details=json.dumps({"kind": ABSOLUTE, "months": body.months,
+                                    "reason": body.reason.strip()}),
+            )
         except Exception:
-            logger.exception("discount preview failed for account %s", account_id)
-    return {"discount": live, "history": history, "next_invoice": preview}
-
-
-@router.post("/accounts/{account_id}/discount", status_code=201)
-async def system_grant_discount(
-    account_id: int,
-    body: DiscountBody,
-    user: dict = Depends(require_system_owner),
-    platform_db=Depends(get_platform_db),
-):
-    """Give one account a price break for a bounded time.
-
-    The row is written first and the provider is asked second, so a
-    grant that Stripe refuses leaves a record of what was attempted
-    rather than silence.  A provider failure rolls the row back to
-    ``revoked`` — a pending grant nobody can see is worse than none.
-    """
-    if body.account_id != account_id:
-        raise HTTPException(status_code=400, detail="The body's account does not match the URL's.")
-    acc = await platform_db.get_account(account_id)
-    if not acc:
-        raise HTTPException(status_code=404, detail="Account not found")
-    sub = await platform_db.get_subscription(account_id) or {}
-    if sub.get("is_comped"):
-        raise HTTPException(
-            status_code=409,
-            detail="This account is comped — it already pays nothing. Revoke the comp first "
-                   "if it should pay a reduced amount instead.")
-    actor = f"operator:{user.get('sub') or user.get('telegram_id')}"
-    try:
-        row = await platform_db.create_account_discount(
-            account_id, kind=body.kind, amount_off_cents=body.amount_off_cents,
-            percent_off=body.percent_off, months=body.months,
-            reason=body.reason.strip(), granted_by=actor)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+            logger.exception("platform audit write failed for absolute grant on %s", account_id)
+        logger.info("system: Absolute 0 granted acct=%s by %s", account_id, actor)
+        return {"discount": await platform_db.live_account_discount(account_id)}
     from capabilities.platform.billing import get_provider
     try:
         written = await get_provider().apply_discount(account_id, platform_db, row)
@@ -2867,9 +2763,11 @@ async def system_revoke_discount(
     row = await platform_db.live_account_discount(account_id)
     if not row:
         raise HTTPException(status_code=404, detail="This account has no discount to revoke.")
+    from adapters.storage.account_discounts import ABSOLUTE
     from capabilities.platform.billing import get_provider
     try:
-        await get_provider().remove_discount(account_id, platform_db, row)
+        if row.get("kind") != ABSOLUTE:      # nothing was ever put on Stripe
+            await get_provider().remove_discount(account_id, platform_db, row)
     except Exception:
         # Stripe may have ended it already; the row must still close, or
         # the operator cannot grant a replacement.

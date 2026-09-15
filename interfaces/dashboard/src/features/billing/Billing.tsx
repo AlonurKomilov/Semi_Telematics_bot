@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users, Download } from '../../lib/icons';
-import { apiJSON } from '../../api/client';
+import { apiFetch, apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { CardSkeleton, PageHeader, SectionHeader } from '../../components/shell';
@@ -606,6 +606,33 @@ const USAGE_COLUMNS: AnyColumn[] = [
     render: (v) => <span className="font-semibold text-ok tabular-nums">{usd(Number(v))}</span> },
 ];
 
+/** The PDF of an invoice 4truck wrote itself.
+ *
+ *  Fetched rather than linked: the endpoint is behind the API's auth
+ *  and a browser sends no Authorization header on an <a href>. The blob
+ *  is opened in a new tab and revoked when the tab has taken it. */
+function InvoicePdfButton({ number }: { number: string }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/billing/invoices/${encodeURIComponent(number)}/pdf`);
+      if (!res.ok) return;
+      const url = URL.createObjectURL(await res.blob());
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button onClick={open} disabled={busy}
+            className="inline-flex items-center gap-1 text-primary text-xs hover:underline min-h-tap disabled:opacity-50">
+      <Download className="size-3" /> {busy ? 'Opening…' : 'PDF'}
+    </button>
+  );
+}
+
 function UsageTable({ items }: { items: UsageSnapshot[] }) {
   if (items.length === 0) {
     return (
@@ -688,7 +715,13 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
       render: (_v, row) => {
         const hosted = String(row.hosted_invoice_url || '');
         const pdf = String(row.invoice_pdf_url || '');
-        if (!hosted && !pdf) return <span className="text-muted-foreground text-xs">—</span>;
+        const number = String(row.provider_invoice_id || '');
+        // An invoice 4truck wrote has no Stripe page and no hosted PDF;
+        // its file is built on demand from the row, behind the API's
+        // own auth — so it is fetched, not linked (the browser sends no
+        // Authorization header on an <a href>).
+        const isLocal = !hosted && !pdf && !!number;
+        if (!hosted && !pdf && !isLocal) return <span className="text-muted-foreground text-xs">—</span>;
         return (
           <span className="inline-flex items-center gap-3">
             {hosted && (
@@ -703,6 +736,7 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
                 <Download className="size-3" /> PDF
               </a>
             )}
+            {isLocal && <InvoicePdfButton number={number} />}
           </span>
         );
       },

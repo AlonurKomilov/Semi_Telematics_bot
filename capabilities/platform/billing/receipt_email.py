@@ -177,3 +177,49 @@ def send(*, to: str, account_name: str, invoice: dict, support: str = "") -> boo
     except Exception:
         logger.exception("receipt email: sending for invoice %s failed", number)
         return False
+
+
+def send_local(*, to: str, account_name: str, invoice: dict, pdf: bytes) -> bool:
+    """The receipt for an invoice 4truck wrote itself.
+
+    Same envelope as the Stripe one — from the invoice address, replies
+    to the billing address — and the same shape of words, except the
+    arithmetic ends at nothing to pay.  The PDF is handed in rather than
+    fetched: there is no Stripe URL behind an Absolute 0 invoice, and
+    the caller has just built the file.
+    """
+    to = (to or "").strip()
+    if not looks_like_email(to):
+        logger.info("local invoice %s: %r is not an address", invoice.get("number"), to)
+        return False
+    contact = reply_to()
+    covered = _money(int(invoice.get("subtotal_cents") or 0), "usd")
+    start = str(invoice.get("period_start") or "")[:10]
+    end = str(invoice.get("period_end") or "")[:10]
+    number = str(invoice.get("number") or "")
+    body = "\n".join(line for line in [
+        f"Hello {account_name}," if account_name else "Hello,",
+        "",
+        "Your invoice for this billing period is attached. There is nothing to pay.",
+        "",
+        f"Invoice: {number}",
+        f"Billing period: {start} to {end}" if start and end else "",
+        "",
+        f"  Amount      {covered}",
+        f"  Discount   -{covered}",
+        "   Total       $0.00",
+        "",
+        "The PDF is attached for your records.",
+        "",
+        f"A question about this invoice? Reply here, or write to {contact}.",
+    ])
+    try:
+        from capabilities.email.smtp import send_email_detailed
+        return bool(send_email_detailed(
+            to=to, subject=f"Your 4truck invoice — {number} (nothing to pay)",
+            body=body,
+            attachments=[(f"4truck-invoice-{number}.pdf", pdf, "application/pdf")] if pdf else None,
+            from_address=sender(), from_name="4truck", reply_to=contact))
+    except Exception:
+        logger.exception("local invoice %s could not be emailed to %s", number, to)
+        return False

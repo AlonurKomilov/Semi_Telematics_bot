@@ -24,7 +24,14 @@ from typing import Any, Optional
 
 PENDING, ACTIVE, ENDED, REVOKED = "pending", "active", "ended", "revoked"
 LIVE_STATUSES = (PENDING, ACTIVE)
-KINDS = ("amount", "percent")
+#: ``absolute`` is the third and it is not a coupon: 100% off, and
+#: Stripe is never asked.  The account's costs are still computed and
+#: written down every month — the lines, the total, and the one line
+#: that takes it to zero — and an invoice and a receipt go out as they
+#: would for anyone.  What it gives up is Stripe: no subscription, no
+#: card, and nothing about this customer in Stripe's own reporting.
+KINDS = ("amount", "percent", "absolute")
+ABSOLUTE = "absolute"
 
 
 def effective_off(discount: dict | None, subtotal_cents: int) -> int:
@@ -37,6 +44,8 @@ def effective_off(discount: dict | None, subtotal_cents: int) -> int:
     if not discount or discount.get("status") not in LIVE_STATUSES:
         return 0
     subtotal = max(0, int(subtotal_cents or 0))
+    if discount.get("kind") == ABSOLUTE:
+        return subtotal
     if discount.get("kind") == "percent":
         pct = max(0, min(100, int(discount.get("percent_off") or 0)))
         return subtotal * pct // 100
@@ -47,6 +56,8 @@ def describe(discount: dict | None) -> str:
     """The grant in the words a customer reads on their own bill."""
     if not discount:
         return ""
+    if discount.get("kind") == ABSOLUTE:
+        return "Absolute 0 — nothing to pay"
     if discount.get("kind") == "percent":
         return f"{int(discount.get('percent_off') or 0)}% off"
     return f"${int(discount.get('amount_off_cents') or 0) / 100:,.2f} off"

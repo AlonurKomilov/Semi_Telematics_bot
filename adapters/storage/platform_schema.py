@@ -948,6 +948,11 @@ async def create_tables(conn) -> None:
             -- history and the receipt print the line rather than guess
             subtotal_cents            INTEGER NOT NULL DEFAULT 0,
             discount_cents            INTEGER NOT NULL DEFAULT 0,
+            -- The line items, for an invoice 4truck wrote rather than
+            -- read back from Stripe (provider='local').  A bill is a
+            -- record of what was charged at the time: re-deriving it
+            -- later from today's prices would rewrite history.
+            lines_json                TEXT    NOT NULL DEFAULT '',
             currency                  TEXT    NOT NULL DEFAULT 'usd',
             status                    TEXT    NOT NULL DEFAULT '',
             -- 'paid', 'open', 'uncollectible', 'void' — mirror of Stripe.

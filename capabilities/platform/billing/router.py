@@ -21,9 +21,13 @@ All endpoints except /webhook require a valid JWT with role admin or owner.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import get_platform_db, require_permission
@@ -141,6 +145,56 @@ async def billing_invoices(
         raise HTTPException(status_code=400, detail="limit must be 1–100")
     items = await platform_db.get_invoices(user["account_id"], limit=limit)
     return {"items": items, "count": len(items)}
+
+
+@router.get("/invoices/{invoice_number}/pdf")
+async def billing_invoice_pdf(
+    invoice_number: str,
+    user: dict = Depends(_billing_admin),
+    platform_db=Depends(get_platform_db),
+):
+    """The PDF of an invoice 4truck wrote itself.
+
+    A Stripe invoice is downloaded from Stripe, which hosts the file;
+    an Absolute 0 invoice has no Stripe behind it, so the file is built
+    here from the row — the lines it was written with, not today's
+    prices, because a bill is a record of what was charged at the time.
+
+    Scoped to the caller's own account: an invoice number names a
+    customer's money, and the id is guessable by construction.
+    """
+    from capabilities.platform.billing import local_invoice as _inv
+    rows = await platform_db.get_invoices(user["account_id"], limit=200)
+    row = next((r for r in rows if str(r.get("provider_invoice_id")) == invoice_number), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such invoice on this account.")
+    hosted = str(row.get("invoice_pdf_url") or "").strip()
+    if hosted.startswith("https://"):
+        # a Stripe invoice: its own PDF is the document
+        return RedirectResponse(url=hosted, status_code=302)
+    lines = row.get("lines_json") or ""
+    if not lines:
+        raise HTTPException(status_code=404, detail="This invoice has no PDF.")
+    account = await platform_db.get_account(user["account_id"])
+    invoice = {
+        "account_id": user["account_id"],
+        "account_name": getattr(account, "name", "") or "",
+        "number": invoice_number,
+        "period_start": str(row.get("period_start") or ""),
+        "period_end": str(row.get("period_end") or ""),
+        "lines": json.loads(lines),
+        "subtotal_cents": int(row.get("subtotal_cents") or 0),
+        "discount_cents": int(row.get("discount_cents") or 0),
+        "total_cents": int(row.get("amount_due_cents") or 0),
+        "currency": str(row.get("currency") or "usd"),
+    }
+    from capabilities.platform.billing.receipt_email import reply_to
+    issuer = {"name": (os.getenv("SMTP_FROM_NAME") or "4truck"), "support": reply_to()}
+    pdf = await asyncio.to_thread(lambda: _inv.render_pdf(invoice, issuer=issuer))
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="4truck-invoice-{invoice_number}.pdf"'},
+    )
 
 
 # ── Asking for a plan that is not sold self-serve ────────────────

@@ -804,7 +804,8 @@ class BillingMixin:
 
     _INVOICE_FIELDS = (
         "provider_subscription_id", "provider_customer_id",
-        "amount_due_cents", "amount_paid_cents", "subtotal_cents", "discount_cents", "currency",
+        "amount_due_cents", "amount_paid_cents", "subtotal_cents", "discount_cents",
+        "lines_json", "currency",
         "status", "period_start", "period_end",
         "hosted_invoice_url", "invoice_pdf_url", "paid_at",
         "receipt_emailed_at",

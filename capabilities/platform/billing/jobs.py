@@ -25,6 +25,8 @@ by the time this fires (02:30 UTC vs the ingest job's 60s cadence).
 from __future__ import annotations
 
 import logging
+import asyncio
+import os
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,99 @@ async def snapshot_account_billing(
     )
 
 
+async def issue_local_invoice(account_id: int, *, now: datetime | None = None,
+                              period: tuple[str, str] | None = None) -> dict | None:
+    """Write, render and send one Absolute 0 account's monthly invoice.
+
+    Stripe bills nobody here, so nothing would otherwise be written: no
+    invoice, no receipt, no record for an accountant to find.  This
+    computes the month the ordinary way, records what was covered, and
+    sends the same receipt email everyone else gets — with a PDF this
+    process built rather than one Stripe hosted.
+
+    Idempotent through the invoice number, which is derived from the
+    period and the account: running the month twice writes one row.
+    Returns the row's fields, or None when the account has no Absolute 0
+    grant (every other account is Stripe's to bill).
+    """
+    from capabilities.platform.billing import local_invoice as _inv
+    from adapters.storage.account_discounts import ABSOLUTE
+
+    platform_db = _platform_router().platform
+    discount = await platform_db.live_account_discount(account_id)
+    if not discount or discount.get("kind") != ABSOLUTE:
+        return None
+    billing = await platform_db.compute_billing(account_id)
+    period_start, period_end = period or _previous_month_window(now)
+    account = await platform_db.get_account(account_id)
+    invoice = _inv.build(
+        account_id=account_id, account_name=getattr(account, "name", "") or "",
+        billing=billing, discount=discount,
+        period_start=period_start, period_end=period_end)
+    row = _inv.to_row(invoice)
+    await platform_db.record_invoice(account_id, invoice["number"], **row)
+    logger.info("Absolute 0 invoice %s written for account %s (covered %s cents)",
+                invoice["number"], account_id, invoice["subtotal_cents"])
+    await _send_local_invoice(account_id, platform_db, invoice)
+    return {"number": invoice["number"], **row}
+
+
+async def _send_local_invoice(account_id: int, platform_db, invoice: dict) -> bool:
+    """Email the invoice we just wrote, with its PDF attached.
+
+    Best-effort, and deliberately after the row: the record of what was
+    covered must survive a mail relay that is down.
+    """
+    from capabilities.platform.billing import local_invoice as _inv
+    from capabilities.platform.billing import receipt_email
+    if not receipt_email.enabled():
+        return False
+    try:
+        sub = await platform_db.get_subscription(account_id) or {}
+        to = str(sub.get("billing_email") or "")
+        if not to:
+            logger.info("Absolute 0 invoice %s: no address on file", invoice["number"])
+            return False
+        pdf = await asyncio.to_thread(
+            _inv.render_pdf, invoice,
+            {"name": (os.getenv("SMTP_FROM_NAME") or "4truck"), "support": receipt_email.reply_to()})
+        sent = await asyncio.to_thread(
+            receipt_email.send_local, to=to, account_name=invoice.get("account_name") or "",
+            invoice=invoice, pdf=pdf)
+        if sent:
+            await platform_db.mark_receipt_emailed(
+                invoice["number"], datetime.now(timezone.utc).isoformat())
+        return bool(sent)
+    except Exception:
+        logger.exception("Absolute 0 invoice %s could not be sent", invoice["number"])
+        return False
+
+
+async def run_local_invoices(_app=None) -> dict:
+    """Monthly: every Absolute 0 account gets its invoice and receipt.
+
+    Runs after the usage snapshots, on the same day, so the month it
+    bills is the month just closed.  One account failing never blocks
+    the rest.
+    """
+    platform_db = _platform_router().platform
+    try:
+        accounts = await platform_db.list_accounts(active_only=True)
+    except Exception:
+        logger.exception("run_local_invoices: list_accounts failed")
+        return {"issued": 0, "failed": 0}
+    issued = failed = 0
+    for acc in accounts:
+        try:
+            if await issue_local_invoice(acc.id):
+                issued += 1
+        except Exception:
+            failed += 1
+            logger.exception("run_local_invoices: account %s — continuing", acc.id)
+    logger.info("Absolute 0 invoices: %d issued, %d failed", issued, failed)
+    return {"issued": issued, "failed": failed}
+
+
 async def run_monthly_billing_snapshots(_app=None) -> dict:
     """Snapshot every active account's billing for the just-closed month.
 
@@ -155,6 +250,8 @@ async def run_monthly_billing_snapshots(_app=None) -> dict:
 
 __all__ = [
     "run_monthly_billing_snapshots",
+    "run_local_invoices",
+    "issue_local_invoice",
     "snapshot_account_billing",
     "_previous_month_window",
     "run_comp_expiry_sweep",

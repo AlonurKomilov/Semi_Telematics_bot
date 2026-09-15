@@ -246,7 +246,6 @@ async def run_all(conn) -> None:
     await migrate_live_map_key_rename(conn)
     await migrate_plan_extra_price(conn)
     await migrate_account_discounts(conn)
-    await migrate_account_discounts(conn)
     await migrate_kb_platform_review(conn)
     await migrate_google_signin(conn)
     await migrate_inventory_own_flags(conn)
@@ -5212,56 +5211,11 @@ async def migrate_account_discounts(conn) -> None:
             "ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS subtotal_cents INTEGER NOT NULL DEFAULT 0")
         await conn.execute(
             "ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0")
-    except Exception:
-        # Boot must not fail for this: without the table no discount can
-        # be granted and billing behaves as it did before it existed.
-        logger.exception("account_discounts migration failed")
-
-
-async def migrate_account_discounts(conn) -> None:
-    """A price break for one account, for a bounded time.
-
-    Until now the only relief was a comp: a local 100% flag Stripe was
-    never told about, so a comped customer received no invoice and no
-    receipt — there was nothing in Stripe to invoice.  A discount is a
-    Stripe Coupon instead, and this table is the operator's record of
-    it.  The partial unique index is the rule: one ACTIVE or PENDING
-    grant per account, so two operators cannot stack two coupons onto
-    one subscription and neither know what the customer is charged.
-    Idempotent.
-    """
-    try:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS account_discounts (
-                id                 SERIAL PRIMARY KEY,
-                account_id         INTEGER NOT NULL,
-                kind               TEXT    NOT NULL,
-                amount_off_cents   INTEGER NOT NULL DEFAULT 0,
-                percent_off        INTEGER NOT NULL DEFAULT 0,
-                months             INTEGER NOT NULL DEFAULT 0,
-                reason             TEXT    NOT NULL DEFAULT '',
-                granted_by         TEXT    NOT NULL DEFAULT '',
-                status             TEXT    NOT NULL DEFAULT 'pending',
-                stripe_coupon_id   TEXT    NOT NULL DEFAULT '',
-                stripe_discount_id TEXT    NOT NULL DEFAULT '',
-                starts_at          TEXT,
-                ends_at            TEXT,
-                created_at         TEXT    NOT NULL DEFAULT (now()::text),
-                updated_at         TEXT    NOT NULL DEFAULT (now()::text)
-            )
-        """)
+        # the line items of an invoice we wrote ourselves — an Absolute 0
+        # account is billed by us, not by Stripe, and a bill must keep
+        # the prices it was written with
         await conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_account_discounts_account "
-            "ON account_discounts(account_id, created_at DESC)")
-        await conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ux_account_discounts_live "
-            "ON account_discounts(account_id) WHERE status IN ('pending', 'active')")
-        # what Stripe took off each invoice, so history and our receipt
-        # email can print the line rather than recompute it
-        await conn.execute(
-            "ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS subtotal_cents INTEGER NOT NULL DEFAULT 0")
-        await conn.execute(
-            "ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0")
+            "ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS lines_json TEXT NOT NULL DEFAULT ''")
     except Exception:
         # Boot must not fail for this: without the table no discount can
         # be granted and billing behaves as it did before it existed.
