@@ -30,6 +30,7 @@ the wrong limit is worse than a blank, because it looks like an answer.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Any
 
@@ -222,20 +223,69 @@ class OrientEldProvider:
         Rows the vendor cannot key are dropped here rather than deeper:
         the store would refuse them anyway, and dropping them at the
         adapter keeps the count the ingest logs honest.
+
+        The duplicate check exists because ``driver_hos_live`` is keyed
+        on ``(account_id, provider_id, provider_driver_id)`` with no
+        company in it.  On an account running ONE ORIENT company that
+        cannot bite.  On five it could: two companies reporting the same
+        ``driver_id`` would have one driver's duty status overwrite the
+        other's, silently, on a compliance surface.
+
+        ORIENT's own API says that cannot happen — ``/api/logs/tracking``
+        accepts ``driver_id`` as a top-level filter ALONGSIDE
+        ``dot_number``/``mc_number``, which only works if the id is
+        unique across companies, and the live ids bear that out (26
+        drivers in one company spread over 6956..19192, a
+        platform-wide sequence rather than a per-company one).
+
+        So this is a tripwire, not a workaround.  If it ever fires, the
+        assumption above is wrong and the honest fix is a composite id
+        — but nothing is lost in the meantime: the second company's
+        driver keeps its own row under a disambiguated key instead of
+        erasing the first.
         """
         rows = await self._client.get_tracking()
         out: list[HosSnapshot] = []
+        seen: dict[str, str] = {}
         skipped = 0
+        duplicates = 0
         for row in rows:
             snap = to_snapshot(row)
             if snap is None:
                 skipped += 1
                 continue
+            pdid = snap.provider_driver_id
+            company = str(row.get("_company_code") or "")
+            first = seen.get(pdid)
+            if first is None:
+                seen[pdid] = company
+            elif first == company:
+                # The same company listed the same driver twice — one
+                # driver, one row.  Nothing to disambiguate.
+                duplicates += 1
+                continue
+            else:
+                logger.error(
+                    "orient_eld: driver_id %s reported by BOTH company %s "
+                    "and company %s — ids were assumed unique across "
+                    "companies. Keeping both under distinct keys; the "
+                    "store's key has no company in it, so without this "
+                    "one would have overwritten the other.",
+                    pdid, first, company,
+                )
+                snap = dataclasses.replace(
+                    snap, provider_driver_id=f"{pdid}@{company}",
+                )
             out.append(snap)
         if skipped:
             logger.warning(
                 "orient_eld: %d tracking row(s) had no driver_id — skipped",
                 skipped,
+            )
+        if duplicates:
+            logger.info(
+                "orient_eld: %d repeated row(s) within a company collapsed",
+                duplicates,
             )
         return out
 
