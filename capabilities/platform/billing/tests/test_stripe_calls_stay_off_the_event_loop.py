@@ -70,5 +70,6 @@ def test_the_price_archiver_is_awaited_not_called():
     from capabilities.platform.billing.stripe_client import StripeBillingProvider
     assert inspect.iscoroutinefunction(StripeBillingProvider.archive_plan_price)
     from tests._repo import REPO
-    route = (REPO / "interfaces" / "api" / "routes" / "system.py").read_text()
+    route = (REPO / "capabilities" / "platform" / "billing" / "operator"
+             / "router.py").read_text()
     assert "await provider.archive_plan_price(" in route

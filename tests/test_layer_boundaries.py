@@ -123,9 +123,36 @@ def test_platform_subfamily_exists_and_holds_billing():
     and no stray top-level ``capabilities/billing`` reappears."""
     assert (REPO / "capabilities/platform/__init__.py").is_file()
     assert (REPO / "capabilities/platform/billing/router.py").is_file()
+    # Both audiences of the domain live with the domain.  The operator
+    # half spent most of a year inside interfaces/api/routes/system.py,
+    # sharing a 3,100-line file with accounts, security, knowledge and
+    # health — so a plan-price change was made in the file where most of
+    # what you can break is not billing.
+    assert (REPO / "capabilities/platform/billing/operator/router.py").is_file()
     assert not (REPO / "capabilities/billing").exists(), (
         "capabilities/billing/ reappeared at top level — platform domains "
         "live under capabilities/platform/ (docs/FEATURES.md)"
+    )
+
+
+def test_the_operator_router_keeps_no_money_endpoints():
+    """The generic operator router must not grow a money endpoint again.
+
+    Nothing stopped the last twenty from landing there, and each one was
+    individually reasonable — the file was already open.  This is the
+    thing that says no: a plan, discount, invoice or billing path under
+    /system belongs to capabilities/platform/billing/operator/.
+    """
+    import re
+    src = (REPO / "interfaces/api/routes/system.py").read_text()
+    money = re.compile(r'@router\.\w+\("([^"]*(?:plan|discount|invoice|billing|comp|stripe)[^"]*)"',
+                       re.IGNORECASE)
+    found = money.findall(src)
+    assert not found, (
+        "money endpoints reappeared in the generic operator router:\n  "
+        + "\n  ".join(found)
+        + "\n\nThey belong in capabilities/platform/billing/operator/router.py, "
+          "which carries the same /system prefix so no URL changes."
     )
 
 

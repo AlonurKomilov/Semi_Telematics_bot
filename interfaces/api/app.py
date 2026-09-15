@@ -46,6 +46,7 @@ from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
 from features.scorecards import config as scorecard_rules_routes
 from capabilities.platform.billing import router as billing_routes
+from capabilities.platform.billing.operator import router as billing_operator_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.object_storage import router as object_storage_routes
 # Feature-owned routers live with their feature (vertical slice):
@@ -714,6 +715,9 @@ def create_api() -> FastAPI:
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
+        # The operator's half of the same domain — same /system prefix the
+        # console has always called, now living with what it serves.
+        app.include_router(billing_operator_routes, prefix=prefix)
         # Config FIRST — a feature router mounted first can shadow /config.
         app.include_router(driver_pay_config.router, prefix=prefix)
         app.include_router(driver_pay_routes.router, prefix=prefix)
