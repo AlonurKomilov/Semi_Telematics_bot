@@ -208,9 +208,9 @@ async def test_no_connected_provider_writes_nothing_and_does_not_raise(
     """The common case on an account with no ELD.  A fact about the
     account, not a failure of the job."""
     async def _none(account_id, capability):
-        return None
+        return []
 
-    monkeypatch.setattr(ingest, "resolve_provider_for", _none)
+    monkeypatch.setattr(ingest, "resolve_all_providers_for", _none)
     assert await ingest.ingest_driver_hos(7) == 0
 
 

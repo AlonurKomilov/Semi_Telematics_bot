@@ -14,7 +14,9 @@ import dataclasses
 import logging
 
 from adapters.telematics.protocol import Capability
-from capabilities.integrations.shared.resolver import resolve_provider_for
+from capabilities.integrations.shared.resolver import (
+    resolve_all_providers_for,
+)
 from infra.services import get_tenant_db, get_telematics_client
 
 logger = logging.getLogger(__name__)
@@ -49,28 +51,21 @@ async def _driver_links(tenant, account_id: int, provider_id: str) -> dict:
     }
 
 
-async def ingest_driver_hos(account_id: int) -> int:
-    """Refresh the account's duty clocks.  Returns rows written.
+async def _ingest_one(account_id: int, provider_id: str, tenant) -> int:
+    """Mirror ONE provider's duty clocks.  Returns rows written.
 
-    Returns 0 — never raises — when no connected provider offers hours
-    of service.  That is the common case on an account with no ELD, and
-    it is a fact about the account, not a failure of this job.
+    Contained per provider on purpose: one ELD being unreachable must
+    cost that ELD's drivers and nobody else's.  An account running five
+    companies on one device and the rest on another cannot be made to
+    go dark by whichever one happens to fail first.
     """
-    resolved = await resolve_provider_for(account_id, Capability.DRIVER_HOS)
-    if resolved is None:
-        return 0
-
-    tenant = await get_tenant_db(account_id)
-    if tenant is None:
-        return 0
-
     try:
-        provider = await get_telematics_client(account_id, resolved.provider_id)
+        provider = await get_telematics_client(account_id, provider_id)
         snapshots = await provider.get_driver_hos()
     except Exception:
         logger.exception(
             "eld: hos fetch failed acct=%d provider=%s",
-            account_id, resolved.provider_id,
+            account_id, provider_id,
         )
         return 0
 
@@ -81,14 +76,98 @@ async def ingest_driver_hos(account_id: int) -> int:
         # make them look like a driver who does not exist.
         return 0
 
-    links = await _driver_links(tenant, account_id, resolved.provider_id)
+    links = await _driver_links(tenant, account_id, provider_id)
     rows = [dataclasses.asdict(s) for s in snapshots]
     written = await tenant.upsert_driver_hos(
-        account_id, resolved.provider_id, rows, links=links,
+        account_id, provider_id, rows, links=links,
     )
     logger.info(
         "eld: hos acct=%d provider=%s drivers=%d linked=%d",
-        account_id, resolved.provider_id, written,
+        account_id, provider_id, written,
         sum(1 for r in rows if r.get("provider_driver_id") in links),
     )
     return written
+
+
+async def ingest_driver_hos(account_id: int) -> int:
+    """Refresh the account's duty clocks, from EVERY connected ELD.
+
+    Returns rows written across all of them.  Returns 0 — never raises —
+    when no connected provider offers hours of service.  That is the
+    common case on an account with no ELD, and it is a fact about the
+    account, not a failure of this job.
+
+    Every provider, not one.  The resolver's single-winner answer is
+    right for a capability keyed by the THING — two providers writing
+    truck 103's live state would overwrite each other. Hours of service
+    is keyed ``(provider, driver)``, upserts per provider and never
+    deletes, so two ELDs coexist in the store by construction and what
+    they produce is a UNION of disjoint driver sets. An account with
+    five companies on one device and the rest on another has every
+    driver on exactly one certified ELD; asking only the first in
+    catalog order does not resolve a conflict, it hides half the fleet.
+
+    That is what happened on the account this was written against: an
+    ELD was connected, five keys were green, and the page stayed empty
+    because a telematics integration declared earlier in the catalog
+    was the only one being asked.
+    """
+    providers = await resolve_all_providers_for(
+        account_id, Capability.DRIVER_HOS,
+    )
+    if not providers:
+        return 0
+
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return 0
+
+    total = 0
+    for provider_id in providers:
+        total += await _ingest_one(account_id, provider_id, tenant)
+
+    if len(providers) > 1:
+        logger.info(
+            "eld: hos acct=%d merged %d providers (%s) rows=%d",
+            account_id, len(providers), ", ".join(providers), total,
+        )
+        await _warn_on_shared_drivers(account_id, tenant)
+    return total
+
+
+async def _warn_on_shared_drivers(account_id: int, tenant) -> None:
+    """The one case that IS a conflict: one human on two devices.
+
+    Two ELDs normally report disjoint drivers, and the union is simply
+    correct.  Mid-migration they can overlap — the same person logged on
+    both — and then two certified devices are each authoritative about
+    the same driver's hours.
+
+    We do NOT merge that, and deliberately.  Choosing which device is
+    right is a compliance judgement that belongs to the operator and
+    their ELD vendors, not to a mirror. Both readings stay, each
+    labelled with the device it came from, and this says so out loud so
+    the ambiguity is discoverable rather than something a dispatcher
+    meets as a duplicated name.
+    """
+    try:
+        rows = await tenant.get_driver_hos_live(account_id)
+    except Exception:
+        logger.exception("eld: shared-driver check failed acct=%d", account_id)
+        return
+    by_user: dict[int, set[str]] = {}
+    for r in rows:
+        uid = r.get("user_id")
+        if uid is None:
+            continue
+        by_user.setdefault(int(uid), set()).add(str(r.get("provider_id") or ""))
+    shared = {u: p for u, p in by_user.items() if len(p) > 1}
+    if shared:
+        logger.warning(
+            "eld: acct=%d has %d driver(s) reported by MORE THAN ONE ELD "
+            "(%s) — both readings kept; choosing between two certified "
+            "devices is the operator's call, not ours",
+            account_id, len(shared),
+            "; ".join(f"user {u}: {','.join(sorted(p))}"
+                      for u, p in sorted(shared.items())),
+        )

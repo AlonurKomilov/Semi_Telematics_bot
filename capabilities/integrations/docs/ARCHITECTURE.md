@@ -83,21 +83,66 @@ this vendor cannot do".
 
 ## Two providers offering the same capability
 
-The resolver picks the **first in catalog order** and logs the rest.
-Against the shipped catalog that means **Samsara wins hours of service
-over ORIENT ELD**, because Samsara is declared first.
+The resolver answers **two different questions**, and picking the wrong
+one cost a live account its whole ELD feed.
 
-On an account that runs one vendor for telematics and a different one
-as its actual ELD, that is the wrong answer, and it fails quietly: the
-job succeeds, the page fills from the wrong source, and only a log line
-says a second ELD was skipped.
+`resolve_provider_for` → **which ONE**. Correct for a capability whose
+rows are keyed by the THING: two providers writing `vehicle_state_live`
+for truck 103 would take turns overwriting each other, so one has to
+win, and it is the first in catalog order.
 
-The escape is the per-capability toggle the resolver already honours —
-switch OFF the telematics provider's "Hours of service" on its
-Integration card and the ELD takes over. That is an operator action,
-not a code path. `features/eld/tests/test_two_elds_on_one_account.py`
-pins it against the REAL catalog, because a fixture catalog would pass
-forever while the shipped one said something else.
+`resolve_all_providers_for` → **all of them**, in catalog order. Correct
+for a capability keyed by *(provider, thing)*, where two providers
+produce a UNION rather than a conflict.
+
+Hours of service is the second kind, and the STORE already said so:
+
+```
+PRIMARY KEY (account_id, provider_id, provider_driver_id)
+ON CONFLICT (...) DO UPDATE       -- per provider
+...and nothing, anywhere, deletes
+```
+
+Two ELDs coexist there by construction. An account running five
+companies on one device and the rest on another has each driver on
+exactly one certified ELD, so asking only the first in catalog order
+does not resolve a conflict — **it hides half the fleet**.
+
+That is exactly what happened: ORIENT ELD connected, five company keys
+green, and Hours of Service empty, because Samsara is declared earlier
+and was the only provider polled. Nothing errored. The fact lived in
+one log line.
+
+`features/eld/ingest.py` now asks every connected ELD, contained per
+provider so one unreachable device costs only its own drivers.
+`features/eld/tests/test_every_connected_eld_is_asked.py` pins it, and
+`test_two_elds_on_one_account.py` still pins the resolver's
+single-winner rule against the REAL catalog — a fixture catalog would
+pass forever while the shipped one said something else.
+
+**Before adding a capability, ask which kind it is.** Look at the table
+it writes: if the primary key names the provider, it is a union and the
+feature should use `resolve_all_providers_for`.
+
+### Why this is not `capabilities/source`
+
+That package arbitrates several sources describing the **same record**,
+field by field — `merge_fields` does fill → agree → pin → precedence,
+with `manual` ranked above everything in code. It is the right tool for
+a vehicle whose VIN comes from one integration and whose odometer comes
+from another.
+
+Hours of service is not that shape. Two ELDs do not describe the same
+driver's duty status differently; they describe **different drivers**.
+There is no field to arbitrate, and running `merge_fields` over rows
+that never conflict would be machinery pretending to make a decision.
+
+The one case that IS source-shaped — the same human logged on two
+devices mid-migration — is deliberately **not** merged. Both readings
+stay, each labelled with its device, and the ingest logs it. Choosing
+which certified ELD is right about a driver's hours is a compliance
+judgement belonging to the operator and their vendors, not to a
+read-only mirror that is forbidden from computing a violation.
 
 ## An account is several carriers
 

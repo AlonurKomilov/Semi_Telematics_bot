@@ -107,15 +107,70 @@ async def resolve_provider_for(
     capability, its client is registered, its integration row says
     ``connected``, and the account has not switched the capability off.
     When several qualify the first in catalog order wins and the rest
-    are logged: two ELDs on one account is a real situation (a fleet
-    mid-migration) but merging two sets of duty clocks is a decision
-    nobody has asked for yet, so we pick one and say which.
+    are logged.  That is correct for a capability whose rows are keyed
+    by the THING — two providers writing the same truck's live state
+    would overwrite each other, so one has to win.
+
+    It is NOT correct for every capability, and a caller that can use
+    all of them should ask ``resolve_all_providers_for`` instead: hours
+    of service is keyed by (provider, driver) and two ELDs produce a
+    union of disjoint driver sets, where picking a winner hides half
+    the fleet rather than resolving anything.
+    """
+    qualified = await resolve_all_providers_for(account_id, capability)
+    if not qualified:
+        return None
+    if len(qualified) > 1:
+        logger.warning(
+            "resolver: acct=%d has %d providers offering %s (%s) — "
+            "using %s by catalog order",
+            account_id, len(qualified), capability,
+            ", ".join(qualified), qualified[0],
+        )
+    return ResolvedProvider(provider_id=qualified[0], capability=capability)
+
+
+async def resolve_all_providers_for(
+    account_id: int,
+    capability: str,
+) -> list[str]:
+    """EVERY connected provider serving ``capability``, in catalog order.
+
+    ``resolve_provider_for`` answers "which ONE", and that is the right
+    question for a capability whose rows are keyed by the THING rather
+    than by who reported it — two providers writing ``vehicle_state_live``
+    for truck 103 would take turns overwriting each other, so one has to
+    win.
+
+    It is the wrong question for hours of service, and the store already
+    knew that.  ``driver_hos_live`` is keyed
+    ``(account_id, provider_id, provider_driver_id)``, upserts per
+    provider, and never deletes — so two ELDs coexist there by
+    construction.  What they produce is not a merge needing arbitration
+    but a UNION of disjoint driver sets: an account running five
+    companies on one ELD and the rest on another has each driver on
+    exactly one certified device.  Picking a winner there does not
+    resolve a conflict, it hides half the fleet.
+
+    That is also why this does NOT reach for ``capabilities/source``.
+    Source arbitrates several sources describing the SAME record, field
+    by field, with manual pinned above all of them.  Nothing here
+    describes the same record twice; there is no field to arbitrate.
+    Running ``merge_fields`` over rows that never conflict would be
+    machinery pretending to make a decision.
+
+    The one case that IS a source-shaped conflict — the same human
+    logged on two devices mid-migration — is deliberately left visible
+    rather than merged: choosing which certified ELD is right about a
+    driver's hours is not ours to make.  ``features/eld/ingest`` names
+    it in the log and the surfaces show both readings with their
+    devices.
     """
     from infra.platform import get_platform_db
 
     candidates = providers_offering(capability)
     if not candidates:
-        return None
+        return []
 
     db = get_platform_db()
     qualified: list[str] = []
@@ -135,17 +190,7 @@ async def resolve_provider_for(
         if not _toggle_allows(integration, capability):
             continue
         qualified.append(provider_id)
-
-    if not qualified:
-        return None
-    if len(qualified) > 1:
-        logger.warning(
-            "resolver: acct=%d has %d providers offering %s (%s) — "
-            "using %s by catalog order",
-            account_id, len(qualified), capability,
-            ", ".join(qualified), qualified[0],
-        )
-    return ResolvedProvider(provider_id=qualified[0], capability=capability)
+    return qualified
 
 
 async def resolve_client_for(account_id: int, capability: str):
