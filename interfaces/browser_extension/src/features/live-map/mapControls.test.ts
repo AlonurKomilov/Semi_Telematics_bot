@@ -135,3 +135,21 @@ describe('the overlays have their own view verb', () => {
     expect(panelSrc).toMatch(/usePoiLayers\(map, L, mapReady && canViewPoi\)/);
   });
 });
+
+describe('the opening view', () => {
+  // Terrain with road names, on the owner's call.  The panel REMEMBERS a
+  // choice, so the number that matters is the fallback in `getChoice` /
+  // `getFlag` — what a device with no stored preference gets.  The
+  // `useState` above it only fills the instant before storage answers,
+  // and if the two disagree the map visibly changes under the reader a
+  // moment after it opens.
+  it('defaults to terrain with names, in storage and in the first paint', () => {
+    expect(panelSrc, 'the stored default — what a new device gets')
+      .toMatch(/getChoice\(MAP_TYPE_KEY, 'terrain', MAP_TYPES\)/);
+    expect(panelSrc, 'road names on by default').toMatch(/getFlag\(MAP_LABELS_KEY, true\)/);
+    expect(panelSrc, 'the value shown before storage answers, which must '
+      + 'match it or the map swaps under the reader')
+      .toMatch(/useState<MapType>\('terrain'\)/);
+    expect(panelSrc).toMatch(/const \[showLabels, setShowLabels\] = useState\(true\)/);
+  });
+});

@@ -230,11 +230,18 @@ export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMap
   const [isReady, setIsReady] = useState(false);
 
   // ── Map-type state ─────────────────────────────────────────────────────────
-  const [mapType, setMapTypeState]     = useState<MapType>('standard');
-  const [showLabels, setShowLabelsState] = useState(false);
+  // TERRAIN WITH LABELS, on the owner's call — it is the view that
+  // reads as a map of where trucks go rather than a diagram.  The
+  // dashboard does not remember a choice (the panel does), so this
+  // is the default on every load.
+  const [mapType, setMapTypeState]     = useState<MapType>('terrain');
+  const [showLabels, setShowLabelsState] = useState(true);
   // Refs mirror state so callbacks never capture stale values.
-  const mapTypeRef    = useRef<MapType>('standard');
-  const showLabelsRef = useRef(false);
+  // The refs, not the state, are what the map itself reads — they
+  // must start where the state starts or the first paint disagrees
+  // with the control above it.
+  const mapTypeRef    = useRef<MapType>('terrain');
+  const showLabelsRef = useRef(true);
   const tileLayerRef  = useRef<L.TileLayer | null>(null);
   const labelsLayerRef = useRef<L.TileLayer | null>(null);
   // ── Provider state ────────────────────────────────────────────────────────
@@ -406,11 +413,20 @@ export function useLeafletMap(options: UseLeafletMapOptions = {}): UseLeafletMap
         if (cancelled || !mapRef.current || leafletMap.current) return;
         const Leaf = window.L as typeof L;
         const map = Leaf.map(mapRef.current).setView(center, zoom);
-        const initCfg = TILES['standard'];
+        // THE DEFAULT, not a hardcoded 'standard'.  This line named one
+        // type while the control above the map read another from state,
+        // so changing the default alone would have drawn standard tiles
+        // under a button saying Terrain — a control that describes a map
+        // it is not showing.
+        const initCfg = TILES[mapTypeRef.current];
         tileLayerRef.current = Leaf.tileLayer(initCfg.url, {
           attribution: initCfg.attr,
           maxZoom: initCfg.maxZoom,
         }).addTo(map);
+        // …and the names over it, which this build never applied at all:
+        // applyLabels ran only on a later swap, so the first paint of a
+        // labelled type came up bare.
+        applyLabels(map, mapTypeRef.current);
         leafletMap.current = map;
         setIsReady(true);
         // setProvider('google') may have arrived before the map existed

@@ -142,12 +142,17 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
   // account not already on Google, so the button sat permanently
   // "Google · unavailable", which is the panel inviting a press that
   // could never work.
-  const [mapType, setMapType] = useState<MapType>('standard');
+  // TERRAIN WITH ROAD NAMES, on the owner's call — it is the view
+  // that reads as a map of where trucks go rather than a diagram.
+  // This is only the value shown for the instant before the stored
+  // preference loads; the real default is the fallback in getChoice
+  // below, and a person who has chosen something keeps their choice.
+  const [mapType, setMapType] = useState<MapType>('terrain');
   const [provider, setProvider] = useState<MapEngine>('osm');
   /** Road names over satellite and terrain.  A device preference, and
    *  remembered — unlike the dashboard, which forgets it on reload;
    *  the panel is closed and reopened all day. */
-  const [showLabels, setShowLabels] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   /** A write to the account's engine is in flight. */
   const [savingEngine, setSavingEngine] = useState(false);
   const [engineError, setEngineError] = useState('');
@@ -184,8 +189,11 @@ export default function LiveMapPanel({ abilities }: PanelFeatureProps) {
     let stopped = false;
     void (async () => {
       const [t, labels] = await Promise.all([
-        getChoice(MAP_TYPE_KEY, 'standard', MAP_TYPES),
-        getFlag(MAP_LABELS_KEY, false),
+        // THE REAL DEFAULT lives here, not in the useState above:
+        // these fallbacks are what a device with no stored choice
+        // gets, and the useState only fills the gap while they load.
+        getChoice(MAP_TYPE_KEY, 'terrain', MAP_TYPES),
+        getFlag(MAP_LABELS_KEY, true),
       ]);
       if (stopped) return;
       setMapType(t); setShowLabels(labels);
