@@ -31,16 +31,28 @@
          with the axes, so a diagonal cannot be mistaken for either of
          them at a glance. */
       repeating-linear-gradient(45deg,
-        color-mix(in oklab, var(--sidebar-border) 70%, transparent) 0 1px,
+        color-mix(in oklab, var(--foreground) 6%, transparent) 0 1px,
         transparent 1px 8px),
       /* MEDIUM — the same 24px grid `grid` paints, and deliberately the
          same: it is the 4px spacing scale six steps up, so what a
          reader sees here is the rhythm the layout already uses rather
-         than a number invented for this pattern. */
+         than a number invented for this pattern.
+         `--foreground`, not `--sidebar-border`, and that correction is
+         the whole reason this pattern can be trusted. A border token is
+         a FIXED lightness; against a light page at 0.95 it separated by
+         ΔL 0.034 while the same declaration in dark separated by 0.112.
+         An instrument three times as sensitive in one mode as the other
+         reports a material as working in dark and failing in light when
+         nothing about the material differs — which is exactly what it
+         did. The page ink INVERTS with the mode, so a percentage of it
+         is the same reading in both: 0.048 and 0.094 now, and the gap
+         that is left is the palettes' own (a light page has less room
+         below it than a dark page has above). 8% sits under the 9%
+         `PATTERN_STOPS` allows toward black or white. */
       linear-gradient(to right,
-        color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px),
+        color-mix(in oklab, var(--foreground) 8%, transparent) 1px, transparent 1px),
       linear-gradient(to bottom,
-        color-mix(in oklab, var(--sidebar-border) 85%, transparent) 1px, transparent 1px),
+        color-mix(in oklab, var(--foreground) 8%, transparent) 1px, transparent 1px),
       /* COARSE — a 2px accent rule every 96px. It carries the brand
          rather than the border token because this layer answers a
          second question the greys cannot: a material that keeps the
