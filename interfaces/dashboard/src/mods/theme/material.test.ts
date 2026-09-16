@@ -625,3 +625,67 @@ describe('the material and the room', () => {
     }
   });
 });
+
+/**
+ * A CLEAR PANE IS STILL A PANE.
+ *
+ * The fill is zero — the material paints no colour of its own, which
+ * is what the owner asked for and what `glassContrast.test.ts` proves
+ * the text can afford. That makes the EDGE load-bearing. A rim quietly
+ * dropped to nothing, or an inset shadow reordered out of the rule,
+ * would leave a surface with neither body nor boundary: not
+ * transparent, absent. Nothing about the rendered result would look
+ * broken in the one place anyone checks either, because a card over a
+ * wallpaper still reads as a card — the wallpaper is doing it.
+ *
+ * The invariant is a disjunction on purpose: a pane with a real fill
+ * does not need a rim to be found. It is the zero that makes the edge
+ * mandatory, so the first assertion pins the zero and the rest depend
+ * on it.
+ */
+describe('a clear pane is still a pane', () => {
+  const body = (sel: string) => {
+    let out = '';
+    for (const m of CODE.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+      if (m[1].trim().replace(/\s+/g, ' ') === sel) out += m[2];
+    return out;
+  };
+  const LIGHT = ':root[data-material="glass"]';
+  const DARK = '.dark[data-material="glass"]';
+  const alpha = Number(/--surface-alpha:\s*([\d.]+)/.exec(body(LIGHT))?.[1]);
+
+  it('paints no colour of its own', () => {
+    // The owner's decision, recorded with its reason rather than left
+    // as a number someone can drift back up: a wash over the whole
+    // pane is what made every card read as a white board laid on the
+    // wallpaper instead of a window onto it. It was measured to buy
+    // 0.29 of contrast ratio in light and to COST 0.70 in dark.
+    expect(Number.isFinite(alpha), 'glass states no --surface-alpha').toBe(true);
+    expect(alpha, 'the pane went back to painting a wash of its own').toBeLessThan(0.05);
+  });
+
+  it('so its edge is the only thing that finds it, and must survive', () => {
+    const rim = (sel: string, tok: string) => {
+      const m = new RegExp(`${tok}:[^;]*?calc\\(\\s*([\\d.]+)`).exec(body(sel));
+      return m ? Number(m[1]) : 0;
+    };
+    for (const [name, sel] of [['light', LIGHT], ['dark', DARK]] as const)
+      for (const tok of ['--glass-rim-top', '--glass-rim-foot'])
+        expect(rim(sel, tok), `${tok} carries no light in ${name}, and the fill is zero`)
+          .toBeGreaterThan(0);
+
+    // And the rule that spends them. A token nobody reads is the same
+    // as a token set to nothing.
+    const surface = body(`${LIGHT} .surface`);
+    expect(surface, 'the lit top edge is no longer painted')
+      .toMatch(/inset 0 1px 0 var\(--glass-rim-top\)/);
+    expect(surface, 'the shaded foot is no longer painted')
+      .toMatch(/inset 0 -1px 0 var\(--glass-rim-foot\)/);
+  });
+
+  it('and the border a Card already carries is part of that edge', () => {
+    const card = readFileSync(join(SRC, 'components/ui/card.tsx'), 'utf8');
+    expect(card, 'a clear card lost the border that was drawing its boundary')
+      .toMatch(/cardVariants = cva\(\s*"[^"]*\bborder border-border\b/);
+  });
+});

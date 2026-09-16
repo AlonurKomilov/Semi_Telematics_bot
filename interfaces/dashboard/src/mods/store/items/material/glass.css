@@ -7,23 +7,40 @@
    page about to become paper must not be blurred and thinned first. */
 @media screen {
   :root[data-material="glass"] {
-    /* ONE VALUE FOR BOTH MODES, and the reason is what this token IS.
-       How much light a pane lets through is a property of the PANE. A
-       window is not more transparent in a dark room; what changes is
-       what is behind it. This was 0.55 in light and 0.45 in dark, set
-       in two separate passes for two separate reasons that never met —
-       and swept afterwards, EVERY value from 0.35 to 0.65 clears the
-       floor in BOTH modes, so the split was never the contrast talking.
-       0.45 keeps dark exactly where it was, which is the mode where the
-       material is most visible, and makes light a shade clearer.
-       What stays per-mode below is not a contradiction: a tint, a rim,
-       a sheen and a shadow are about the ROOM, not the pane. A
-       highlight is only visible against a ground darker than itself,
-       and a surface's tint has to follow its ink or the text on it
-       cannot be read. Optics says the same — transmission and index are
+    /* ZERO, AND THAT IS THE MATERIAL BEING HONEST ABOUT WHAT IT IS.
+       This was a 45% wash of `--card` — pure white in light mode —
+       painted over the whole pane. That is not what a pane of glass
+       does to what is behind it. It is what a sheet of frosted acrylic
+       does, and it is why every card read as a white BOARD laid on the
+       wallpaper rather than a window onto it: at 45% of white over a
+       0.95 ground, the pattern behind kept barely half its contrast.
+       The wash was never paying for legibility, which is the only
+       thing that could have justified it. Swept across the full model
+       — both modes, card and popover, over the page, the rail and the
+       worst ground `PATTERN_STOPS` allows a wallpaper to make, against
+       both inks — the whole 45% buys 0.29 of contrast ratio in light
+       and COSTS 0.70 in dark. With no fill at all the worst case is
+       4.66:1 light and 6.56:1 dark, and the floor is 4.5. So the pane
+       can be clear, and `glassContrast.test.ts` is what keeps that
+       claim true rather than this comment.
+       WHAT MAKES A CLEAR PANE VISIBLE IS ITS EDGE, not its body — the
+       border it already carries, the lit top and shaded foot below,
+       the bevel that bends the ground at its rim, and the shadow it
+       casts. All four are lines and gradients at the boundary, which
+       is where real glass announces itself too; a body you can see is
+       a body that is not clear. `material.test.ts` refuses to let this
+       reach zero while those go to zero with it, because a pane with
+       neither fill nor edge is not transparent, it is absent.
+       ONE VALUE FOR BOTH MODES, and that half of the reasoning is
+       unchanged: how much light a pane lets through is a property of
+       the PANE. A window is not more transparent in a dark room; what
+       changes is what is behind it. What stays per-mode below is not a
+       contradiction — a tint, a rim, a sheen and a shadow are about
+       the ROOM. A highlight is only visible against a ground darker
+       than itself. Optics says the same: transmission and index are
        constants of the material; what a reflection looks like depends
        on the light and on what is behind. */
-    --surface-alpha: 0.45;
+    --surface-alpha: 0;
     /* 3px, one value for both modes, and the number was CHOSEN BY
        MEASUREMENT rather than by eye — which for this particular knob
        took building something to measure with.
