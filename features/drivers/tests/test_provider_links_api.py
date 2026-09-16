@@ -82,14 +82,22 @@ async def test_the_vendors_name_is_shown_because_it_is_the_only_one():
 
 
 @pytest.mark.asyncio
-async def test_how_many_still_need_linking_is_counted():
+async def test_progress_is_counted_as_done_out_of_total():
+    """Not "2 still unlinked".
+
+    Linking a whole ELD is one drawer at a time, and a counter that only
+    ever shows what is LEFT never acknowledges the work already done.
+    The account also always starts above zero the moment one link
+    exists, which is the shape endowed progress needs.
+    """
     out = await pl.list_provider_links(
         user={"account_id": 1}, tenant_db=_Tenant([
             _row(ref="a", user_id=None),
             _row(ref="b", user_id=84),
             _row(ref="c", user_id=None),
         ]))
-    assert out["providers"][0]["unlinked"] == 2
+    assert out["providers"][0]["linked"] == 1
+    assert out["providers"][0]["total"] == 3
 
 
 @pytest.mark.asyncio
@@ -101,6 +109,22 @@ async def test_two_providers_are_two_sections():
     assert [p["provider_id"] for p in out["providers"]] == [
         "orient_eld", "samsara"]
     assert out["providers"][0]["name"] == "ORIENT ELD"
+
+
+@pytest.mark.asyncio
+async def test_each_section_says_what_kind_of_thing_the_provider_is():
+    """The drawer's hand-written sections read "Samsara (telematics)"
+    and "Datatruck (TMS)", so a reader learns to expect the kind. A
+    generated section printing the bare name breaks that pattern on
+    exactly the provider they know least about."""
+    out = await pl.list_provider_links(
+        user={"account_id": 1}, tenant_db=_Tenant([
+            _row(pid="orient_eld", ref="o1"),
+            _row(pid="datatruck", ref="d1"),
+        ]))
+    kinds = {p["provider_id"]: p["kind"] for p in out["providers"]}
+    assert kinds["orient_eld"] == "telematics"
+    assert kinds["datatruck"] == "TMS", "an initialism is not a word"
 
 
 @pytest.mark.asyncio

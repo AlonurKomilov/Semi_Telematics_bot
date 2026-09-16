@@ -570,6 +570,9 @@ function IntegrationsTab({
   const qc = useQueryClient();
   const userId = profile.user_id;
 
+  // "Not linked" needs a value: Radix treats '' as no selection.
+  const DT_NONE = '__none__';
+
   const [savingSamsara, setSavingSamsara] = useState(false);
   const saveSamsara = async (sid: string | null) => {
     setSavingSamsara(true);
@@ -601,8 +604,9 @@ function IntegrationsTab({
         { method: 'POST', body: { external_id: externalId } },
       );
       onSaved(externalId
-        ? `Datatruck linked${r.loads_backfilled ? ` — ${r.loads_backfilled} loads backfilled` : ''}`
-        : 'Datatruck unlinked');
+        ? `Linked — ${r.loads_backfilled || 'no'} past load${
+          r.loads_backfilled === 1 ? '' : 's'} attributed to this member`
+        : 'Unlinked — their Datatruck loads no longer attribute here');
       qc.invalidateQueries({ queryKey: ['integration-sources'] });
     } catch (e) { onError(e instanceof Error ? e.message : 'Failed'); }
     finally { setDtBusy(false); }
@@ -622,38 +626,45 @@ function IntegrationsTab({
         </p>
       </Section>
 
+      {/* One control whose VALUE is the link, and "Not linked" is one
+          of its values — the same shape Samsara's picker and the
+          generated sections below use. This section used to render a
+          bordered card with its own Unlink button once linked, which
+          meant one fact ("this member is bound to a provider driver")
+          wore two different faces in one drawer, and an admin who
+          learned the card never recognised it one section down.
+          Nothing was lost in the change: the card carried no data the
+          control cannot show, and the backfilled-loads count was
+          always in the toast. */}
       <Section title="Datatruck (TMS)">
-        {currentDt ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium inline-flex items-center gap-1.5">
-                <Link2 className="text-primary shrink-0 size-3.5" /> {currentDt.name}
-              </p>
-              <p className="text-2xs text-muted-foreground">Linked — the driver's Datatruck loads attribute to them automatically.</p>
-            </div>
-            <button
-              disabled={dtBusy}
-              onClick={() => linkDatatruck('')}
-              className="shrink-0 text-xs text-danger hover:opacity-80 inline-flex items-center gap-1 disabled:opacity-50 py-1 -my-1 min-h-tap"
-            >
-              <Link2Off className="size-3" /> Unlink
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            <p className="text-2xs text-muted-foreground">Bind a synced Datatruck driver — their loads backfill onto this member automatically.</p>
-            <Select value="" onValueChange={(v) => { if (v) linkDatatruck(v); }} disabled={dtBusy}>
-              <SelectTrigger className={inputCls}>
-                <SelectValue placeholder={datatruck.some((d) => d.linked_user_id == null) ? 'Select a Datatruck driver…' : 'No unlinked Datatruck drivers'} />
-              </SelectTrigger>
-              <SelectContent>
-                {datatruck.filter((d) => d.linked_user_id == null).map((d) => (
-                  <SelectItem key={d.external_id} value={d.external_id}>{d.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        <Select
+          value={currentDt?.external_id ?? DT_NONE}
+          onValueChange={(v) => linkDatatruck(v === DT_NONE ? '' : v)}
+          disabled={dtBusy}
+        >
+          <SelectTrigger className={inputCls} aria-label="Datatruck driver">
+            <SelectValue placeholder="Not linked" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={DT_NONE}>Not linked</SelectItem>
+            {datatruck.map((d) => {
+              // Taken by somebody else: shown disabled, not hidden.
+              // Hiding it leaves the admin hunting for a name that is
+              // plainly in the TMS with no way to learn why.
+              const taken = d.linked_user_id != null
+                && d.linked_user_id !== userId;
+              return (
+                <SelectItem key={d.external_id} value={d.external_id} disabled={taken}>
+                  {d.name}{taken ? ' — linked to someone else' : ''}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+        <p className="text-2xs text-muted-foreground mt-1">
+          Their Datatruck loads will attribute to this member, and past
+          loads backfill automatically.
+        </p>
       </Section>
 
       {/* Every OTHER integration that reports drivers — rendered from

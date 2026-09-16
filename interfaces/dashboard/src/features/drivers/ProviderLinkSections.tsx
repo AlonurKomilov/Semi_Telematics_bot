@@ -38,8 +38,16 @@ interface ProviderDriver {
 interface ProviderGroup {
   provider_id: string;
   name: string;
+  /** "telematics" / "TMS" — the sibling sections have always said it. */
+  kind: string;
+  /** Whether this provider also fills the licence and phone, or only
+   *  renames its own hours rows. The copy may not promise the first
+   *  for a provider that does not offer it. */
+  fills_identity: boolean;
   drivers: ProviderDriver[];
-  unlinked: number;
+  /** ACCOUNT-wide, not this member's. The caption says so out loud. */
+  linked: number;
+  total: number;
 }
 
 /** Samsara and Datatruck keep their own sections in the drawer — they
@@ -62,7 +70,7 @@ export default function ProviderLinkSections({
   // instead of last click.
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
 
-  const { data } = useQuery<{ providers: ProviderGroup[] }>({
+  const { data, isLoading } = useQuery<{ providers: ProviderGroup[] }>({
     queryKey: ['provider-links'],
     queryFn: () => apiJSON<{ providers: ProviderGroup[] }>('/drivers/provider-links'),
     staleTime: 30_000,
@@ -80,6 +88,17 @@ export default function ProviderLinkSections({
     [data],
   );
 
+  // Nothing yet vs nothing at all. Returning null while the query is
+  // still out makes a slow load look exactly like "no other
+  // integration reports drivers here", which is a different and much
+  // more final answer.
+  if (isLoading) {
+    return (
+      <Section title="Other integrations">
+        <div className="h-8 rounded-md bg-muted/50 animate-pulse" />
+      </Section>
+    );
+  }
   if (!groups.length) return null;
 
   const onPick = async (providerId: string, value: string) => {
@@ -87,7 +106,12 @@ export default function ProviderLinkSections({
     setBusy((prev) => new Set(prev).add(providerId));
     try {
       await save.mutateAsync({ providerId, ref });
-      onSaved(ref ? 'Driver linked' : 'Driver unlinked');
+      // Name the consequence, not the event. What unlinking actually
+      // stops is visible on another page, so "Driver unlinked" told
+      // nobody what they had just given up.
+      onSaved(ref
+        ? 'Linked — their hours now show this member'
+        : 'Unlinked — their hours show the device\'s own name again');
       qc.invalidateQueries({ queryKey: ['provider-links'] });
       // The duty page reads the link to show a roster name and a truck.
       qc.invalidateQueries({ queryKey: ['eld-hours'] });
@@ -111,7 +135,10 @@ export default function ProviderLinkSections({
       {groups.map((g) => {
         const mine = g.drivers.find((d) => d.linked_user_id === userId);
         return (
-          <Section key={g.provider_id} title={g.name}>
+          <Section
+            key={g.provider_id}
+            title={g.kind ? `${g.name} (${g.kind})` : g.name}
+          >
             <Select
               value={mine?.provider_driver_id ?? NONE}
               onValueChange={(v) => void onPick(g.provider_id, v)}
@@ -143,10 +170,22 @@ export default function ProviderLinkSections({
                 })}
               </SelectContent>
             </Select>
+            {/* What linking DOES, not what the list is. The two
+                hand-written sections above both answer that question
+                and this one used to describe its own dropdown, which
+                gives an admin no reason to act. The count is
+                ACCOUNT-wide and says so — inside one person's drawer it
+                was being read as that person's own number. */}
             <p className="text-2xs text-muted-foreground mt-1">
-              Drivers {g.name} is currently reporting
-              {g.unlinked > 0 && (
-                <> · <Badge tone="warn" subtle>{g.unlinked} unlinked</Badge></>
+              Their hours of service will show this member's name and
+              truck
+              {g.fills_identity
+                ? `, and ${g.name} fills in the licence and phone missing here.`
+                : '.'}
+              {g.total > 0 && (
+                <> · <Badge tone="info" subtle>
+                  {g.linked} of {g.total} linked account-wide
+                </Badge></>
               )}
             </p>
           </Section>

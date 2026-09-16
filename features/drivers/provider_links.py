@@ -41,6 +41,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from adapters.telematics.catalog import PROVIDER_CATALOG
+from adapters.telematics.protocol import Capability
 from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import role_rank
 from interfaces.api.deps import (
@@ -67,6 +68,35 @@ class ProviderLinkUpdate(BaseModel):
 def _provider_name(provider_id: str) -> str:
     entry = PROVIDER_CATALOG.get(provider_id)
     return entry.display_name if entry else provider_id
+
+
+def _provider_kind(provider_id: str) -> str:
+    """What KIND of thing this provider is — "telematics", "TMS".
+
+    The drawer's hand-written sections have always said it (``Samsara
+    (telematics)``, ``Datatruck (TMS)``), and a reader learns that
+    pattern from them. A generated section that printed the name alone
+    would break it on the third provider, so the kind travels with the
+    name rather than being spelled again in the frontend.
+    """
+    entry = PROVIDER_CATALOG.get(provider_id)
+    if entry is None:
+        return ""
+    kind = str(getattr(entry.kind, "value", entry.kind) or "")
+    # "tms" is an initialism; "telematics" is a word.
+    return kind.upper() if kind == "tms" else kind
+
+
+def _fills_identity(provider_id: str) -> bool:
+    """Whether linking here also fills the member's licence and phone.
+
+    Every ELD's link renames its hours rows; only a provider declaring
+    ``DRIVER_SPEC`` also fills the roster. Promising the second to a
+    provider that does not offer it would be a sentence the product
+    cannot keep, on the screen where the admin decides to act.
+    """
+    entry = PROVIDER_CATALOG.get(provider_id)
+    return bool(entry and Capability.DRIVER_SPEC in entry.capabilities)
 
 
 @router.get("/provider-links")
@@ -107,10 +137,17 @@ async def list_provider_links(
             {
                 "provider_id": pid,
                 "name": _provider_name(pid),
+                "kind": _provider_kind(pid),
+                "fills_identity": _fills_identity(pid),
                 "drivers": sorted(
                     drivers, key=lambda d: d["driver_name"].lower()),
-                "unlinked": sum(
-                    1 for d in drivers if d["linked_user_id"] is None),
+                # Progress, not remaining work. These are ACCOUNT-wide
+                # while the drawer that shows them is about one person,
+                # so the surface has to name whose numbers they are —
+                # they were read as the member's own otherwise.
+                "linked": sum(
+                    1 for d in drivers if d["linked_user_id"] is not None),
+                "total": len(drivers),
             }
             for pid, drivers in sorted(by_provider.items())
         ],
