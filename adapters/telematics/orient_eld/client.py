@@ -361,18 +361,16 @@ class OrientEldClient:
         """
         return await self._list_all("/api/logs/tracking")
 
-    # The two reads below have NO CALLER yet, and that is stated rather
-    # than hidden.  They are what the driver-link work needs — matching
-    # ORIENT's ``driver_id`` to a member of our roster, which is why
-    # every ORIENT row currently arrives unlinked with an empty truck
-    # column.  Delete them if that work is abandoned; do not quietly
-    # leave them looking used.
-
     async def get_drivers(self) -> list[dict]:
         """The company's driver roster, with licence and contact.
 
-        Driver PII — licence number, phone, email.  For matching a
-        provider driver id to one of ours, never for storing wholesale.
+        Driver PII — licence number, state, phone, email.  Read by the
+        identity feed, which takes the first three onto a member an
+        admin has LINKED by hand and takes the email nowhere: email is
+        a login identity here, not a profile field.  Nothing may create
+        a person from this, because the roster carries no role and no
+        active flag and so cannot tell a current driver from one who
+        left.  See ``OrientEldProvider.get_driver_spec``.
         """
         return await self._list_all("/api/drivers")
 

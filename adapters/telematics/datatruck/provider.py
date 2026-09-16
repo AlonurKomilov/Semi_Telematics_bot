@@ -154,6 +154,12 @@ class DatatruckProvider:
         # provider rather than two that could disagree.
         return []
 
+    async def get_driver_spec(self) -> list[dict[str, Any]]:
+        # Same reason as above, about people: ``project_datatruck_drivers``
+        # is already Datatruck's contribution to the driver record, and
+        # it matches on keys this feed deliberately refuses to use.
+        return []
+
     async def get_stats_history(
         self,
         types: list[str],

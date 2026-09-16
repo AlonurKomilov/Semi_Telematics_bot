@@ -270,12 +270,14 @@ def resolve_capability_cadence(
     return dict(entry.feature_defaults.get(capability) or {})
 
 
-# ORIENT ELD reports ONE feed: who is on what duty status, since when.
-# Nothing else in the capability vocabulary is on offer — no safety
-# events, no fault codes, no efficiency — so this map is one line long,
-# and that is the honest size of it.  The cadence matches Samsara's HOS
-# because the staleness rule the feature applies (15 minutes) is the
-# same rule regardless of who is behind it.
+# ORIENT ELD's live feed is ONE: who is on what duty status, since
+# when.  Nothing else in the live vocabulary is on offer — no safety
+# events, no fault codes, no efficiency.  The other two entries here
+# are not live feeds at all; they are slow SECOND OPINIONS on records
+# another integration already created, which is a different job with a
+# different cadence and no power to create anything.  The HOS cadence
+# matches Samsara's because the staleness rule the feature applies (15
+# minutes) is the same rule regardless of who is behind it.
 _ORIENT_ELD_DEFAULTS: dict[str, dict] = {
     Capability.DRIVER_HOS: {"enabled": True, "interval_min": 5},
     # A SECOND OPINION on trucks another integration registered — VIN,
@@ -284,6 +286,12 @@ _ORIENT_ELD_DEFAULTS: dict[str, dict] = {
     # other integration goes dark, which is the point of it.  It can
     # never create a vehicle, so it can never move a bill.
     Capability.VEHICLE_SPEC: {"enabled": True, "interval_hour": 6},
+    # The same second opinion, about PEOPLE: the name, phone and
+    # licence ORIENT holds for a driver an admin has linked to one of
+    # our members.  Six hours for the same reason — these do not
+    # change — and it can never create a person, only fill blanks on
+    # one who is already here.
+    Capability.DRIVER_SPEC: {"enabled": True, "interval_hour": 6},
 }
 
 _ORIENT_ELD_FEED_SPECS: tuple[FeedSpec, ...] = (
@@ -291,6 +299,18 @@ _ORIENT_ELD_FEED_SPECS: tuple[FeedSpec, ...] = (
              feature="ELD", component="Hours of service"),
     FeedSpec(Capability.VEHICLE_SPEC, "vehicles", "updated_at",
              feature="Vehicles", component="Spec (second opinion)"),
+    # DRIVER_SPEC has NO FeedSpec on purpose.  A feed row reports
+    # ``COUNT(*)`` and ``MAX(ts_col)`` for one table, and ``users`` has
+    # no ingest timestamp at all — so the row would read "0 records,
+    # never synced" on an account where the feed is running fine.  A
+    # permanently wrong freshness cell is worse than no cell: it is the
+    # number an operator checks to decide whether the integration is
+    # alive.  Without a FeedSpec the capability still carries its own
+    # on/off toggle on the card, which is the part that matters.
+    #
+    # Giving ``users`` an ``updated_at`` would fix this, and it is the
+    # right fix — it is just a schema change to the platform's busiest
+    # table, which is not something to slip into a driver feed.
 )
 
 

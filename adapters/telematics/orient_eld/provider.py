@@ -117,6 +117,51 @@ def _driver_name(row: dict) -> str:
     return full or str(row.get("username") or "").strip()
 
 
+class _DriverIdClaims:
+    """Which company claimed each ORIENT ``driver_id`` in one read.
+
+    Two feeds now key drivers by this id — hours of service and the
+    identity fill — and an admin's link is made against whatever the
+    hours surface showed them.  So the DETECTION of an id claimed by
+    two companies has to be one piece of code; if the feeds disagreed
+    about what a driver's key is, the link would match nothing and fail
+    in silence.
+
+    What the two feeds DO about a collision differs, and that asymmetry
+    is the point of keeping the decision at the call site: hours of
+    service keeps both drivers under distinct keys, because there the
+    cost of the tripwire firing is a duty status on the wrong line.
+    Identity drops the id entirely, because there the cost is one
+    person's licence number written onto another person's record.
+    """
+
+    def __init__(self) -> None:
+        self._owner: dict[str, str] = {}
+        self.repeats = 0
+        self.collided: set[str] = set()
+
+    def claim(self, pdid: str, company: str) -> str:
+        """``'new'``, ``'repeat'`` (same company listed them twice) or
+        ``'collision'`` (a second company claims the same id)."""
+        first = self._owner.get(pdid)
+        if first is None:
+            self._owner[pdid] = company
+            return "new"
+        if first == company:
+            self.repeats += 1
+            return "repeat"
+        self.collided.add(pdid)
+        logger.error(
+            "orient_eld: driver_id %s claimed by BOTH company %s and "
+            "company %s — ids were assumed unique across companies. "
+            "Hours of service keeps both under distinct keys; the "
+            "identity fill skips this id rather than write one "
+            "driver's licence onto another's record.",
+            pdid, first, company,
+        )
+        return "collision"
+
+
 def to_snapshot(row: dict) -> HosSnapshot | None:
     """One tracking row as one canonical snapshot, or ``None`` to skip.
 
@@ -169,6 +214,7 @@ class OrientEldProvider:
     supported_capabilities: frozenset[str] = frozenset({
         Capability.DRIVER_HOS,
         Capability.VEHICLE_SPEC,
+        Capability.DRIVER_SPEC,
     })
 
     # The empty set is the whole point of this declaration existing.
@@ -258,9 +304,8 @@ class OrientEldProvider:
         """
         rows = await self._client.get_tracking()
         out: list[HosSnapshot] = []
-        seen: dict[str, str] = {}
+        claims = _DriverIdClaims()
         skipped = 0
-        duplicates = 0
         for row in rows:
             snap = to_snapshot(row)
             if snap is None:
@@ -268,27 +313,20 @@ class OrientEldProvider:
                 continue
             pdid = snap.provider_driver_id
             company = str(row.get("_company_code") or "")
-            first = seen.get(pdid)
-            if first is None:
-                seen[pdid] = company
-            elif first == company:
+            verdict = claims.claim(pdid, company)
+            if verdict == "repeat":
                 # The same company listed the same driver twice — one
                 # driver, one row.  Nothing to disambiguate.
-                duplicates += 1
                 continue
-            else:
-                logger.error(
-                    "orient_eld: driver_id %s reported by BOTH company %s "
-                    "and company %s — ids were assumed unique across "
-                    "companies. Keeping both under distinct keys; the "
-                    "store's key has no company in it, so without this "
-                    "one would have overwritten the other.",
-                    pdid, first, company,
-                )
+            if verdict == "collision":
+                # Keep both, under distinct keys.  The store's key has
+                # no company in it, so without this one duty status
+                # would overwrite the other's.
                 snap = dataclasses.replace(
                     snap, provider_driver_id=f"{pdid}@{company}",
                 )
             out.append(snap)
+        duplicates = claims.repeats
         if skipped:
             logger.warning(
                 "orient_eld: %d tracking row(s) had no driver_id — skipped",
@@ -300,6 +338,62 @@ class OrientEldProvider:
                 duplicates,
             )
         return out
+
+    async def get_driver_spec(self) -> list[dict[str, Any]]:
+        """What ORIENT knows each DRIVER is — a second opinion on people.
+
+        ``/api/drivers`` carries the name, phone, licence number and
+        licence state ORIENT holds.  On the live account every one of
+        29 drivers has a licence number and a state and 27 have a
+        phone, against a roster that has none of them — which is the
+        whole argument for this feed.
+
+        ``email`` is read and DROPPED.  It is a login identity here
+        (Google sign-in links on it, verification mails go to it), not
+        a profile field, so a vendor roster may not write it.  Nothing
+        asks for date of birth or home address either; a provider
+        offering a field is not a reason to take it.
+
+        The roster carries no role and no active flag, so it cannot
+        tell a current driver from somebody who left.  That is why
+        nothing here is allowed to create a person, and why the only
+        match key is a link an admin made by hand — see
+        ``features/drivers/spec_ingest``.
+        """
+        rows = await self._client.get_drivers()
+        claims = _DriverIdClaims()
+        by_id: dict[str, dict[str, Any]] = {}
+        skipped = 0
+        for row in rows:
+            pdid = row.get("driver_id")
+            if pdid is None or str(pdid).strip() == "":
+                # No key means no link means nothing to fill.
+                skipped += 1
+                continue
+            pdid = str(pdid).strip()
+            company = str(row.get("_company_code") or "").strip()
+            if claims.claim(pdid, company) == "repeat":
+                continue
+            by_id[pdid] = {
+                "provider_driver_id": pdid,
+                "display_name": _driver_name(row),
+                "phone": str(row.get("phone") or "").strip(),
+                "cdl_number": str(row.get("dl_number") or "").strip(),
+                "cdl_state": str(row.get("license_state") or "").strip(),
+                "company_code": company,
+            }
+        for pdid in claims.collided:
+            # Two companies claim this id, so which person the link
+            # points at is no longer knowable from the id alone. Hours
+            # of service can afford to guess and be visibly wrong;
+            # writing a licence number cannot.
+            by_id.pop(pdid, None)
+        if skipped:
+            logger.warning(
+                "orient_eld: %d roster row(s) had no driver_id — skipped",
+                skipped,
+            )
+        return list(by_id.values())
 
     async def get_vehicle_spec(self) -> list[dict[str, Any]]:
         """What ORIENT knows each truck IS — a SECOND opinion.

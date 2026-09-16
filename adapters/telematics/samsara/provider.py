@@ -416,6 +416,13 @@ class SamsaraProvider:
         # not a second opinion on somebody else's rows.
         return []
 
+    async def get_driver_spec(self) -> list[dict[str, Any]]:
+        # Samsara knows its drivers, and this stays empty anyway: it
+        # links them through ``samsara_driver_id``, a path that already
+        # writes the roster. One contributor per provider — two would
+        # disagree with each other about the same person.
+        return []
+
     async def get_stats_history(
         self,
         types: list[str],

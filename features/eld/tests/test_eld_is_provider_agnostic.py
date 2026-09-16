@@ -64,6 +64,10 @@ class FakeEldProvider:
         # This fake is an ELD, not a second opinion on the registry.
         return []
 
+    async def get_driver_spec(self):
+        # Nor on the roster: this fake reports hours and nothing else.
+        return []
+
     async def get_driver_hos(self):
         self.asked += 1
         return list(self._snapshots)

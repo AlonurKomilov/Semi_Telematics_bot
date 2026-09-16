@@ -72,6 +72,19 @@ class Capability:
     VEHICLE_FAULTS          = "vehicle_faults"
     DRIVER_EFFICIENCY_DAILY = "driver_efficiency"
     DRIVER_HOS              = "driver_hos"
+    # DRIVER_HOS is to DRIVER_SPEC what VEHICLE_STATE is to
+    # VEHICLE_SPEC, and for the same reason: HOS is what a person is
+    # DOING right now, keyed by the person, so one provider wins it.
+    # SPEC is who the person IS — the name, phone and licence on file —
+    # which several providers each half-know and which
+    # ``capabilities/source`` arbitrates field by field.
+    #
+    # One difference from the vehicle pair, and it is load-bearing: a
+    # vehicle is matched by its unit number, a PERSON is matched only
+    # by a link an admin made by hand. Nothing here infers who somebody
+    # is from a licence or an email — see
+    # ``features/drivers/spec_ingest``.
+    DRIVER_SPEC             = "driver_spec"
     FLEET_WEATHER           = "fleet_weather"
     FLEET_EFFICIENCY        = "fleet_efficiency"
     GEOFENCE_DEFINITIONS    = "geofence_definitions"
@@ -411,6 +424,32 @@ class TelematicsProvider(Protocol):
         already put in the registry, which is why a caller may never
         create rows from it — see the fill-only rule in
         ``features/vehicles/spec_ingest``.
+        """
+        ...
+
+    async def get_driver_spec(self) -> list[dict[str, Any]]:
+        """What this provider knows each driver IS, not what they are doing.
+
+        Shape per row: ``provider_driver_id`` (required — it is the ONLY
+        match key; see below), plus any of ``display_name``, ``phone``,
+        ``cdl_number``, ``cdl_state``, ``company_code``. Absent and
+        empty mean the same thing and both read as "no opinion".
+
+        ``provider_driver_id`` must be spelled EXACTLY as
+        :meth:`get_driver_hos` spells it for the same person, because
+        the link an admin makes is made against the ids the hours
+        surface showed them. A provider that disambiguates an id in one
+        of the two feeds and not the other produces a link that matches
+        nothing, and it fails silently — the driver simply never gets
+        filled.
+
+        Deliberately NOT in the shape: email (it is a login identity
+        here, not profile data), date of birth and home address. A
+        provider offering them is not a reason to take them.
+
+        Providers that do not describe drivers return ``[]``. A caller
+        may never create a person from this — see the fill-only rule in
+        ``features/drivers/spec_ingest``.
         """
         ...
 

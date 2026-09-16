@@ -96,6 +96,8 @@ _EXPECTED_JOB_IDS = {
     "eld.driver_hos":         "eld_driver_hos",
     # A second opinion on vehicle spec — fill-only, never creates.
     "vehicles.spec_fill": "vehicle_spec_fill",
+    # The same about drivers, matched only by a link an admin made.
+    "drivers.spec_fill": "driver_spec_fill",
 }
 
 
@@ -123,6 +125,9 @@ def test_sparse_feeds_declare_themselves_sparse():
         # a stopped feed: a merge that changes nothing is what you want
         # from a backstop that fills gaps.
         "vehicles.spec_fill",
+        # And for drivers, zero is also what an account that has not
+        # linked anybody yet looks like — the common first state.
+        "drivers.spec_fill",
     }
 
 

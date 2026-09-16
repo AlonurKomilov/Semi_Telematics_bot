@@ -212,9 +212,18 @@ def _now_iso() -> str:
 # are operator-owned by default (``owner_fallback='manual'``): HR-entered
 # data is never overwritten by a sync — integrations only fill gaps.
 DRIVER_RECON_FIELDS = ("display_name", "phone")
+# Every source the owner may rank in the precedence panel.  ORIENT ELD
+# is last by default and that is a statement, not an ordering accident:
+# a TMS holds the name HR typed, an ELD holds the name a driver typed
+# into a tablet.  The owner can reorder it; a source absent from an
+# account's SAVED order already ranks below every named one
+# (``source_rank``), so accounts that saved a precedence before ORIENT
+# existed keep exactly the behaviour they chose — it fills their gaps
+# and outranks nobody.
+DRIVER_SPEC_SOURCES = ("datatruck", "samsara", "orient_eld")
 DEFAULT_DRIVER_PRECEDENCE = {
-    "display_name": ("datatruck", "samsara"),
-    "phone":        ("datatruck", "samsara"),
+    "display_name": DRIVER_SPEC_SOURCES,
+    "phone":        DRIVER_SPEC_SOURCES,
 }
 _DRIVER_FIELD_LABELS = {"display_name": "Name", "phone": "Phone"}
 
@@ -231,6 +240,26 @@ _INACTIVE_DRIVER_STATUSES = frozenset({
     "inactive", "terminated", "fired", "disabled", "archived",
     "deleted", "suspended",
 })
+
+
+def _may_fill_cdl(profile: Any, provenance: dict) -> bool:
+    """Whether an integration may write this driver's licence number.
+
+    Two conditions, and the second one is easy to miss: the column has
+    to be EMPTY, and it has to be empty because nobody filled it —
+    rather than because an operator emptied it on purpose.
+
+    ``update_driver_profile`` pins every reconcilable field an operator
+    touches, INCLUDING when the new value is blank, which is the whole
+    reason that pin has to be read here. Without it, "the operator
+    deleted this licence" and "no one ever typed one" look identical to
+    a sync, and the next tick puts back the number a human just
+    removed. That is a correction being silently undone on a DOT
+    compliance field.
+    """
+    if (getattr(profile, "cdl_number", "") or "").strip():
+        return False
+    return provenance.get("cdl_number") != recon.MANUAL_SOURCE
 
 
 def _parse_driver_provenance(raw: Any) -> dict:
@@ -320,7 +349,7 @@ recon.register_reconciled_entity(
     fields=DRIVER_RECON_FIELDS,
     default_precedence=DEFAULT_DRIVER_PRECEDENCE,
     field_labels=_DRIVER_FIELD_LABELS,
-    sources=("datatruck", "samsara"),
+    sources=DRIVER_SPEC_SOURCES,
     apply_resolution=_apply_driver_field,
 )
 
@@ -784,8 +813,9 @@ class DriverProfileMixin(_MixinBase):
                             _maybe_encrypt(mr.updates[f])
                             if f in _PII_COLUMNS else mr.updates[f],
                         )
-                # Fill an EMPTY CDL from the payload (fill-only, encrypted).
-                if inc_cdl and not (p.cdl_number or "").strip():
+                # Fill an EMPTY CDL from the payload (fill-only, encrypted)
+                # — unless an operator emptied it themselves.
+                if inc_cdl and _may_fill_cdl(p, prov):
                     sets.append("cdl_number = ?")
                     params.append(_maybe_encrypt(inc_cdl))
                     mr.provenance["cdl_number"] = "datatruck"
@@ -814,6 +844,127 @@ class DriverProfileMixin(_MixinBase):
                     conflict_ops.append((p.user_id, safe_conflicts, safe_cleared))
         await recon.sync_batch(self, account_id, "driver", conflict_ops)
         return written
+
+    async def project_provider_driver_spec(
+        self, account_id: int, provider_id: str, rows: list[dict],
+    ) -> dict[str, int]:
+        """Fill blanks on drivers an admin has LINKED to this provider.
+
+        The difference from ``project_datatruck_drivers`` is the match,
+        and it is the whole reason this is a second method rather than
+        a parameter.  Datatruck matches on its own ref, then a licence
+        number, then an email.  None of those exist here: the roster
+        this fills has no licence numbers — filling them is the POINT —
+        and the measured email overlap with the provider is zero.  So
+        the only key is a link a human made, read from
+        ``driver_provider_links``.
+
+        Inferring one would also be self-confirming.  A matcher that
+        fell back to "the licence numbers agree" would, on its second
+        tick, agree with the licence IT wrote on the first — a wrong
+        link becomes its own evidence and nobody ever sees it.
+
+        There is no INSERT in this method and that is structural, not a
+        setting.  The providers that reach here describe people without
+        saying whether they still work for the carrier, so a row here
+        can fill a person in and can never say one exists.
+
+        Returns counts (never values) for the caller to log.
+        """
+        out = {
+            "linked": 0, "written": 0, "filled_cdl": 0,
+            "skipped_unlinked": 0, "conflicts": 0,
+        }
+        if not rows:
+            return out
+        links = await self.driver_links_for(account_id, provider_id)
+        if not links:
+            out["skipped_unlinked"] = len(rows)
+            return out
+        # Terminated members are excluded by default — a live feed must
+        # not keep filling somebody who left.
+        profiles = {p.user_id: p for p in await self.list_drivers(account_id)}
+        if not profiles:
+            out["skipped_unlinked"] = len(rows)
+            return out
+        cur = await self._db.execute(
+            "SELECT id, driver_field_provenance FROM users "
+            "WHERE account_id = ? AND role = 'driver'",
+            (account_id,),
+        )
+        provenance = {
+            r[0]: _parse_driver_provenance(r[1]) for r in await cur.fetchall()
+        }
+        precedence = await recon.get_precedence(self, account_id, "driver")
+        conflict_ops: list = []
+        async with self.transaction():
+            for r in rows:
+                ref = str(r.get("provider_driver_id") or "").strip()
+                user_id = links.get(ref)
+                p = profiles.get(user_id) if user_id else None
+                if p is None:
+                    # Unlinked, or linked to somebody who is not an
+                    # active driver.  Both mean "nothing to fill".
+                    out["skipped_unlinked"] += 1
+                    continue
+                out["linked"] += 1
+                prov = provenance.get(p.user_id, {})
+                mr = recon.merge_fields(
+                    current={"display_name": p.display_name, "phone": p.phone},
+                    provenance=prov,
+                    owner_fallback=recon.MANUAL_SOURCE,
+                    incoming=r, source=provider_id,
+                    fields=DRIVER_RECON_FIELDS, precedence=precedence,
+                )
+                sets: list[str] = []
+                params: list[Any] = []
+                for f in DRIVER_RECON_FIELDS:
+                    if f in mr.updates:
+                        sets.append(f"{f} = ?")
+                        params.append(
+                            _maybe_encrypt(mr.updates[f])
+                            if f in _PII_COLUMNS else mr.updates[f],
+                        )
+                # Licence number and state fill as ONE unit, only onto
+                # an empty number.  Splitting them would let a provider
+                # state land beside an operator-typed number and
+                # describe a licence that does not exist.  Encrypted
+                # (the number is PII) and never a conflict row —
+                # ``data_conflicts`` stores plaintext.
+                inc_cdl = str(r.get("cdl_number") or "").strip()
+                if inc_cdl and _may_fill_cdl(p, prov):
+                    sets.append("cdl_number = ?")
+                    params.append(_maybe_encrypt(inc_cdl))
+                    mr.provenance["cdl_number"] = provider_id
+                    inc_state = str(r.get("cdl_state") or "").strip()
+                    if inc_state:
+                        sets.append("cdl_state = ?")
+                        params.append(inc_state)
+                        mr.provenance["cdl_state"] = provider_id
+                    out["filled_cdl"] += 1
+                if not sets and not mr.cleared:
+                    continue
+                sets.append("driver_field_provenance = ?")
+                params.append(json.dumps(mr.provenance))
+                params.extend([p.user_id, account_id])
+                await self._db.execute(
+                    f"UPDATE users SET {', '.join(sets)} "
+                    f"WHERE id = ? AND account_id = ?",
+                    tuple(params),
+                )
+                out["written"] += 1
+                safe_conflicts = [
+                    c for c in mr.conflicts
+                    if c["field"] in _DRIVER_CONFLICT_SAFE_FIELDS
+                ]
+                safe_cleared = [
+                    f for f in mr.cleared if f in _DRIVER_CONFLICT_SAFE_FIELDS
+                ]
+                if safe_conflicts or safe_cleared:
+                    out["conflicts"] += len(safe_conflicts)
+                    conflict_ops.append((p.user_id, safe_conflicts, safe_cleared))
+        await recon.sync_batch(self, account_id, "driver", conflict_ops)
+        return out
 
     async def list_drivers(
         self, account_id: int, include_terminated: bool = False,

@@ -37,7 +37,7 @@ from adapters.telematics.orient_eld.provider import (
     to_snapshot,
 )
 from adapters.telematics.protocol import (
-    DutyStatus, HosClock, TelematicsProvider,
+    Capability, DutyStatus, HosClock, TelematicsProvider,
 )
 
 
@@ -435,17 +435,25 @@ def test_the_provider_satisfies_the_protocol():
     assert isinstance(OrientEldProvider(_Client([])), TelematicsProvider)
 
 
+# A capability may appear here ONLY with the reason it has no FeedSpec.
+# A feed row reports COUNT(*) and MAX(ts_col) for one table, so a feed
+# whose table cannot answer that question is better off not claiming a
+# row than claiming one that is permanently wrong.
+_FEEDLESS = {
+    Capability.DRIVER_SPEC: "users has no ingest timestamp column",
+}
+
+
 def test_the_capability_is_declared_with_a_feed_behind_it():
     """A declared capability renders a toggle; a toggle with no feed
-    behind it controls nothing."""
+    behind it controls nothing — unless the feed row itself would lie,
+    which is a decision that has to be written down."""
     from adapters.telematics.catalog import PROVIDER_CATALOG
-    from adapters.telematics.protocol import Capability
 
     entry = PROVIDER_CATALOG["orient_eld"]
 
     # Every claim lands together — the id, the provider's declaration,
-    # the toggle default and a feed that fills a table.  A capability
-    # with no feed behind it renders a switch that controls nothing.
+    # the toggle default and a feed that fills a table.
     assert entry.capabilities == OrientEldProvider.supported_capabilities
     assert entry.capabilities == {
         Capability.DRIVER_HOS,
@@ -454,10 +462,20 @@ def test_the_capability_is_declared_with_a_feed_behind_it():
         # and several providers can each half-know it — which is what
         # capabilities/source arbitrates.
         Capability.VEHICLE_SPEC,
+        # The same second opinion about PEOPLE — the name, phone and
+        # licence on file for a driver an admin has linked by hand.
+        Capability.DRIVER_SPEC,
     }
     fed = {f.capability for f in entry.feeds}
-    assert fed == entry.capabilities, (
-        f"capabilities with no feed: {sorted(entry.capabilities - fed)}"
+    unexplained = entry.capabilities - fed - set(_FEEDLESS)
+    assert not unexplained, (
+        f"capabilities with no feed and no reason: {sorted(unexplained)}"
+    )
+    # And the other direction: a reason that no longer applies is a
+    # stale excuse, so it has to be deleted when the feed arrives.
+    assert not (set(_FEEDLESS) & fed), (
+        "a capability is listed as feedless AND has a feed: "
+        f"{sorted(set(_FEEDLESS) & fed)}"
     )
     for cap in entry.capabilities:
         assert entry.feature_defaults[cap]["enabled"] is True, cap
@@ -573,3 +591,129 @@ def test_the_clients_timeout_is_under_its_callers_budget():
 
     assert REQUEST_TIMEOUT_SEC < _HEALTH_CHECK_TIMEOUT_SEC
     assert PROBE_TIMEOUT_SEC < _HEALTH_CHECK_TIMEOUT_SEC
+
+
+# ── The identity feed ─────────────────────────────────────────────
+
+class _RosterClient:
+    """Stands in for the fan-out on the roster read."""
+
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    async def get_drivers(self):
+        return list(self._rows)
+
+    async def get_tracking(self):
+        return []
+
+    async def close(self):
+        return None
+
+
+def _roster(driver_id, *, name="John", surname="Smith", phone="+15551111",
+            dl="D123456", state="CA", email="j@example.com", company=""):
+    return {
+        "driver_id": driver_id, "name": name, "surname": surname,
+        "phone": phone, "dl_number": dl, "license_state": state,
+        "email": email, "_company_code": company,
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_roster_maps_to_the_identity_shape():
+    p = OrientEldProvider(_RosterClient([_roster(17)]))
+    rows = await p.get_driver_spec()
+
+    assert rows == [{
+        "provider_driver_id": "17",
+        "display_name": "John Smith",
+        "phone": "+15551111",
+        "cdl_number": "D123456",
+        "cdl_state": "CA",
+        "company_code": "",
+    }]
+
+
+@pytest.mark.asyncio
+async def test_the_email_is_read_and_dropped():
+    """It is a login identity here — Google sign-in links on it and
+    verification mail goes to it — not a profile field a vendor roster
+    may write. The vendor sends it; we do not carry it."""
+    p = OrientEldProvider(_RosterClient([_roster(17, email="x@y.com")]))
+    rows = await p.get_driver_spec()
+
+    assert "email" not in rows[0]
+    assert "x@y.com" not in str(rows[0])
+
+
+@pytest.mark.asyncio
+async def test_a_row_with_no_driver_id_is_skipped():
+    """No key means no link means nothing to fill; inventing one would
+    attach a licence number to a person chosen at random."""
+    p = OrientEldProvider(_RosterClient([
+        _roster(None), _roster(""), _roster(17),
+    ]))
+    rows = await p.get_driver_spec()
+
+    assert [r["provider_driver_id"] for r in rows] == ["17"]
+
+
+@pytest.mark.asyncio
+async def test_an_id_two_companies_claim_is_dropped_from_identity():
+    """The tripwire both feeds share, and the asymmetry between them.
+
+    Hours of service keeps both drivers under distinct keys — a wrong
+    row there is a duty status on the wrong line. Identity drops the id
+    entirely, because a wrong row there writes one person's licence
+    number onto another person's record, encrypted, where nobody will
+    look at it again.
+    """
+    p = OrientEldProvider(_RosterClient([
+        _roster(17, company="AAA", dl="AAA-1"),
+        _roster(17, company="BBB", dl="BBB-1"),
+        _roster(18, company="AAA"),
+    ]))
+    rows = await p.get_driver_spec()
+
+    assert [r["provider_driver_id"] for r in rows] == ["18"]
+
+
+@pytest.mark.asyncio
+async def test_one_company_listing_a_driver_twice_is_one_driver():
+    p = OrientEldProvider(_RosterClient([
+        _roster(17, company="AAA"), _roster(17, company="AAA"),
+    ]))
+    rows = await p.get_driver_spec()
+
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_both_feeds_spell_a_driver_id_the_same_way():
+    """The link an admin makes is made against the id the HOURS surface
+    showed them. If the identity feed spelled the same driver's id
+    differently, the link would match nothing — and it would fail in
+    silence, as a driver who simply never gets filled.
+
+    So they are checked against each other, on the same driver, through
+    the one detector both of them use.
+    """
+    tracking = _row(driver_id=17, _company_code="AAA")
+    roster = _roster(17, company="AAA")
+
+    class _Both:
+        async def get_tracking(self):
+            return [tracking]
+
+        async def get_drivers(self):
+            return [roster]
+
+        async def close(self):
+            return None
+
+    p = OrientEldProvider(_Both())
+    hos = await p.get_driver_hos()
+    spec = await p.get_driver_spec()
+
+    assert hos[0].provider_driver_id == spec[0]["provider_driver_id"]
