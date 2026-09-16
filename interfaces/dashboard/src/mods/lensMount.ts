@@ -170,3 +170,77 @@ export function applyLens(
   if (!id) { el.style.removeProperty(LENS_VAR); return; }
   el.style.setProperty(LENS_VAR, `url(#${id})`);
 }
+
+/** Every surface the stylesheet might spend a lens on. Deliberately the
+ *  WHOLE class and not the translucent subset — see the file docstring:
+ *  choosing here is how the selector ends up written twice. */
+const SURFACES = '.surface';
+
+export interface LensInstall {
+  readonly doc: Document;
+  readonly view: Window;
+  /** The active material's edge, or nothing. `solid` has none, and the
+   *  absence is what tears the whole thing down rather than leaving it
+   *  running over a material that ignores it. */
+  readonly bevel?: Bevel;
+  readonly encode?: Encoder;
+}
+
+/**
+ * Keep every surface pointed at the filter for its current shape.
+ *
+ * Returns the teardown, and the teardown is not a formality: a surface
+ * that keeps `--surface-lens` after the material has gone back to solid
+ * is holding a reference to a filter nobody will rebuild, and the day
+ * glass comes back it would be the wrong shape.
+ *
+ * READS ARE BATCHED AHEAD OF WRITES. A `ResizeObserver` callback runs
+ * after layout, so reading a computed style in it is free — until the
+ * first write, which invalidates, and then every later read in the same
+ * callback forces layout again. With one surface that is invisible;
+ * with the hundred-odd this app puts on a page it is the difference
+ * between one layout and a hundred.
+ */
+export function installLens({ doc, view, bevel, encode }: LensInstall): () => void {
+  const clear = () => doc.querySelectorAll(SURFACES)
+    .forEach((el) => (el as HTMLElement).style.removeProperty(LENS_VAR));
+
+  // No bevel, or an environment without the observers (server render,
+  // or a test that has not stubbed them): leave nothing behind.
+  const RO = (view as unknown as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+  const MO = (view as unknown as { MutationObserver?: typeof MutationObserver }).MutationObserver;
+  if (!bevel || !RO || !MO) { clear(); return () => {}; }
+
+  const draw = encode ?? canvasEncoder(doc);
+
+  const ro = new RO((entries) => {
+    // Read every shape first…
+    const work: { el: HTMLElement; w: number; h: number; r: number }[] = [];
+    for (const e of entries) {
+      const el = e.target as HTMLElement;
+      const box = e.borderBoxSize?.[0];
+      const w = box ? box.inlineSize : e.contentRect.width;
+      const h = box ? box.blockSize : e.contentRect.height;
+      work.push({ el, w, h, r: radiusOf(el, view) });
+    }
+    // …then write every one of them.
+    for (const { el, w, h, r } of work) applyLens(el, w, h, r, bevel, doc, draw);
+  });
+
+  const watch = (root: ParentNode) => {
+    if (root instanceof Element && root.matches(SURFACES)) ro.observe(root);
+    root.querySelectorAll(SURFACES).forEach((el) => ro.observe(el));
+  };
+  watch(doc);
+
+  // Surfaces arrive and leave with every route change, so a one-time
+  // sweep would light the first page and no other.
+  const mo = new MO((records) => {
+    for (const r of records)
+      for (const node of r.addedNodes)
+        if (node.nodeType === 1) watch(node as Element);
+  });
+  mo.observe(doc.body, { childList: true, subtree: true });
+
+  return () => { ro.disconnect(); mo.disconnect(); clear(); };
+}

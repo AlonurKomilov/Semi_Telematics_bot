@@ -12,6 +12,8 @@ import { packById, THEME_PACKS } from './store/items/theme';
 import { useBed } from './sound/useBed';
 import { armIfWanted, installKeySound } from './sound/cue';
 import { installActSound } from './sound/listener';
+import { installLens } from './lensMount';
+import { materialPackById } from './store/items/material';
 import { useAmbient } from './ambient/useAmbient';
 import { AMBIENT_SCALE } from './ambient/ambient';
 import type {
@@ -266,6 +268,22 @@ export function ModProvider({ children }: { children: ReactNode }) {
     // primitive would sound on one page and not the next.
     if (actSound) installActSound();
   }, [uiSound, alertSound, keySound, bedOn, actSound]);
+
+  // THE EDGE LENS, for the material that asks for one — and torn down
+  // for the material that does not, which is most of the point of
+  // returning the teardown. A surface still holding `--surface-lens`
+  // after a switch to solid names a filter nobody will rebuild, and
+  // would be the wrong shape when glass came back.
+  //
+  // Keyed on the material alone: the bevel is a pack value, so nothing
+  // else in the theme can change what this installs. `solid` has no
+  // bevel and the install returns a no-op, so the solid path keeps
+  // costing nothing — no observers, no filters, no properties.
+  useEffect(() => installLens({
+    doc: document,
+    view: window,
+    bevel: materialPackById(theme.material)?.bevel,
+  }), [theme.material]);
 
   // Publishing the cross-device default belongs HERE, on the single
   // funnel every appearance write already passes through — not at the

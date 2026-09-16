@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BUCKET, LENS_VAR, bucketed, lensFilterId, ensureFilter, applyLens, radiusOf,
-  type Encoder,
+  installLens, type Encoder,
 } from './lensMount';
 import type { Bevel } from './lens';
 
@@ -190,5 +190,113 @@ describe('the stylesheet decides, not this file', () => {
     // lensed even when it has been handed a filter, because `none`
     // replaces the entire backdrop-filter value.
     expect(CSS).toMatch(/backdrop-filter:\s*none/);
+  });
+});
+
+/**
+ * Installing and — the half that matters — uninstalling.
+ *
+ * Both observers are stubbed rather than shimmed: jsdom ships neither,
+ * and a stub lets a test fire a resize on demand instead of hoping one
+ * happens. What is being checked is the WIRING, which is the part a
+ * browser would not tell you about until a surface somewhere had a
+ * bevel meant for a different size.
+ */
+describe('installing', () => {
+  type Cb = (entries: { target: Element; contentRect: { width: number; height: number };
+    borderBoxSize?: { inlineSize: number; blockSize: number }[] }[]) => void;
+  let fired: Cb | null = null;
+  let observed: Element[] = [];
+  let disconnected = 0;
+
+  function fakeView(): Window {
+    class RO {
+      constructor(cb: Cb) { fired = cb; }
+      observe(el: Element) { observed.push(el); }
+      disconnect() { disconnected++; }
+    }
+    class MO {
+      observe() {}
+      disconnect() { disconnected++; }
+    }
+    return {
+      ResizeObserver: RO, MutationObserver: MO,
+      getComputedStyle: (el: Element) => window.getComputedStyle(el),
+    } as unknown as Window;
+  }
+
+  const surface = () => {
+    const el = document.createElement('div');
+    el.className = 'surface';
+    document.body.appendChild(el);
+    return el;
+  };
+
+  beforeEach(() => { fired = null; observed = []; disconnected = 0; });
+
+  it('watches every surface it can find', () => {
+    const a = surface(), b = surface();
+    installLens({ doc: document, view: fakeView(), bevel: BEVEL, encode: stubEncoder() });
+    expect(observed).toContain(a);
+    expect(observed).toContain(b);
+  });
+
+  it('hands each one the filter for its own measured shape', () => {
+    const el = surface();
+    installLens({ doc: document, view: fakeView(), bevel: BEVEL, encode: stubEncoder() });
+    fired!([{ target: el, contentRect: { width: 313, height: 200 } }]);
+    expect(el.style.getPropertyValue(LENS_VAR))
+      .toBe(`url(#${lensFilterId(bucketed(313), bucketed(200), 0)})`);
+  });
+
+  it('prefers the border box, which is what the filter region is', () => {
+    // `contentRect` excludes padding and the border; the filter lands on
+    // the border box, so measuring the content box puts the bevel
+    // inside the edge by however much padding the card has — which on
+    // this app's cards is 16px, half a band.
+    const el = surface();
+    installLens({ doc: document, view: fakeView(), bevel: BEVEL, encode: stubEncoder() });
+    fired!([{
+      target: el,
+      contentRect: { width: 100, height: 100 },
+      borderBoxSize: [{ inlineSize: 313, blockSize: 200 }],
+    }]);
+    expect(el.style.getPropertyValue(LENS_VAR))
+      .toBe(`url(#${lensFilterId(bucketed(313), bucketed(200), 0)})`);
+  });
+
+  it('does nothing at all for a material with no bevel', () => {
+    // `solid` must cost exactly nothing: no observers, no filters, no
+    // properties. The install still returns a teardown so the caller
+    // does not have to know which case it got.
+    const el = surface();
+    el.style.setProperty(LENS_VAR, 'url(#stale)');
+    const off = installLens({ doc: document, view: fakeView(), encode: stubEncoder() });
+    expect(observed).toEqual([]);
+    expect(el.style.getPropertyValue(LENS_VAR), 'a stale lens survived the switch to solid').toBe('');
+    expect(typeof off).toBe('function');
+    off();
+  });
+
+  it('and nothing at all where the observers do not exist', () => {
+    // A server render, or a test that has not stubbed them. Returning a
+    // no-op is the difference between a blank page and a crash.
+    const el = surface();
+    const off = installLens({
+      doc: document, view: {} as Window, bevel: BEVEL, encode: stubEncoder(),
+    });
+    expect(el.style.getPropertyValue(LENS_VAR)).toBe('');
+    expect(() => off()).not.toThrow();
+  });
+
+  it('takes the lens back off when it is torn down', () => {
+    const el = surface();
+    const off = installLens({ doc: document, view: fakeView(), bevel: BEVEL, encode: stubEncoder() });
+    fired!([{ target: el, contentRect: { width: 240, height: 300 } }]);
+    expect(el.style.getPropertyValue(LENS_VAR)).not.toBe('');
+    off();
+    expect(el.style.getPropertyValue(LENS_VAR), 'the surface kept a filter nobody will rebuild')
+      .toBe('');
+    expect(disconnected, 'an observer was left running').toBe(2);
   });
 });

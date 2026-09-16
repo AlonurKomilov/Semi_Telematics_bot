@@ -203,8 +203,21 @@
       linear-gradient(
         color-mix(in oklab, var(--ground, transparent) 10%, transparent),
         color-mix(in oklab, var(--ground, transparent) 10%, transparent));
-    -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
-    backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    /* THE LENS COMES FIRST, and it is a variable rather than a rule
+       because the bevel depends on the pane's SHAPE, which no
+       stylesheet can know. `mods/lensMount.ts` hands every `.surface`
+       a `--surface-lens` naming the filter for its own size; this
+       spends it. The fallback is EMPTY on purpose — an unset property
+       leaves the rest of the chain exactly as it was, so a browser
+       with no lens, a material with no bevel, and a surface that has
+       not been measured yet all render the same thing.
+       And a surface the escape hatch below claims never gets here at
+       all: `backdrop-filter: none` replaces the whole value, lens
+       included, which is why offering one to every surface is safe. */
+    -webkit-backdrop-filter:
+      var(--surface-lens, ) blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    backdrop-filter:
+      var(--surface-lens, ) blur(var(--surface-blur)) saturate(var(--surface-saturate));
     /* Only here, never on `.surface` itself. This rule is unlayered and
        so outranks a utility — putting the shadow on the base class would
        beat the `shadow-lg` that dialogs, sheets and menus already carry
