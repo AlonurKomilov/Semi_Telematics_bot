@@ -192,7 +192,7 @@ export default function AssistantPanel() {
             card simply fills what it is given and lines up with the
             page beside it for free. */}
         <div className="h-full">
-          <div className="relative page-ground ground-anchor-right flex h-full flex-col rounded-xl border border-border bg-background text-foreground overflow-hidden">
+          <div className="relative page-ground flex h-full flex-col rounded-xl border border-border bg-background text-foreground overflow-hidden">
             {/* Mini header bar — title + New-chat / History (portalled) +
                 Expand + Close, divided from the messages by a border. */}
             <div className="flex h-11 items-center justify-between px-3 border-b border-border shrink-0">

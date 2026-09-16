@@ -225,38 +225,36 @@ describe('the assistant is the second page, not a panel over the first', () => {
       .toEqual([]);
   });
 
-  it('and anchors its ground to the edge that does not move', () => {
-    // The divider is the page's RIGHT edge and the sub-page's LEFT one.
-    // No wallpaper pack states a `background-position`, so a pattern
-    // starts at its element's top-left — which is the pinned corner for
-    // the page and the moving one for the sub-page. Anchored left, the
-    // whole ground slid sideways on every drag and the far side of the
-    // sub-page appeared to react to a handle on the near side. The
-    // owner found it by watching the wallpaper, which is the only place
-    // it shows.
+  it('and shows its part of the same field the page shows', () => {
+    // THE STRUCTURAL FORM OF A BUG THE OWNER FOUND BY DRAGGING. Every
+    // ground used to start its own copy of the pattern at its own
+    // top-left corner, so the two pages were out of phase across the
+    // frame between them, and the sub-page's copy SLID on every drag
+    // because its left edge is the one the divider moves. It was
+    // repaired locally once, by anchoring that one element to its right
+    // edge; anchoring every ground to the VIEWPORT instead makes the
+    // repair unnecessary and fixes the phase as well — the positioning
+    // area stops belonging to the element, so resizing moves nothing
+    // and the grounds show their parts of one field.
     document.head.innerHTML = '';
     document.body.innerHTML = '';
     const style = document.createElement('style');
     style.textContent = assembledCss();
     document.head.appendChild(style);
-    document.documentElement.setAttribute('data-wallpaper-page', 'gauge');
-    const posOf = (cls: string) => {
+    const attachmentOf = (cls: string) => {
       const el = document.createElement('div');
       el.className = cls;
       document.body.appendChild(el);
-      return getComputedStyle(el).backgroundPosition;
+      return getComputedStyle(el).backgroundAttachment;
     };
-    expect(read('features/ai/AssistantPanel.tsx'),
-      'the sub-page stopped anchoring its ground, so dragging the divider slides it')
-      .toMatch(/\bground-anchor-right\b/);
-    expect(posOf('page-ground ground-anchor-right'),
-      'the class no longer moves the anchor — the rule behind it is gone or was out-specified')
-      .toBe('right top');
-    // The control: the page is anchored the other way, and must stay
-    // that way. Its left edge is the pinned one.
-    expect(posOf('page-ground'),
-      'the page started anchoring right too — then its pattern slides instead')
-      .not.toBe('right top');
+    for (const g of ['base-ground', 'chrome-ground', 'page-ground'])
+      expect(attachmentOf(g), `${g} anchors its pattern to itself again — it will `
+        + 'start its own copy, out of phase with the grounds beside it, and slide when '
+        + 'the element resizes').toBe('fixed');
+    // The control: `fixed` has to be something this stylesheet does on
+    // purpose, not the default the environment reports for everything.
+    expect(attachmentOf('not-a-ground'), 'every element reports fixed — measuring nothing')
+      .not.toBe('fixed');
   });
 
   it('and the shell reads one answer for whether it is there', () => {

@@ -1160,24 +1160,46 @@
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
 
-  /* A PATTERN IS ANCHORED TO THE EDGE THAT DOES NOT MOVE.
-     No pack states a `background-position`, so every pattern starts at
-     its element's top-LEFT corner. For the page that is right and
-     invisible: the page's left edge is pinned to the rail, so dragging
-     the divider shortens it from the right and the pattern inside it
-     never stirs.
-     The assistant is the mirror image. Its RIGHT edge is the pinned
-     one and its LEFT edge is the one the divider moves — so a pattern
-     anchored left slid the whole ground sideways on every drag, and
-     what the reader saw was the far side of the sub-page reacting to a
-     handle on the near side. The owner caught it by watching the
-     wallpaper: "the physics is right on the main page, because I am
-     dragging its right edge — but for the sub-page that handle is its
-     LEFT edge, and it should join from the left."
-     Anchoring to the right makes the drag do what it looks like it
-     does: more ground is revealed at the edge under the pointer, and
-     nothing already on screen moves. */
-  .ground-anchor-right { background-position: right top; }
+  /* ONE FIELD, NOT ONE PER GROUND.
+     Every pattern is anchored to the VIEWPORT rather than to the
+     element painting it, so the grounds stop each starting their own
+     copy at their own top-left corner and instead show their part of a
+     single field. Two pages side by side line up across the frame
+     between them; the frame lines up with the pages it wraps; and
+     nothing moves when an element resizes, because the positioning
+     area no longer belongs to the element.
+     THIS IS WHY THE BASE CANNOT BE A PLANE THAT PAINTS. The plan was
+     for a base ground UNDER the others, revealed by whichever of them
+     had no pattern of its own — and a plane can only carry one colour.
+     The frame is `--sidebar` and the page is `--background`, so a base
+     showing through both would have turned one of them into the other.
+     That is not a guess: `wallpaper.test.ts` already holds a rule
+     against it — "the ground carries its own colour under the pattern"
+     — written after the panes went transparent onto the page colour
+     and the whole chrome changed colour around the pattern.
+     Colour is regional and pattern is global. Separating those two is
+     what the base layer actually needed, and anchoring is how a pattern
+     becomes global without anybody giving up their colour.
+     The wash packs paint on a `::before` at `inset: 0`, so it takes the
+     same anchor — it is the same field seen through a different
+     element. A ground with no pack generates no pseudo-element at all,
+     `content` being what creates one, so this reaches exactly the
+     grounds that paint. */
+  .base-ground, .chrome-ground, .page-ground {
+    background-attachment: fixed;
+  }
+  /* Split from the rule above rather than joined to it by a comma, and
+     the reason is the TEST rather than the browser: `.a, .a::before {}`
+     is valid CSS and a browser applies both, but the guard reads the
+     resolved value through jsdom, which drops a rule whose selector
+     list mixes elements with pseudo-elements. Joined, the declaration
+     was real and unmeasurable — and a rule no guard can see is a rule
+     that regresses in silence. Split, both are true and both are
+     checked. */
+  .base-ground::before, .chrome-ground::before, .page-ground::before {
+    background-attachment: fixed;
+  }
+
   /* The page's small text, under a pattern. At its normal lightness
      `--muted-foreground` clears the plain light page by a hair (4.96),
      and every stop darkens the page — the strongest took it to 3.67.
