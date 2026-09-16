@@ -237,6 +237,10 @@ export interface Mod extends ItemMeta {
   readonly wallpaperLive?: boolean;
   /** The page's own pattern — a `WALLPAPERS` id, apart from the frame's. */
   readonly wallpaperPage?: string;
+  /** The pattern the whole window wears, which the two regions above
+   *  follow unless they say otherwise. A preset that carries this and
+   *  leaves the regions at `desk` dresses the window in one field. */
+  readonly wallpaperDesk?: string;
   /** Animate the routed page in. Off unless a mod asks: an operations
    *  dashboard is navigated dozens of times an hour, and a slide-in on
    *  every one of them is a tax rather than a delight. */
@@ -322,7 +326,8 @@ export const MOD_FIELD_APPLIER: Record<
 > = {
   accent: 'theme', radius: 'theme', material: 'theme', motion: 'theme',
   icons: 'theme', iconPack: 'theme', font: 'theme', entrance: 'theme',
-  wallpaper: 'theme', wallpaperLive: 'theme', wallpaperPage: 'theme', cursor: 'theme', shader: 'theme',
+  wallpaper: 'theme', wallpaperLive: 'theme', wallpaperPage: 'theme', wallpaperDesk: 'theme',
+  cursor: 'theme', shader: 'theme',
   entranceOn: 'theme',
   size: 'size', sound: 'sound', keys: 'sound', ambience: 'sound',
 };
@@ -358,7 +363,7 @@ export const MOD_FIELD_APPLIER: Record<
  */
 export const MOD_FIELD_KIND = {
   accent: 'item', material: 'item', iconPack: 'item', font: 'item',
-  shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item',
+  shader: 'item', cursor: 'item', wallpaper: 'item', wallpaperPage: 'item', wallpaperDesk: 'item',
   sound: 'item', keys: 'item', ambience: 'item',
   radius: 'item', motion: 'item', entrance: 'item',
   size: 'value', icons: 'value',

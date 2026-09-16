@@ -247,7 +247,7 @@ describe('the assistant is the second page, not a panel over the first', () => {
       document.body.appendChild(el);
       return getComputedStyle(el).backgroundAttachment;
     };
-    for (const g of ['base-ground', 'chrome-ground', 'page-ground'])
+    for (const g of ['desk-ground', 'chrome-ground', 'page-ground'])
       expect(attachmentOf(g), `${g} anchors its pattern to itself again — it will `
         + 'start its own copy, out of phase with the grounds beside it, and slide when '
         + 'the element resizes').toBe('fixed');
@@ -281,17 +281,17 @@ describe('the assistant is the second page, not a panel over the first', () => {
  * continuously across the whole window at one size, because the frame
  * paints from its own origin and the page from its own.
  *
- * Separating them is what makes that expressible. The base has no
+ * Separating them is what makes that expressible. The desk has no
  * pattern axis yet and the guard does not pretend otherwise — what it
  * holds is that the PLANE is its own, because that is the part that was
  * wrong and the part a later edit would quietly re-merge.
  */
-describe('the base, the frame and the page are three planes', () => {
+describe('the desk, the frame and the page are three planes', () => {
   const shell = read('shells/AppShell.tsx');
 
-  it('the root is the base, and no longer the frame', () => {
+  it('the root is the desk, and no longer the frame', () => {
     const root = (shell.match(CLASSNAME) ?? [])[0] ?? '';
-    expect(root, 'the shell root is not the base plane').toMatch(/\bbase-ground\b/);
+    expect(root, 'the shell root is not the desk plane').toMatch(/\bdesk-ground\b/);
     expect(root, 'the root took the frame ground back — one element, two jobs again')
       .not.toMatch(/\bchrome-ground\b/);
   });
@@ -305,12 +305,12 @@ describe('the base, the frame and the page are three planes', () => {
     const css = assembledCss();
     const groundOfClass = (cls: string) =>
       new RegExp(`\\.${cls}\\s*\\{[^}]*--ground:\\s*([^;]+);`).exec(css)?.[1].trim();
-    const base = groundOfClass('base-ground');
+    const desk = groundOfClass('desk-ground');
     const frame = groundOfClass('chrome-ground');
     const page = groundOfClass('page-ground');
-    for (const [name, v] of [['base', base], ['frame', frame], ['page', page]] as const)
+    for (const [name, v] of [['desk', desk], ['frame', frame], ['page', page]] as const)
       expect(v, `the ${name} plane declares no ground colour`).toBeTruthy();
-    expect(frame, 'the frame stopped wearing the chrome colour').not.toBe(base);
+    expect(frame, 'the frame stopped wearing the chrome colour').not.toBe(desk);
   });
 
   it('and a frame pane still reads the frame ground it sits on', () => {
@@ -329,9 +329,9 @@ describe('the base, the frame and the page are three planes', () => {
     style.textContent = assembledCss();
     document.head.appendChild(style);
     document.body.innerHTML =
-      '<div class="base-ground">'
+      '<div class="desk-ground">'
       + '<div class="chrome-ground"><i id="pane" class="surface chrome-pane"></i></div>'
-      + '<i id="onbase" class="surface"></i>'
+      + '<i id="ondesk" class="surface"></i>'
       + '</div>';
     const groundAt = (id: string) =>
       getComputedStyle(document.getElementById(id)!).getPropertyValue('--ground').trim();
@@ -339,7 +339,7 @@ describe('the base, the frame and the page are three planes', () => {
       .toBe('var(--sidebar)');
     // The control: the two planes must actually differ, or the
     // assertion above passes on a stylesheet that says one thing twice.
-    expect(groundAt('onbase'), 'the base and the frame resolve to the same ground')
+    expect(groundAt('ondesk'), 'the desk and the frame resolve to the same ground')
       .not.toBe(groundAt('pane'));
   });
 });

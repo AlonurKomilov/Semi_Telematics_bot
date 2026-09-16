@@ -1143,12 +1143,12 @@
   }
 
   /* THREE GROUNDS, ONE VARIABLE. A pack paints `var(--ground)` and does
-     not know which it is on: the base's is the window's own colour, the
+     not know which it is on: the desk's is the window's own colour, the
      frame's is the sidebar colour, the page's is the page colour.
      Each wears its OWN pattern — `data-wallpaper` for the frame,
      `data-wallpaper-page` for the page — so a person picks separately
      and they never have to agree.
-     THE BASE HAS NO PATTERN AXIS YET, and it is here anyway because the
+     THE DESK HAS NO PATTERN AXIS YET, and it is here anyway because the
      PLANE is the part that was wrong. The shell root was the bottom of
      the window AND the frame's ground at once, so the two could never
      be given different things; two regional grounds cannot express one
@@ -1156,7 +1156,7 @@
      which is the gap this opens. What paints here comes next; that this
      is a plane of its own, and not the frame wearing a second hat, is
      what `frame.test.ts` holds now. */
-  .base-ground { --ground: var(--background); }
+  .desk-ground { --ground: var(--background); }
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
 
@@ -1168,24 +1168,24 @@
      between them; the frame lines up with the pages it wraps; and
      nothing moves when an element resizes, because the positioning
      area no longer belongs to the element.
-     THIS IS WHY THE BASE CANNOT BE A PLANE THAT PAINTS. The plan was
-     for a base ground UNDER the others, revealed by whichever of them
+     THIS IS WHY THE DESK CANNOT BE A PLANE THAT PAINTS. The plan was
+     for a desk ground UNDER the others, revealed by whichever of them
      had no pattern of its own — and a plane can only carry one colour.
-     The frame is `--sidebar` and the page is `--background`, so a base
+     The frame is `--sidebar` and the page is `--background`, so a desk
      showing through both would have turned one of them into the other.
      That is not a guess: `wallpaper.test.ts` already holds a rule
      against it — "the ground carries its own colour under the pattern"
      — written after the panes went transparent onto the page colour
      and the whole chrome changed colour around the pattern.
      Colour is regional and pattern is global. Separating those two is
-     what the base layer actually needed, and anchoring is how a pattern
+     what the desk layer actually needed, and anchoring is how a pattern
      becomes global without anybody giving up their colour.
      The wash packs paint on a `::before` at `inset: 0`, so it takes the
      same anchor — it is the same field seen through a different
      element. A ground with no pack generates no pseudo-element at all,
      `content` being what creates one, so this reaches exactly the
      grounds that paint. */
-  .base-ground, .chrome-ground, .page-ground {
+  .desk-ground, .chrome-ground, .page-ground {
     background-attachment: fixed;
   }
   /* Split from the rule above rather than joined to it by a comma, and
@@ -1196,7 +1196,7 @@
      was real and unmeasurable — and a rule no guard can see is a rule
      that regresses in silence. Split, both are true and both are
      checked. */
-  .base-ground::before, .chrome-ground::before, .page-ground::before {
+  .desk-ground::before, .chrome-ground::before, .page-ground::before {
     background-attachment: fixed;
   }
 

@@ -140,8 +140,8 @@ export const TAXONOMY: readonly TaxonomyCategory[] = [
       // it moves) and the page (whether it shows there too). Only the
       // pattern — the page's colour is the palette's, under Color.
       { id: 'wallpaper', title: 'Wallpaper', heading: 'Wallpaper',
-        axes: ['wallpaper', 'wallpaperLive', 'wallpaperPage', 'wallpaperPages'],
-        modFields: ['wallpaper', 'wallpaperLive', 'wallpaperPage'] },
+        axes: ['wallpaperDesk', 'wallpaper', 'wallpaperLive', 'wallpaperPage', 'wallpaperPages'],
+        modFields: ['wallpaperDesk', 'wallpaper', 'wallpaperLive', 'wallpaperPage'] },
       { id: 'cursor', title: 'Cursor', heading: 'Cursor',
         axes: ['cursor'], modFields: ['cursor'] },
     ],

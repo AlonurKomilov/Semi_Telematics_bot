@@ -85,6 +85,36 @@ export function pageWallpaperFor(
   return (surfaceId && theme.wallpaperPages?.[surfaceId]) || theme.wallpaperPage;
 }
 
+/**
+ * "FOLLOW THE DESK" — what a region wears when it has no pattern of
+ * its own.
+ *
+ * Not a pack, and it deliberately never reaches the DOM: both writers
+ * resolve it away before stamping, so every stylesheet keeps seeing a
+ * real pack id and no pack file learns a third selector.
+ *
+ * DESK, not "base", and the collision is why: `WALLPAPER_BASE` a few
+ * lines below is the colour token a pattern TINTS. One word for a
+ * colour and for a layer, in one file, is the thing `grounds.ts`
+ * refuses when it insists on "Cards" over "Panels".
+ *
+ * It is a third VALUE rather than a third LAYER because a layer cannot
+ * do the job. A plane carries ONE colour; the frame is `--sidebar` and
+ * the page is `--background`, so a desk showing through both turns one
+ * of them into the other — `wallpaper.test.ts` has held a rule against
+ * exactly that since the day the panes went transparent onto the page
+ * colour. Colour stays regional; what the desk carries is the CHOICE,
+ * and `background-attachment: fixed` is what makes the regions that
+ * take it show one field rather than three copies of one pattern.
+ */
+export const WALLPAPER_DESK = 'desk';
+
+/** The pack a region actually wears. `desk` defers; anything else is
+ *  the region's own answer, including `none` — an explicit "no pattern
+ *  here" is a choice and must not be overruled by the desk. */
+export const resolveWallpaper = (value: string, desk: string): string =>
+  (value === WALLPAPER_DESK ? desk : value);
+
 /** The attribute the page's pattern is keyed on — the frame's is
  *  `data-wallpaper`. Every pack rule names both grounds, each under
  *  its own attribute, so one pack file serves either place. */

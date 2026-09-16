@@ -61,7 +61,7 @@ const { EVERYTHING, THIN } = vi.hoisted(() => ({
     id: 'everything', label: 'Everything', why: 'carries every field a mod can',
     accent: 'green', radius: 'pill', material: 'glass', motion: 'calm',
     icons: 'bold', iconPack: 'phosphor', font: 'serif', entrance: 'fade', entranceOn: true,
-    wallpaper: 'grid', wallpaperLive: true, wallpaperPage: 'mesh', cursor: 'sharp', shader: 'studio', size: 1.25, sound: 'blip', keys: 'click', ambience: 'rain',
+    wallpaper: 'grid', wallpaperLive: true, wallpaperPage: 'mesh', wallpaperDesk: 'gauge', cursor: 'sharp', shader: 'studio', size: 1.25, sound: 'blip', keys: 'click', ambience: 'rain',
   },
   THIN: { id: 'thin', label: 'Thin', accent: 'green', why: 'carries almost nothing' },
 }));

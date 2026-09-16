@@ -2,6 +2,7 @@
  * A pack ships items, and every item belongs to exactly one pack.
  */
 import { describe, it, expect } from 'vitest';
+import { WALLPAPER_DESK } from '../wallpaper';
 import { PACKS, packById, packOf, removable, type Pack } from './packs';
 import { ITEM_AXES } from './items';
 import { PUBLISHER } from './index';
@@ -52,9 +53,28 @@ describe('the pack the app was drawn in', () => {
     for (const axis of Object.keys(AXIS_UI)) {
       const fallback = defaultOf(axis);
       if (!fallback) continue;
-      expect(base[0].items[axis] ?? [],
-        `${axis} falls back to "${fallback}", which the base pack does not ship`).toContain(fallback);
+      // A DEFERRAL IS NOT AN ITEM, and the invariant survives it — one
+      // hop later. `wallpaper` and `wallpaperPage` fall back to `desk`,
+      // which is not a pattern anyone ships: it means "whatever the
+      // desk wears", and the desk falls back to `none`, which the base
+      // pack does carry. So the promise this test makes — strip every
+      // pack but the base and nothing resolves to a missing item — is
+      // still kept, and following the hop is what checks it rather than
+      // excusing it.
+      const landed = fallback === WALLPAPER_DESK
+        ? defaultOf('wallpaperDesk') ?? 'none'
+        : fallback;
+      const shelf = fallback === WALLPAPER_DESK ? 'wallpaper' : axis;
+      expect(base[0].items[shelf] ?? [],
+        `${axis} falls back to "${landed}", which the base pack does not ship`).toContain(landed);
     }
+  });
+
+  it('and the deferral really does land somewhere the base pack ships', () => {
+    // The control on the hop above: without it, a `desk` that resolved
+    // to another `desk` would loop and the test would follow it into a
+    // value nobody checks.
+    expect(defaultOf('wallpaperDesk'), 'the desk defers to itself').not.toBe(WALLPAPER_DESK);
   });
 
   it('a pack that is not the base one can be taken off', () => {

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
-import { pageWallpaperFor } from './wallpaper';
+import { pageWallpaperFor, resolveWallpaper } from './wallpaper';
 
 import { usePreference } from '../preferences';
 import { SIZE_REGIONS, themeColorAlias } from '../preferences/registry';
@@ -83,10 +83,16 @@ export function applyTheme(theme: Theme) {
   // agree with: a typeface changes the width of every word, so getting
   // it a frame late reflows the page rather than recolouring it.
   root.dataset.font = theme.font;
-  root.dataset.wallpaper = theme.wallpaper;
+  // RESOLVED HERE, so `desk` never reaches the DOM. Every stylesheet
+  // and every guard keeps seeing a real pack id, and no pack file
+  // learns a third selector — the desk is a question about which
+  // pattern, answered before anyone is asked to paint it.
+  root.dataset.wallpaper = resolveWallpaper(theme.wallpaper, theme.wallpaperDesk);
   // The page's own pattern, keyed apart from the frame's — for the
   // place currently on screen, which the shell has already stamped.
-  root.dataset.wallpaperPage = pageWallpaperFor(theme, root.dataset.surface);
+  root.dataset.wallpaperPage = resolveWallpaper(
+    pageWallpaperFor(theme, root.dataset.surface), theme.wallpaperDesk,
+  );
   // Present or absent, not true/false: the stylesheet gates a live
   // pattern's animation on the attribute existing, and a `"false"` would
   // still exist.

@@ -65,8 +65,15 @@
         // React. `themeBoot.test.ts` runs this script and applyTheme
         // over the same inputs and fails when the two disagree.
         var font = pick(t.font, ['geist', 'system', 'serif', 'mono', 'rounded'], 'geist');
-        var wallpaper = pick(t.wallpaper, ['none', 'mesh', 'grid', 'gauge', 'grain', 'paper', 'plasma', 'night-haul', 'long-haul'], 'none');
-        var wallpaperPage = pick(t.wallpaperPage, ['none', 'mesh', 'grid', 'gauge', 'grain', 'paper', 'plasma', 'night-haul', 'long-haul'], 'none');
+        // `desk` is a valid answer for a region and means "follow the
+        // desk"; the desk itself may not say it. Resolved below, so the
+        // attribute the first painted frame carries is a real pack id —
+        // the same value applyTheme writes a moment later.
+        var wallpaperDesk = pick(t.wallpaperDesk, ['none', 'mesh', 'grid', 'gauge', 'grain', 'paper', 'plasma', 'night-haul', 'long-haul'], 'none');
+        var wallpaper = pick(t.wallpaper, ['desk', 'none', 'mesh', 'grid', 'gauge', 'grain', 'paper', 'plasma', 'night-haul', 'long-haul'], 'desk');
+        var wallpaperPage = pick(t.wallpaperPage, ['desk', 'none', 'mesh', 'grid', 'gauge', 'grain', 'paper', 'plasma', 'night-haul', 'long-haul'], 'desk');
+        if (wallpaper === 'desk') wallpaper = wallpaperDesk;
+        if (wallpaperPage === 'desk') wallpaperPage = wallpaperDesk;
         var cursor = pick(t.cursor, ['system', 'sharp'], 'system');
         var shader = pick(t.shader, ['flat', 'soft', 'studio'], 'flat');
 

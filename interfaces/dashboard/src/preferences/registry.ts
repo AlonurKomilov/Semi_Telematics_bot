@@ -36,6 +36,7 @@
 import type { IconPack } from '../lib/icons';
 import { ICON_PACK_IDS } from '../mods/store/items/icons';
 import { WALLPAPER_IDS } from '../mods/store/items/wallpaper';
+import { WALLPAPER_DESK } from '../mods/wallpaper';
 import { CURSOR_IDS } from '../mods/store/items/cursor';
 import { SHADER_IDS } from '../mods/store/items/shader';
 import { MOD_MOTIONS, MOD_ICONS } from '../mods/catalogue';
@@ -334,10 +335,21 @@ export interface ModSetting {
    * page, which is what every plane did before this existed.
    */
   grounds?: Record<string, string>;
-  /** The PAGE's own pattern — a `WALLPAPERS` id, chosen apart from the
-   *  frame's. `none` by default: the page has always been plain. Paints
-   *  around the cards, over the page's own colour. */
+  /** The PAGE's own pattern — a `WALLPAPERS` id, or `desk` to follow
+   *  the desk. Paints around the cards, over the page's own colour. */
   wallpaperPage: string;
+  /**
+   * THE WHOLE WINDOW'S PATTERN — what a region wears when it has not
+   * chosen for itself.
+   *
+   * A `WALLPAPERS` id, never `desk` (it is the thing being followed).
+   * `none` by default, and `wallpaper`/`wallpaperPage` default to
+   * `desk`, so a new reader who sets this one control gets one pattern
+   * across the frame and the pages at once. Anyone who has already
+   * picked keeps what they picked: a stored `none` is an explicit "no
+   * pattern here" and outranks this.
+   */
+  wallpaperDesk: string;
   /**
    * A page pattern for one named place — `{ loads: 'grid' }`. Keys are
    * `SURFACES` ids, values `WALLPAPERS` ids; a place with no entry
@@ -410,7 +422,8 @@ export const MOD_DEFAULT: ModSetting = {
   mode: 'dark', accent: 'blue', radius: 'rounded', material: 'solid',
   motion: 'default', icons: 'regular', iconPack: 'lucide', font: 'geist',
   entrance: 'lift', entranceOn: false,
-  wallpaper: 'none', wallpaperLive: false, wallpaperPage: 'none', cursor: 'system', shader: 'flat',
+  wallpaper: 'desk', wallpaperLive: false, wallpaperPage: 'desk', wallpaperDesk: 'none',
+  cursor: 'system', shader: 'flat',
   color: 'dark-blue',
 };
 
@@ -677,11 +690,20 @@ export const DEFS = {
         ? o.entranceOn : MOD_DEFAULT.entranceOn);
       // A pattern that shipped and was later removed falls back to flat
       // chrome, not to a stamp nothing in the stylesheet answers.
-      const wallpaper = WALLPAPER_IDS.includes(o.wallpaper as string)
-        ? o.wallpaper as string : MOD_DEFAULT.wallpaper;
+      // `desk` is a valid answer for a REGION and never for the desk
+      // itself — it is the thing being followed, so accepting it there
+      // would be a region deferring to its own deferral. Spelled out
+      // rather than left to the fallback: `WALLPAPER_IDS` does not
+      // carry it, so a stored `desk` only survived because the default
+      // happens to be `desk` too, and that is an accident a change of
+      // default would quietly end.
+      const regionPattern = (v: unknown, fallback: string) =>
+        (v === WALLPAPER_DESK || WALLPAPER_IDS.includes(v as string) ? v as string : fallback);
+      const wallpaper = regionPattern(o.wallpaper, MOD_DEFAULT.wallpaper);
       const wallpaperLive = typeof o.wallpaperLive === 'boolean' ? o.wallpaperLive : MOD_DEFAULT.wallpaperLive;
-      const wallpaperPage = WALLPAPER_IDS.includes(o.wallpaperPage as string)
-        ? o.wallpaperPage as string : MOD_DEFAULT.wallpaperPage;
+      const wallpaperPage = regionPattern(o.wallpaperPage, MOD_DEFAULT.wallpaperPage);
+      const wallpaperDesk = WALLPAPER_IDS.includes(o.wallpaperDesk as string)
+        ? o.wallpaperDesk as string : MOD_DEFAULT.wallpaperDesk;
       // A pack that was removed falls back to the OS pointer, which is
       // the one thing always available — an unanswered stamp would
       // leave the app with whatever the last rule happened to set.
@@ -778,7 +800,7 @@ export const DEFS = {
 
       return {
         mode, accent, radius, material, motion, icons, iconPack, font, entrance, entranceOn,
-        wallpaper, wallpaperLive, wallpaperPage, cursor, shader,
+        wallpaper, wallpaperLive, wallpaperPage, wallpaperDesk, cursor, shader,
         ...(mod ? { mod } : {}),
         ...(brand ? { brand } : {}),
         ...(canvas ? { canvas } : {}),

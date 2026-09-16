@@ -25,6 +25,7 @@ import { fitCanvas, paletteTokens, WALLPAPER_BREAK } from './theme/canvas';
 import {
   LIVE_ANIMATES, WALLPAPER_LIVE_ATTR, WALLPAPER_VISIBLE,
   WALLPAPER_PAGE_BASE, WALLPAPER_PAGE_INKS, WALLPAPER_PAGE_ATTR, pageWallpaperFor,
+  WALLPAPER_DESK, resolveWallpaper,
 } from './wallpaper';
 import { DEFAULT_DEPTH } from './depth/packs';
 
@@ -584,8 +585,34 @@ describe('the page can wear it too, and stays readable', () => {
     // change — and both go through the one resolver, so a named place's
     // own pattern is what paints whichever of them wrote last.
     const engine = readFileSync(join(__dirname, 'context.tsx'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(engine, 'the engine stamps the page pattern without resolving the place').toMatch(/dataset\.wallpaperPage\s*=\s*pageWallpaperFor\(/);
-    expect(shell, 'the shell stamps the page pattern without resolving the place').toMatch(/dataset\.wallpaperPage\s*=\s*pageWallpaperFor\(/);
+    // TWO resolutions, and a writer that skips either one stamps
+    // something no stylesheet answers: the PLACE (this page's own
+    // pattern, or everywhere's) and the DESK (a region that defers).
+    // Written as two assertions rather than one regex over both calls,
+    // so a writer that drops one is named for the one it dropped.
+    for (const [who, src] of [['engine', engine], ['shell', shell]] as const) {
+      expect(src, `the ${who} stamps the page pattern without resolving the place`)
+        .toMatch(/dataset\.wallpaperPage\s*=[\s\S]{0,80}?pageWallpaperFor\(/);
+      expect(src, `the ${who} stamps the page pattern without resolving the desk`)
+        .toMatch(/dataset\.wallpaperPage\s*=\s*resolveWallpaper\(/);
+    }
+  });
+
+  it('a region that defers wears the desk, and one that chose does not', () => {
+    // THE WHOLE OF THE DESK, in four lines. It is a third VALUE, not a
+    // third plane: a plane carries one colour, and a desk showing
+    // through both the frame and the page would have turned one of
+    // their colours into the other — the rule two tests above this one
+    // is the record of that happening.
+    expect(resolveWallpaper(WALLPAPER_DESK, 'gauge')).toBe('gauge');
+    expect(resolveWallpaper('grid', 'gauge')).toBe('grid');
+    // `none` IS a choice, and the one most likely to be overruled by a
+    // careless `||`. A reader who set a region to plain and then dressed
+    // the desk must keep their plain region.
+    expect(resolveWallpaper('none', 'gauge')).toBe('none');
+    // And a desk nobody dressed leaves the deferring regions plain
+    // rather than leaving the sentinel on the element.
+    expect(resolveWallpaper(WALLPAPER_DESK, 'none')).toBe('none');
   });
 
   it('a place wears its own pattern, or everywhere\'s', () => {

@@ -263,6 +263,34 @@ describe('theme-boot ↔ applyTheme', () => {
     expect(runs, 'nothing was swept').toBeGreaterThan(20);
   });
 
+  it('agrees on what a region that follows the desk ends up wearing', () => {
+    // The axis with no attribute. `desk` is resolved away by both
+    // writers, so the thing that can drift is not a stamp but a
+    // DECISION — and a boot script that skipped the resolution would
+    // paint the first frame with a literal `desk` no stylesheet
+    // answers, then snap to the real pattern on hydration. That is the
+    // exact class of bug this whole file exists for, arriving through
+    // the one door the sweep above cannot see.
+    let runs = 0;
+    for (const desk of WALLPAPER_IDS) {
+      const theme: ModSetting = {
+        ...MOD_DEFAULT, wallpaper: 'desk', wallpaperPage: 'desk', wallpaperDesk: desk,
+      } as ModSetting;
+      resetRoot(); storeTheme(theme);
+      const booted = runBoot();
+      resetRoot();
+      const applied = runApply(theme);
+      runs++;
+      expect(booted, `boot disagrees when the desk is ${desk}`).toEqual(applied);
+      // And both must have resolved it, not merely agreed on the word.
+      expect(applied.data.wallpaper, `the desk reached the DOM as a literal for ${desk}`)
+        .toBe(desk);
+      expect(applied.data.wallpaperPage, `the page kept the sentinel for ${desk}`)
+        .toBe(desk);
+    }
+    expect(runs, 'nothing was swept').toBeGreaterThan(5);
+  });
+
   it('agrees on every valid stored theme', () => {
     for (const mode of THEME_MODES) {
       for (const accent of THEME_ACCENTS) {
@@ -580,7 +608,14 @@ describe('theme-boot source', () => {
     // it to PREPAINT_AXES, or add it here and say why.
     // `wallpaperLive` starts an animation whose first frame is the
     // still state, so a late stamp changes nothing a person can see.
-    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'entranceOn', 'wallpaperLive'];
+    // `wallpaperDesk` never becomes an attribute: both writers RESOLVE
+    // it into the two region stamps, so there is no `data-` value for a
+    // late write to get wrong. What has to be right is the resolution,
+    // and the boot script does it too — swept by its own test below,
+    // because the loop over PREPAINT_AXES cannot reach an axis that is
+    // not one.
+    const NOT_PREPAINT = ['icons', 'iconPack', 'entrance', 'entranceOn', 'wallpaperLive',
+      'wallpaperDesk'];
     for (const k of Object.keys(MOD_DEFAULT)) {
       expect(
         (PREPAINT_AXES as readonly string[]).includes(k) || NOT_PREPAINT.includes(k),

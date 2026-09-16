@@ -37,6 +37,7 @@ import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { IconPack } from '../../lib/icons';
 import { ICON_PACKS, iconPackById, BASE_PACK } from '../store/items/icons';
 import { WALLPAPERS, wallpaperById } from '../store/items/wallpaper';
+import { WALLPAPER_DESK, resolveWallpaper } from '../wallpaper';
 import { CURSOR_PACKS, cursorPackById } from '../store/items/cursor';
 import { DEFAULT_DEPTH } from '../depth/packs';
 
@@ -578,8 +579,16 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   const offered = useOffered();
   const { t } = useTranslation();
   const { theme, setTheme } = useMods();
-  const frame = theme.wallpaper ?? 'none';
-  const wornFrame = wallpaperById(frame);
+  /** What the whole window wears. A real pack or `none` — never the
+   *  sentinel, because it is the thing being followed. */
+  const desk = theme.wallpaperDesk ?? 'none';
+  const wornDesk = wallpaperById(desk);
+  const frame = theme.wallpaper ?? WALLPAPER_DESK;
+  /** The pack each row ENDS UP wearing. A row set to Desk describes
+   *  what it will actually show, not the word "desk" — a description
+   *  that read "follows the desk" and nothing else told a reader the
+   *  mechanism and not the result. */
+  const wornFrame = wallpaperById(resolveWallpaper(frame, desk));
 
   /** Which place the page pattern is aiming at. Deliberately NOT
    *  stored, like the canvas's aim: a question about this moment. */
@@ -591,8 +600,8 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   }, [places, target]);
   /** What the aimed place wears: its own pattern, or everywhere's. */
   const own = target ? theme.wallpaperPages?.[target] : undefined;
-  const page = own ?? theme.wallpaperPage ?? 'none';
-  const wornPage = wallpaperById(page);
+  const page = own ?? theme.wallpaperPage ?? WALLPAPER_DESK;
+  const wornPage = wallpaperById(resolveWallpaper(page, desk));
   const writePage = (v: string) => {
     if (!target) { setTheme({ wallpaperPage: v }); return; }
     const next = { ...(theme.wallpaperPages ?? {}) };
@@ -605,8 +614,17 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
   const canLive = wornFrame?.kind === 'live' || wornPage?.kind === 'live';
   const movers = offered('wallpaper', WALLPAPERS, (w) => w.id)
     .filter((w) => w.kind === 'live').map((w) => w.label);
-  const chips = (current: string, write: (v: string) => void) => (
+  /** `follows`: this row may defer to the desk, and the chip that says
+   *  so comes FIRST — it is the answer most rows keep, and a reader
+   *  scanning for "the one I did not change" should not have to reach
+   *  the end of the row to find it. The desk's own row passes false:
+   *  a desk that could follow itself is a question with no answer. */
+  const chips = (current: string, write: (v: string) => void, follows = true) => (
     <div className="flex flex-wrap gap-1">
+      {follows && (
+        <Chip value={WALLPAPER_DESK} current={current}
+          label={t('mods.wallpaper_follow_desk', 'Desk')} onClick={write} />
+      )}
       {offered('wallpaper', WALLPAPERS, (w) => w.id).map((w) => (
         <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
           live={w.kind === 'live' ? (current === w.id && theme.wallpaperLive ? 'on' : 'off') : undefined}
@@ -619,17 +637,32 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <p className={`${label} mb-1.5`}>
         {t('mods.group_wallpaper', 'Wallpaper')}
       </p>
-      {/* Two plain sub-labels, NOT the caps group class: Frame and Page
-          are halves of one question, and giving them a heading's weight
-          made a sub-row read as a peer of Corners and Material once
-          already — the section guard caught it. Each half picks its own
-          pattern; the two never have to agree. */}
+      {/* Three plain sub-labels, NOT the caps group class: Desk, Frame
+          and Page are parts of one question, and giving them a
+          heading's weight made a sub-row read as a peer of Corners and
+          Material once already — the section guard caught it.
+          THE DESK COMES FIRST because it is what the other two answer
+          to. Set it and the window wears one pattern; then either of
+          the others may disagree. The reverse order would put two
+          exceptions above the rule they are exceptions to. */}
       <p className="text-xs text-foreground mb-1.5">
+        {t('mods.wallpaper_desk', 'Desk')}
+      </p>
+      {chips(desk, (v) => setTheme({ wallpaperDesk: v }), false)}
+      <p className="text-2xs text-muted-foreground mt-1.5">
+        {desk === 'none'
+          ? t('mods.wallpaper_desk_none', 'Nothing underneath — each part picks its own.')
+          : `${wornDesk?.description ?? ''} ${t('mods.wallpaper_desk_hint', 'One field across the whole window; a part can still choose otherwise.')}`}
+      </p>
+
+      <p className="text-xs text-foreground mt-3 mb-1.5">
         {t('mods.wallpaper_frame', 'Frame')}
       </p>
       {chips(frame, (v) => setTheme({ wallpaper: v }))}
       <p className="text-2xs text-muted-foreground mt-1.5">
-        {wornFrame?.description}
+        {frame === WALLPAPER_DESK && desk === 'none'
+          ? t('mods.wallpaper_frame_follows_none', 'Follows the desk, which is plain.')
+          : wornFrame?.description}
       </p>
 
       <p className="text-xs text-foreground mt-3 mb-1.5">
@@ -658,7 +691,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       <p className="text-2xs text-muted-foreground mt-1.5">
         {target && !own
           ? t('mods.wallpaper_page_follows', '{{place}} follows Everywhere.', { place: surfaceById(target)?.title ?? target })
-          : page === 'none'
+          : resolveWallpaper(page, desk) === 'none'
             ? t('mods.wallpaper_page_none', 'The page stays plain.')
             : `${wornPage?.description ?? ''} ${t('mods.wallpaper_page_hint', 'Around the cards — tables and cards stay solid.')}`}
       </p>

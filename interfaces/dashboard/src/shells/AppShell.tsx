@@ -34,10 +34,11 @@ import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 import {
   entranceById, ModPanel, useMods, surfaceFor, ModsLock, useCanMods,
-  pageWallpaperFor, usePageCue,
+  pageWallpaperFor, resolveWallpaper, usePageCue,
 } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
+import { ChatLauncher } from '../features/chat/ChatLauncher';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
 import { AlertsLauncher } from '../features/alerts/AlertsLauncher';
 import { useAssistantDock, useDockedContentClass } from '../features/ai/AssistantContext';
@@ -96,7 +97,11 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
     // The page's pattern follows the place: a named place may hold its
     // own. The engine stamps the same answer on every theme change, both
     // through one resolver, so the two writers cannot disagree.
-    root.dataset.wallpaperPage = pageWallpaperFor(theme, s?.id ?? null);
+    // Resolved, like the other writer — the two must agree, and `desk`
+    // is not something the stylesheet answers.
+    root.dataset.wallpaperPage = resolveWallpaper(
+      pageWallpaperFor(theme, s?.id ?? null), theme.wallpaperDesk,
+    );
   }, [pathname, theme]);
 
   // `relative` on the two GROUNDS below: a wallpaper's wash is a
@@ -105,7 +110,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
   // fixed panels their position — an unlayered rule beats a utility — so
   // the element says it now. `mods/wallpaper.test.ts` holds both halves.
   return (
-    <div className="relative flex flex-col h-screen overflow-hidden bg-background text-foreground base-ground">
+    <div className="relative flex flex-col h-screen overflow-hidden bg-background text-foreground desk-ground">
       <ModsLock />
       {/* Nothing here scrolls the document — see DocumentLock. */}
       <DocumentLock />
@@ -123,7 +128,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           were padding, the split that was a margin — and it has the
           same consequence: a thing with two jobs can only ever be given
           one of them.
-          Three planes now, bottom to top. The ROOT is the base: the
+          Three planes now, bottom to top. The ROOT is the desk: the
           plane everything sits on, and where a wallpaper that spans the
           whole window will paint. THIS is the frame's, covering the
           window and painting only in the gaps the frame leaves. The
@@ -195,7 +200,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           <header
             data-ambient-recede
             style={sizeRegion('controls')}
-            className="h-12 bg-sidebar surface surface-sidebar chrome-pane text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3"
+            className="h-12 bg-sidebar surface surface-sidebar chrome-pane text-sidebar-foreground flex items-center px-2 sm:px-3 lg:px-4 shrink-0 gap-2 sm:gap-3"
           >
             <div className="flex items-center gap-3 shrink-0">
               <button
@@ -213,7 +218,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
                 to a plain spacer. */}
             <ShellHero fallback={hero} />
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={() => setPaletteOpen(true)}
                 className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 min-h-tap text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-55 lg:w-70"
@@ -234,6 +239,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
               </button>
               <LanguageSelector />
               <AlertsLauncher />
+              <ChatLauncher />
               <AssistantLauncher />
               {canMods && <ModPanel />}
               <AvatarMenu />

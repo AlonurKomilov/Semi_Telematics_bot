@@ -45,7 +45,7 @@ export { MODS_HREF, MODS_PAGE_HREF } from './href';
 // into the panel this file exports.
 export { usePageCue } from './sound/route';
 export { MODS_PERMISSION } from './access';
-export { pageWallpaperFor } from './wallpaper';
+export { pageWallpaperFor, resolveWallpaper } from './wallpaper';
 export { ModsLock, lockedModsKeys, useCanMods } from './ModsLock';
 export { SURFACES, surfaceFor, surfaceById, type Surface } from './surfaces';
 export { default as ModsPage } from './page/ModsPage';
