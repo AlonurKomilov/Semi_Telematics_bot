@@ -53,6 +53,7 @@ from capabilities.object_storage import router as object_storage_routes
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
 from features.inventory import router as inventory_routes
+from features.drivers import provider_links as drivers_provider_links
 from features.eld import config as eld_config
 from features.eld import router as eld_routes
 from features.cameras import router as cameras_routes
@@ -729,6 +730,9 @@ def create_api() -> FastAPI:
         app.include_router(driver_pay_routes.router, prefix=prefix)
         app.include_router(coaching_config.router, prefix=prefix)
         app.include_router(coaching_routes.router, prefix=prefix)
+        # BEFORE the feature router: it carries @router.get("/{user_id}")
+        # style routes, and FastAPI matches in registration order.
+        app.include_router(drivers_provider_links.router, prefix=prefix)
         app.include_router(drivers_routes.router, prefix=prefix)
         # Driver roster admin (moved out of Team Management; same URLs, gated
         # on can_manage_drivers) — /admin/users/{id}/trucks, samsara-driver-id,
