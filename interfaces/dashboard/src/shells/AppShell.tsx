@@ -137,20 +137,27 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           onOpenChange={setMobileSidebarOpen}
         />
 
-        {/* The chrome envelope around the content card. `bg-sidebar` paints
-            the chrome colour; `pr-2 pb-2` leaves an 8px frame to the right
-            and below, so the chrome wraps the content on every side — top
-            from the header, left from the sidebar. */}
-        {/* NO `.surface` here, deliberately. This element wraps the
-            header AND every page, and its only visible pixels are the
-            8px gutter `pr-2 pb-2` leaves. Carrying `.surface` bought a
-            frosted 8px frame and cost a VIEWPORT-SIZED backdrop root
-            over every card in the app — under Glass, `backdrop-filter`
-            on an ancestor makes a descendant's own filter a no-op, which
-            is why the persona menu showed the sidebar through itself
-            CRISP rather than smeared. It keeps its paint (`bg-sidebar`)
-            and its transparency under a wallpaper (`chrome-pane`). */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-sidebar surface-sidebar chrome-pane pr-2 pb-2">
+        {/* PURE LAYOUT. It paints nothing and marks nothing, and that is
+            the point: every pixel of chrome now belongs to a side that
+            is its own element, so a rule written for the frame reaches
+            all four of them.
+            It used to paint the chrome itself and leave the right and
+            bottom edges as `pr-2 pb-2` — 8px of PADDING. Padding has no
+            boundary, so two of the four sides could not take a border,
+            a rim, a radius or a lens no matter what any material asked
+            for, and a mods change landed on the rail and the header
+            only. That asymmetry is what the owner kept hitting.
+            It also could not be fixed by marking this element, which is
+            why it was left out for so long: it wraps the header AND
+            every page, so `.surface` here bought a frosted 8px frame
+            and cost a VIEWPORT-SIZED backdrop root over every card in
+            the app — under Glass a `backdrop-filter` on an ancestor
+            makes a descendant's own filter a no-op, which is why the
+            persona menu showed the sidebar through itself CRISP rather
+            than smeared. A gutter rendered as a SIBLING of <main> is
+            nobody's ancestor, so it carries the full frame class list
+            with none of that cost. */}
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Three zones: mobile-menu (left), hero (middle, flex-1), tools
               (right). The hero lives INSIDE the h-12 strip rather than in
               a row of its own, so content sits at the same Y whether or
@@ -224,13 +231,16 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
               preset. Sidebar, header and gutters are all `bg-sidebar` — one
               continuous chrome surface — and the card is the thing sitting
               in it, which is what the outline says. */}
+          {/* The content row: the card, and the right side of the frame
+              beside it. */}
+          <div className="flex flex-1 min-h-0">
           <main
             style={sizeRegion('text')}
             // Always a page ground: the class only says which colour is the
             // ground here. A pattern reaches it through `data-wallpaper-page`
             // on <html>, and with `none` there is no rule — `bg-background`
             // paints the card as it always has.
-            className={`relative flex-1 bg-background border border-border rounded-xl overflow-hidden page-ground ${dockedContentClass}`}
+            className={`relative flex-1 min-w-0 bg-background border border-border rounded-xl overflow-hidden page-ground ${dockedContentClass}`}
           >
           {/* THE page scrollport, named so a caller with no element in
               hand can reach it — see lib/scrollport. */}
@@ -283,6 +293,22 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
               )}
             </div>
           </main>
+            {/* THE RIGHT SIDE OF THE FRAME, and the bottom below it.
+                Same class list as the rail and the header, because they
+                are the same object seen from four directions — the
+                guard in `frame.test.ts` is what keeps that true rather
+                than this comment. `aria-hidden`: they carry no content
+                and a screen reader announcing two empty groups around
+                every page is noise. */}
+            <div
+              aria-hidden
+              className="w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+            />
+          </div>
+          <div
+            aria-hidden
+            className="h-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+          />
         </div>
       </div>
 

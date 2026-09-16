@@ -358,9 +358,10 @@
   /* THE FRAME IS NOT GLASS, and that is the other half of the same
      idea. `.chrome-pane` is BY DEFINITION the surface that steps aside
      for a wallpaper: with a pattern on it is `background-color:
-     transparent`, so there is nothing of its own to frost, and with no
-     pattern it is an opaque full-height rail, so the blur has nothing
-     behind it to show. It paid for both in the only currency that
+     transparent` — made true by the last rule in this file, and for
+     years only asserted here — so there is nothing of its own to frost,
+     and with no pattern it is an opaque full-height rail, so the blur
+     has nothing behind it to show. It paid for both in the only currency that
      matters here — `backdrop-filter` creates a stacking context and a
      containing block for positioned descendants, and the sidebar, the
      header and the content envelope are the three ancestors that every
@@ -417,5 +418,30 @@
   :root[data-material="glass"] .surface.chrome-pane {
     background-image: none;
     box-shadow: var(--surface-shadow);
+  }
+
+  /* AND IT STILL STEPS ASIDE FOR A WALLPAPER — which the rule above was
+     quietly preventing, for as long as both have been in the file.
+     Two axes were writing the same property on the same element and
+     only one of them could win. `index.css` says
+     `:root:not([data-wallpaper="none"]) .chrome-pane` at (0,3,0); the
+     opaque hatch above says `:root[data-material="glass"]
+     .surface.chrome-pane` at (0,4,0). Both unlayered, so specificity
+     decides and the material won: CHOOSING GLASS TURNED THE FRAME
+     WALLPAPER OFF. Not dimmed — off, on the rail, the header and both
+     gutters, which between them are the whole frame. Measured rather
+     than reasoned: the two selectors in a document, one element
+     carrying both classes, and the computed colour came back as the
+     material's.
+     The comment further up this file asserted the opposite ("with a
+     pattern on it is `background-color: transparent`"), which is how it
+     survived — the rule the reasoning depended on had never been
+     written down, so nothing was there to be wrong.
+     (0,5,0), and it names both axes because it is the composition of
+     both: glass, AND a pattern to reveal. `frame.test.ts` measures the
+     resolved colour rather than reading this selector, because the next
+     rung that out-specifies it would be just as invisible. */
+  :root[data-material="glass"]:not([data-wallpaper="none"]) .surface.chrome-pane {
+    background-color: transparent;
   }
 }
