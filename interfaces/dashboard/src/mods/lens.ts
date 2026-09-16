@@ -42,6 +42,18 @@ export interface Bevel {
    * bevel actually does.
    */
   readonly falloff: number;
+  /**
+   * How far the rim bends what is behind it, in pixels, at the very
+   * edge. A pane of glass is not a prism: measured against the shipped
+   * value the displacement is about a dozen pixels at the rim and
+   * exactly none a third of the way in.
+   *
+   * Carried here rather than derived from `band` because they are two
+   * different statements — how WIDE the bevel is and how STRONGLY it
+   * refracts — and a material can want a broad gentle edge or a narrow
+   * hard one.
+   */
+  readonly strength: number;
 }
 
 /**

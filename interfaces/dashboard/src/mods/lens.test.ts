@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { bevelMap, RESOLUTION, NEUTRAL, type Bevel } from './lens';
 import { MATERIAL_PACKS, materialPackById } from './store/items/material';
 
-const BEVEL: Bevel = { band: 30, falloff: 2.2 };
+const BEVEL: Bevel = { band: 30, falloff: 2.2, strength: 13 };
 const W = 236, H = 300, R = 28;
 
 /** One pixel's displacement, in map units away from neutral. */
@@ -145,6 +145,7 @@ describe('the bevel is a pack value, not an engine one', () => {
     const src = codeOnly(readFileSync(join(__dirname, 'lens.ts'), 'utf8'));
     expect(src.match(/\bband\s*:\s*[\d.]/g) ?? [], 'lens.ts holds a band').toEqual([]);
     expect(src.match(/\bfalloff\s*:\s*[\d.]/g) ?? [], 'lens.ts holds a falloff').toEqual([]);
+    expect(src.match(/\bstrength\s*:\s*[\d.]/g) ?? [], 'lens.ts holds a strength').toEqual([]);
   });
 
   it('and the pack states one', () => {
@@ -154,6 +155,7 @@ describe('the bevel is a pack value, not an engine one', () => {
     expect(glass?.bevel, 'glass declares no bevel').toBeTruthy();
     expect(glass!.bevel!.band).toBeGreaterThan(0);
     expect(glass!.bevel!.falloff).toBeGreaterThan(1);
+    expect(glass!.bevel!.strength).toBeGreaterThan(0);
   });
 
   it('solid declares none, because it must cost nothing', () => {

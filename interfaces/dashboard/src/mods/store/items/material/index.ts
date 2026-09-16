@@ -21,8 +21,12 @@ export const MATERIAL_PACKS: readonly MaterialPack[] = [
      * 2.2 rather than a straight ramp: a rounded edge bends hardest in
      * the last millimetre and barely at all a third of the way in, so
      * a linear falloff reads as a wide soft smear instead of an edge.
+     * 13px of bend at the rim — measured, not chosen: at this value the
+     * probe read 10.5px of displacement at the edge and 0.00px in the
+     * middle, which is a pane with a thickness rather than a pane with
+     * a wobble.
      */
-    bevel: { band: 30, falloff: 2.2 },
+    bevel: { band: 30, falloff: 2.2, strength: 13 },
   },
 ];
 export const MATERIAL_IDS = MATERIAL_PACKS.map((p) => p.id);
