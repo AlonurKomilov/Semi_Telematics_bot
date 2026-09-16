@@ -20,6 +20,8 @@ import { toneClasses, toneText } from '../../lib/status';
 // never opens the tab does not pull it.
 const DriverHoursTab = lazy(() => import('../eld/DriverHoursTab'));
 import DataGrid from '../../components/datagrid';
+import ProviderLinkSections from './ProviderLinkSections';
+import Section from './Section';
 import OnboardingQueue from './OnboardingQueue';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import {
@@ -653,6 +655,18 @@ function IntegrationsTab({
           </div>
         )}
       </Section>
+
+      {/* Every OTHER integration that reports drivers — rendered from
+          data, so a third ELD needs no section of its own. Samsara and
+          Datatruck keep theirs above: they do more on save than store a
+          link, and folding a bespoke flow into a generic list to make
+          the list look complete would lose the part that is not
+          generic. */}
+      <ProviderLinkSections
+        userId={profile.user_id}
+        onSaved={onSaved}
+        onError={onError}
+      />
     </div>
   );
 }
@@ -1303,15 +1317,6 @@ function ComingSoonTab({
         Coming soon
       </span>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h3 className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{title}</h3>
-      {children}
-    </section>
   );
 }
 
