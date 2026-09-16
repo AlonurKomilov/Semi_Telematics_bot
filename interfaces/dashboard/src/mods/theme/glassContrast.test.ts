@@ -76,6 +76,25 @@ const LIGHT = ':root[data-material="glass"]';
 const DARK = '.dark[data-material="glass"]';
 
 /**
+ * The same declaration, as the CASCADE hands it to one mode.
+ *
+ * `.dark[data-material="glass"]` is the SAME ELEMENT as
+ * `:root[data-material="glass"]` — `<html>` carries both — so a token
+ * the dark block does not restate is not missing, it is inherited, and
+ * a reader that only looks in the mode block reports "unstated" for a
+ * value the browser resolves perfectly well. That matters now that the
+ * pane's own properties are declared once: the alpha dark mode uses is
+ * the base one, and modelling dark without it would model nothing.
+ */
+const declFor = (selector: string, prop: string): number => {
+  try {
+    return decl(selector, prop);
+  } catch {
+    return decl(LIGHT, prop);
+  }
+};
+
+/**
  * The planes and inks, READ from index.css rather than copied beside
  * it — the same rule the pack's own numbers now follow, and for the
  * same reason: a guard holding its own copy of the value it guards is
@@ -102,8 +121,8 @@ const modeTokens = (sel: string) => ({
 });
 
 const T = {
-  light: { ...modeTokens(LIGHT_SEL), alpha: decl(LIGHT, '--surface-alpha'), sheen: decl(LIGHT, '--glass-sheen') },
-  dark: { ...modeTokens(DARK_SEL), alpha: decl(DARK, '--surface-alpha'), sheen: decl(DARK, '--glass-sheen') },
+  light: { ...modeTokens(LIGHT_SEL), alpha: declFor(LIGHT, '--surface-alpha'), sheen: declFor(LIGHT, '--glass-sheen') },
+  dark: { ...modeTokens(DARK_SEL), alpha: declFor(DARK, '--surface-alpha'), sheen: declFor(DARK, '--glass-sheen') },
 } as const;
 
 const grey = (L: number): RGB => oklchToSrgb(L, 0, 0).rgb;

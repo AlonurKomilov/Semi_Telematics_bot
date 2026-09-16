@@ -569,3 +569,59 @@ describe('a plane inside a surface', () => {
     }
   });
 });
+
+/**
+ * WHAT IS THE PANE'S, AND WHAT IS THE ROOM'S.
+ *
+ * The material had drifted into declaring almost everything twice, once
+ * per mode — including two things that are properties of the MATERIAL
+ * and cannot sensibly differ. How much light a pane lets through, and
+ * how much it deepens the colour passing through it, belong to the
+ * pane; a window is not more transparent in a dark room. They were
+ * split because two separate passes each had a local reason, and
+ * neither could see the other: swept afterwards, every alpha from 0.35
+ * to 0.65 clears the floor in both modes, so the contrast was never
+ * asking for it.
+ *
+ * The ones that DO differ are the room's, and the guard asserts that
+ * too — otherwise this reads as "fewer per-mode values is better",
+ * which would be wrong. A rim is a reflection and is only visible
+ * against a ground darker than itself. A tint has to follow its ink or
+ * the text cannot be read. Optics agrees: transmission and index are
+ * constants of a material; a highlight is a fact about the light.
+ */
+describe('the material and the room', () => {
+  const block = (sel: string) => {
+    let body = '';
+    for (const m of CODE.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+      if (m[1].trim().replace(/\s+/g, ' ') === sel) body += m[2];
+    return body;
+  };
+  const LIGHT = ':root[data-material="glass"]';
+  const DARK = '.dark[data-material="glass"]';
+
+  it("the pane's own properties are declared once", () => {
+    for (const tok of ['--surface-alpha', '--surface-saturate', '--surface-blur']) {
+      expect(block(LIGHT), `${tok} is not declared at all`).toMatch(new RegExp(`${tok}:`));
+      expect(
+        block(DARK),
+        `${tok} is overridden per mode — it is a property of the pane, not of the room`,
+      ).not.toMatch(new RegExp(`${tok}:`));
+    }
+  });
+
+  it("and the room's are declared per mode, which is not the same mistake", () => {
+    // The control. Without it the assertion above reads as "fewer
+    // per-mode values is better" and the next edit flattens a rim that
+    // has to differ — white on white is invisible, which is exactly how
+    // the first version of this pack shipped a rim nobody could see in
+    // light mode.
+    for (const tok of ['--glass-rim-top', '--glass-rim-foot', '--glass-sheen']) {
+      expect(block(LIGHT), `${tok} has no light value`).toMatch(new RegExp(`${tok}:`));
+      expect(
+        block(DARK),
+        `${tok} stopped following the mode — a reflection is a fact about the light`,
+      ).toMatch(new RegExp(`${tok}:`));
+    }
+  });
+});

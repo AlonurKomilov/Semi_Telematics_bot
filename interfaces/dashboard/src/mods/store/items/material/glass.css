@@ -7,24 +7,23 @@
    page about to become paper must not be blurred and thinned first. */
 @media screen {
   :root[data-material="glass"] {
-    /* 0.55, and it was 0.72 for two reasons that are both gone.
-       The first was arithmetic: a light card was `oklch(1 0 0)` and so
-       was the page under it, so clearing the card revealed white and
-       the material had nothing to show. The page is 0.95 now, which is
-       what gives this number something to do.
-       The second was a mismeasurement, and it is the more useful one to
-       record. The patterned ground was held to the PLAIN secondary ink
-       and reported 4.56:1 — a hair over the floor, and the reason a
-       previous version of this comment said light glass had nowhere to
-       go. But under a pattern the page swaps in
-       `--muted-foreground-on-pattern`, which a Card inherits, so the
-       text that actually sits there is darker and the real number was
-       never close. Measured against the ink the product uses, every
-       value down to 0.50 clears; 0.55 is that with room kept.
-       Still short of dark's 0.45, and not arbitrarily: the light card
-       is only 0.05 above its page, so what clarity reveals here is a
-       thin difference to begin with. */
-    --surface-alpha: 0.55;
+    /* ONE VALUE FOR BOTH MODES, and the reason is what this token IS.
+       How much light a pane lets through is a property of the PANE. A
+       window is not more transparent in a dark room; what changes is
+       what is behind it. This was 0.55 in light and 0.45 in dark, set
+       in two separate passes for two separate reasons that never met —
+       and swept afterwards, EVERY value from 0.35 to 0.65 clears the
+       floor in BOTH modes, so the split was never the contrast talking.
+       0.45 keeps dark exactly where it was, which is the mode where the
+       material is most visible, and makes light a shade clearer.
+       What stays per-mode below is not a contradiction: a tint, a rim,
+       a sheen and a shadow are about the ROOM, not the pane. A
+       highlight is only visible against a ground darker than itself,
+       and a surface's tint has to follow its ink or the text on it
+       cannot be read. Optics says the same — transmission and index are
+       constants of the material; what a reflection looks like depends
+       on the light and on what is behind. */
+    --surface-alpha: 0.45;
     /* 3px, one value for both modes, and the number was CHOSEN BY
        MEASUREMENT rather than by eye — which for this particular knob
        took building something to measure with.
@@ -64,8 +63,10 @@
        comes through richer, which is the half of this material that
        was never about blur. */
     --surface-blur: 0px;
-    /* Glass without a saturation boost reads as fog. */
-    --surface-saturate: 1.5;
+    /* Also one value, for the same reason: how much a pane deepens the
+       colour passing through it is the pane's, not the room's. Glass
+       without a saturation boost reads as fog. */
+    --surface-saturate: 1.7;
     /* HOW MUCH LIGHT THE EDGE CATCHES — one knob for the rim and the
        sheen together, so they can never drift apart.
        IT IS AN EDGE, NOT A WASH, and the first version was a wash: white
@@ -171,30 +172,12 @@
         rgb(0 0 0 / calc(0.18 * var(--light-strength, 1)));
   }
   .dark[data-material="glass"] {
-    /* CLARITY IS ASYMMETRIC, and the measurement is why rather than a
-       preference. In dark the surface is LIGHTER than the page it sits
-       on, so letting more ground through moves the composite toward the
-       dark ground and AWAY from the light text: contrast improves as
-       the glass clears, 4.64:1 at 0.62 against 5.30:1 at 0.20. In light
-       every surface is the same white the page is, so the same move
-       pulls the composite toward a patterned ground and eats the dark
-       text's footing instead — which is why light stays where it is and
-       says so above.
-       0.45 passes the patterned ground at 4.96:1, and it is the point
-       where the two things a reader needs stop pulling against each
-       other: the ground comes through at 60% instead of 44%, while the
-       card keeps 0.071 of the 0.175 step the ladder gives it — still a
-       plane, not a tint. Below about 0.38 the card starts dissolving
-       into the page and the rim is left carrying it alone. */
-    --surface-alpha: 0.45;
+    /* No `--surface-alpha` here any more — see the note above it. */
     /* No blur override here any more. It carried one while the
        reasoning was "dark has more contrast headroom, so dark can
        afford to be clearer" — and blur does not spend contrast, so that
        was a per-mode answer to a question that is not per-mode. A
        pattern's fine detail is fine detail in either mode. */
-    /* A clearer pane shows more of the ground, so it can carry the
-       ground's colour rather than replacing it with fog. */
-    --surface-saturate: 1.7;
     /* Stronger in the dark, and it is not a preference. A white rim on
        a near-black ground is the only thing separating one dark pane
        from the dark pane behind it; in light the surface already has
