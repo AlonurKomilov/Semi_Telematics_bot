@@ -93,6 +93,23 @@
        wallpaper packs made with `position: relative`, and a pack may
        not ask an element to be positioned any more than it may
        position one. */
+    /* HOW MUCH OF THE GROUND A PLANE INSIDE A SURFACE LETS THROUGH.
+       Sibling of `--surface-alpha`, and the reason it exists is the
+       thing the alpha alone could not fix: a card went translucent and
+       the `bg-muted` box inside it did not, so one card carried two
+       materials — glass at the edges, a solid patch in the middle. It
+       read as a hole rather than as a plane.
+       341 resting sites paint one of these tints. They are not
+       surfaces, so the `.surface` rule never reached them; what reaches
+       them is the utility class they already write, which is why this
+       needs no call-site edits at all.
+       0.55 rather than the surface's own 0.45: a plane inside a pane
+       should still READ as a step up from it, and these tints sit close
+       to the card to begin with — measured, the text on one gains
+       contrast rather than losing it (dark muted 6.16 to 6.23, light
+       4.94 to 5.00), because the tint and the composited card are
+       nearly the same lightness. */
+    --surface-plane-alpha: 0.55;
     --glass-sheen: 1;
     /* THE RIM IS TWO COLOURS, and they are not the same one at two
        strengths. The first version used white for both modes and was
@@ -231,6 +248,35 @@
       inset 0 1px 0 var(--glass-rim-top),
       inset 0 -1px 0 var(--glass-rim-foot),
       var(--surface-shadow);
+  }
+
+  /* A PLANE INSIDE A SURFACE IS THE SAME MATERIAL AS THE SURFACE.
+     `--muted`, `--secondary` and `--accent` are the ladder's inner
+     planes — the tone a sub-box inside a card is painted with. They are
+     not `.surface`, so nothing about the material reached them, and a
+     glass card showing the wallpaper with a solid grey box in the
+     middle of it is two materials in one card.
+     The UTILITY is the selector, not the token, and that is deliberate.
+     Redefining `--muted` here would need its own base value copied out
+     of `index.css` — a second place for a number to drift — and would
+     also change the token where it is NOT a background. Naming the
+     class changes backgrounds and nothing else, and reads the live
+     token, so there is no copy to keep in sync.
+     Unlayered, so it beats the utility whatever the specificity —
+     the same mechanism the `.surface` rule above relies on.
+     HOVER IS LEFT ALONE, and that is a choice rather than an oversight:
+     `hover:bg-muted` is a different class and 169 sites write one. A
+     highlight under the pointer is momentary and saying "this row, now"
+     solidly is what it is for — a hover that went translucent would be
+     a weaker signal for no gain. */
+  :root[data-material="glass"] .bg-muted {
+    background-color: color-mix(in oklab, var(--muted) calc(var(--surface-plane-alpha) * 100%), transparent);
+  }
+  :root[data-material="glass"] .bg-secondary {
+    background-color: color-mix(in oklab, var(--secondary) calc(var(--surface-plane-alpha) * 100%), transparent);
+  }
+  :root[data-material="glass"] .bg-accent {
+    background-color: color-mix(in oklab, var(--accent) calc(var(--surface-plane-alpha) * 100%), transparent);
   }
 
   /* The escape hatch, and it is not optional.

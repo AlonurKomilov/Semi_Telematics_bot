@@ -473,3 +473,58 @@ describe('a surface paints its own colour, on its own backdrop', () => {
     ).toBe(false);
   });
 });
+
+/**
+ * A PLANE INSIDE A SURFACE IS THE SAME MATERIAL AS THE SURFACE.
+ *
+ * `--muted`, `--secondary` and `--accent` are the tones a sub-box
+ * inside a card is painted with. They are not `.surface`, so the
+ * material never reached them, and a glass card showing the wallpaper
+ * with a solid grey box in the middle carried two materials at once —
+ * a hole rather than a plane. 341 resting sites paint one of these.
+ *
+ * What is guarded is not that the rules exist but HOW they are written:
+ * by utility class and reading the live token. Redefining the token
+ * instead would need its own base copied out of `index.css`, which is a
+ * second place for a number to drift, and would change the token where
+ * it is not a background at all.
+ */
+describe('a plane inside a surface', () => {
+  const PLANES = ['muted', 'secondary', 'accent'] as const;
+
+  it('takes the material on every inner plane, by utility class', () => {
+    for (const p of PLANES) {
+      const rule = new RegExp(
+        `:root\\[data-material="glass"\\]\\s+\\.bg-${p}\\s*\\{([^{}]*)\\}`,
+      ).exec(CODE);
+      expect(rule, `no glass rule for .bg-${p}`).toBeTruthy();
+      // The LIVE token, never a copied value: a literal here is a second
+      // home for a number `index.css` already owns.
+      expect(rule![1], `.bg-${p} does not read its own token`)
+        .toMatch(new RegExp(`var\\(--${p}\\)`));
+      expect(rule![1], `.bg-${p} is not translucent — the hole is still there`)
+        .toMatch(/transparent/);
+      expect(rule![1], `.bg-${p} hard-codes its alpha instead of the pack value`)
+        .toMatch(/var\(--surface-plane-alpha\)/);
+    }
+  });
+
+  it('and leaves the hover highlight solid, on purpose', () => {
+    // `hover:bg-muted` is a different class and 169 sites write one. A
+    // highlight under the pointer is momentary, and saying "this row,
+    // now" solidly is what it is for. Asserted so that a later sweep
+    // widening the selector has to argue with this sentence first.
+    expect(CODE, 'the glass rules reached the hover state')
+      .not.toMatch(/\[data-material="glass"\][^{}]*hover\\?:bg-/);
+  });
+
+  it('costs the solid path nothing', () => {
+    // Same bargain the whole material makes: every one of these rules is
+    // behind the glass attribute, so solid renders the utility it always
+    // rendered.
+    for (const p of PLANES) {
+      const bare = new RegExp(`\\n\\.bg-${p}\\s*\\{`).exec(CODE);
+      expect(bare, `.bg-${p} was redefined for every material, not just glass`).toBeNull();
+    }
+  });
+});
