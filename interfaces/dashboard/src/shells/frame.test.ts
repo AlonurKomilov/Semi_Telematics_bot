@@ -271,3 +271,77 @@ describe('the assistant is the second page, not a panel over the first', () => {
       .not.toEqual([]);
   });
 });
+
+/**
+ * THREE PLANES, AND THE ROOT IS THE BOTTOM ONE.
+ *
+ * The shell root used to be the bottom of the window AND the frame's
+ * ground at the same time. One element, two jobs — the same shape as
+ * the gutters that were padding and the split that was a margin, and
+ * the same consequence: a thing with two jobs can only be given one of
+ * them. Two regional grounds cannot express one pattern running
+ * continuously across the whole window at one size, because the frame
+ * paints from its own origin and the page from its own.
+ *
+ * Separating them is what makes that expressible. The base has no
+ * pattern axis yet and the guard does not pretend otherwise — what it
+ * holds is that the PLANE is its own, because that is the part that was
+ * wrong and the part a later edit would quietly re-merge.
+ */
+describe('the base, the frame and the page are three planes', () => {
+  const shell = read('shells/AppShell.tsx');
+
+  it('the root is the base, and no longer the frame', () => {
+    const root = (shell.match(CLASSNAME) ?? [])[0] ?? '';
+    expect(root, 'the shell root is not the base plane').toMatch(/\bbase-ground\b/);
+    expect(root, 'the root took the frame ground back — one element, two jobs again')
+      .not.toMatch(/\bchrome-ground\b/);
+  });
+
+  it('and the frame has exactly one plane of its own', () => {
+    const planes = (shell.match(CLASSNAME) ?? []).filter((c) => /\bchrome-ground\b/.test(c));
+    expect(planes, 'the frame has no plane, or more than one').toHaveLength(1);
+  });
+
+  it('and the three name three different grounds', () => {
+    const css = assembledCss();
+    const groundOfClass = (cls: string) =>
+      new RegExp(`\\.${cls}\\s*\\{[^}]*--ground:\\s*([^;]+);`).exec(css)?.[1].trim();
+    const base = groundOfClass('base-ground');
+    const frame = groundOfClass('chrome-ground');
+    const page = groundOfClass('page-ground');
+    for (const [name, v] of [['base', base], ['frame', frame], ['page', page]] as const)
+      expect(v, `the ${name} plane declares no ground colour`).toBeTruthy();
+    expect(frame, 'the frame stopped wearing the chrome colour').not.toBe(base);
+  });
+
+  it('and a frame pane still reads the frame ground it sits on', () => {
+    // THE REGRESSION THIS MOVE COULD HAVE CAUSED, measured rather than
+    // argued. Glass tints a pane by `var(--ground)` — the honest half
+    // of what Apple's material does by sampling: ours cannot look at
+    // what is behind it, it is TOLD. That telling is INHERITANCE, so
+    // moving the frame's ground off the root would have silently left
+    // every frame pane reading the window's colour instead of the
+    // rail's, and a pane over the rail would have stopped differing
+    // from a pane over the page. The wrapper is what keeps it; a plane
+    // at `inset-0` would not have.
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    const style = document.createElement('style');
+    style.textContent = assembledCss();
+    document.head.appendChild(style);
+    document.body.innerHTML =
+      '<div class="base-ground">'
+      + '<div class="chrome-ground"><i id="pane" class="surface chrome-pane"></i></div>'
+      + '<i id="onbase" class="surface"></i>'
+      + '</div>';
+    const groundAt = (id: string) =>
+      getComputedStyle(document.getElementById(id)!).getPropertyValue('--ground').trim();
+    expect(groundAt('pane'), 'a frame pane no longer inherits the frame ground')
+      .toBe('var(--sidebar)');
+    // The control: the two planes must actually differ, or the
+    // assertion above passes on a stylesheet that says one thing twice.
+    expect(groundAt('onbase'), 'the base and the frame resolve to the same ground')
+      .not.toBe(groundAt('pane'));
+  });
+});

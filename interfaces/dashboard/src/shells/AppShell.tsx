@@ -105,7 +105,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
   // fixed panels their position — an unlayered rule beats a utility — so
   // the element says it now. `mods/wallpaper.test.ts` holds both halves.
   return (
-    <div className="relative flex flex-col h-screen overflow-hidden bg-background text-foreground chrome-ground">
+    <div className="relative flex flex-col h-screen overflow-hidden bg-background text-foreground base-ground">
       <ModsLock />
       {/* Nothing here scrolls the document — see DocumentLock. */}
       <DocumentLock />
@@ -115,17 +115,44 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
           open — the one in-flow thing above the box, and the shape of
           bug the lock exists to make impossible. Here it takes its
           height from the shell and the work below simply gets less. */}
+      {/* THE FRAME'S GROUND, and it is an element of its own now.
+          The root above used to carry `chrome-ground` itself, which
+          made one element the BOTTOM OF THE WINDOW and the FRAME'S
+          GROUND at the same time. That double duty is the same shape as
+          the two bugs fixed just before this one — the gutters that
+          were padding, the split that was a margin — and it has the
+          same consequence: a thing with two jobs can only ever be given
+          one of them.
+          Three planes now, bottom to top. The ROOT is the base: the
+          plane everything sits on, and where a wallpaper that spans the
+          whole window will paint. THIS is the frame's, covering the
+          window and painting only in the gaps the frame leaves. The
+          PAGE cards carry the third. Each one can be given its own
+          pattern without borrowing another's origin or scale, which is
+          the thing two planes could not express: one continuous pattern
+          across the whole window, at one size.
+          A WRAPPER rather than a plane at `inset-0`, deliberately. A
+          parent's background paints below its children's with no
+          z-index at all; an absolutely positioned sibling paints ABOVE
+          in-flow content and would need a negative z-index and a
+          stacking context on the root to be pushed back down — two more
+          things to keep true. It also keeps `--ground` inheriting into
+          every frame pane, which is where glass reads the tint that
+          tells a pane over the rail from a pane over the page.
+          `relative` because a live pattern's wash is a `::before` at
+          `inset: 0` and anchors to the nearest positioned ancestor. */}
+      <div className="relative flex flex-col flex-1 min-h-0 chrome-ground">
       <PendingInviteBanner />
       {/* Recedes in ambient mode — see the [data-ambient] block in
           index.css. Marked rather than selected by shape, so a shell
           refactor cannot silently take the mode's meaning with it. */}
-      {/* `chrome-ground` above is where a wallpaper paints, and every
-          chrome surface — this sidebar, the header, the envelope — is a
-          `chrome-pane` that steps aside for it. Both are CLASSES rather
-          than shape selectors: the pattern must not start following
-          whatever div happens to be first in this file, the same reason
-          `data-ambient-recede` is a marker. `shellMarkers.test.ts`
-          holds both. */}
+      {/* `chrome-ground` is where the frame's wallpaper paints, and
+          every chrome surface — the sidebar, the header, the gutters —
+          is a `chrome-pane` that steps aside for it. Both are CLASSES
+          rather than shape selectors: the pattern must not start
+          following whatever div happens to be first in this file, the
+          same reason `data-ambient-recede` is a marker.
+          `shellMarkers.test.ts` holds both. */}
       {/* Sidebar and content, side by side, in what is left of the
           viewport after the rows above it. `min-h-0` so the envelope's
           own scroller shrinks instead of pushing the box open. */}
@@ -328,6 +355,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             className="h-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
           />
         </div>
+      </div>
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />

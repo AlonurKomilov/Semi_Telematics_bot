@@ -1142,11 +1142,21 @@
     background-color: transparent;
   }
 
-  /* Two grounds, one variable. A pack paints `var(--ground)` and does
-     not know which it is on: the frame's ground is the sidebar colour,
-     the page's is the page colour. Each ground wears its OWN pattern —
-     `data-wallpaper` for the frame, `data-wallpaper-page` for the page —
-     so a person picks twice, and the two never have to agree. */
+  /* THREE GROUNDS, ONE VARIABLE. A pack paints `var(--ground)` and does
+     not know which it is on: the base's is the window's own colour, the
+     frame's is the sidebar colour, the page's is the page colour.
+     Each wears its OWN pattern — `data-wallpaper` for the frame,
+     `data-wallpaper-page` for the page — so a person picks separately
+     and they never have to agree.
+     THE BASE HAS NO PATTERN AXIS YET, and it is here anyway because the
+     PLANE is the part that was wrong. The shell root was the bottom of
+     the window AND the frame's ground at once, so the two could never
+     be given different things; two regional grounds cannot express one
+     pattern running continuously across the whole window at one size,
+     which is the gap this opens. What paints here comes next; that this
+     is a plane of its own, and not the frame wearing a second hat, is
+     what `frame.test.ts` holds now. */
+  .base-ground { --ground: var(--background); }
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
 
