@@ -229,14 +229,43 @@ describe('the occlusion escape hatch', () => {
    * second class. What defines that category IS floating over content
    * nobody chose.
    */
+  /**
+   * The rule tests OCCLUSION, not the mechanism that achieves it —
+   * which is the difference between a guard and a copy of the code.
+   * There are two mechanisms now: drop the filter and paint a solid
+   * fill, or keep the filter and flatten the backdrop with `contrast`
+   * and `brightness` so no detail and no luminance get through. The
+   * second is what the floating set uses, because dropping the filter
+   * left glass cards beside slab menus — two materials in one
+   * interface, which is a conflict a reader sees even where no test
+   * could.
+   */
+  const occludes = (sel: string) => {
+    const rules = [...CODE.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter(([, s]) => new RegExp(`\\.surface\\${sel}(?![\\w-])`).test(s));
+    return rules.some(([, , body]) =>
+      /backdrop-filter:\s*none/.test(body)
+      || (/backdrop-filter:[^;]*contrast\(/.test(body)
+          && /backdrop-filter:[^;]*brightness\(/.test(body)));
+  };
+
   it('and a popover takes it without having to ask', () => {
-    const selectors = /([^{}]*)\{[^}]*backdrop-filter:\s*none[^}]*\}/.exec(CODE)?.[1] ?? '';
     expect(
-      selectors,
-      'a popover is translucent again. Every menu, select, context menu, dialog, '
-        + 'sheet and banner floats over content nobody chose, so it must occlude — '
-        + 'and no call site should have to remember that.',
-    ).toMatch(/\.surface\.surface-popover/);
+      occludes('.surface-popover'),
+      'a popover passes its backdrop through again. Every menu, select, context '
+        + 'menu, dialog, sheet and banner floats over content nobody chose, so it '
+        + 'must occlude — and no call site should have to remember that.',
+    ).toBe(true);
+  });
+
+  it('and it occludes with no blur, like the rest of the material', () => {
+    // The point of flattening rather than blurring: the whole material
+    // is at blur 0, and a menu that reached for blur would be the one
+    // surface in the app made of something else.
+    const rule = /:root\[data-material="glass"\][^{}]*\.surface\.surface-popover[^{}]*\{([^{}]*)\}/
+      .exec(CODE)?.[1] ?? '';
+    expect(rule, 'the floating rule is gone').not.toBe('');
+    expect(rule, 'a floating surface reached for blur').not.toMatch(/blur\(/);
   });
 
   /**
@@ -253,14 +282,13 @@ describe('the occlusion escape hatch', () => {
    * with no call-site edits and nothing left to forget.
    */
   it('and a surface positioned out of flow occludes, whatever it is called', () => {
-    const selectors = /([^{}]*)\{[^}]*backdrop-filter:\s*none[^}]*\}/.exec(CODE)?.[1] ?? '';
     for (const pos of ['absolute', 'fixed', 'sticky']) {
       expect(
-        selectors,
-        `a \`.surface.${pos}\` is translucent again. It floats over content nobody `
+        occludes(`.${pos}`),
+        `a \`.surface.${pos}\` passes its backdrop through again. It floats over content nobody `
           + 'chose, so it must occlude — and the class that says so is the one the '
           + 'author already wrote for layout.',
-      ).toMatch(new RegExp(`\\.surface\\.${pos}`));
+      ).toBe(true);
     }
   });
 
@@ -289,6 +317,19 @@ describe('the occlusion escape hatch', () => {
         + 'stacking context for every menu that opens inside it — for a blur that '
         + 'shows a transparent pane under a wallpaper and an opaque rail without one.',
     ).toMatch(/\.surface\.chrome-pane/);
+
+    // And in NO rule that gives it one. Being listed in the reset is
+    // not the same claim: the floating set now occludes by FLATTENING
+    // rather than by dropping the filter, and a rail swept into that
+    // set would still satisfy the line above while carrying a filter —
+    // which is the containing-block bug, not a cosmetic one. Caught by
+    // mutation: adding `.chrome-pane` to the flattening selector left
+    // every other assertion here green.
+    const filtered = [...CODE.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter(([, , body]) => /backdrop-filter:\s*(?!none)\S/.test(body))
+      .map(([, sel]) => sel)
+      .filter((sel) => /\.chrome-pane(?![\w-])/.test(sel));
+    expect(filtered, 'a shell rail was given a backdrop filter of its own').toEqual([]);
   });
 
   /**

@@ -110,6 +110,36 @@
        4.94 to 5.00), because the tint and the composited card are
        nearly the same lightness. */
     --surface-plane-alpha: 0.55;
+    /* HOW A FLOATING SURFACE OCCLUDES WITHOUT GOING SOLID.
+       A menu, a popover, a sticky header — anything out of flow — sits
+       over content nobody chose, and at blur 0 the text behind reads
+       straight through it. The old answer was to drop the filter
+       entirely and paint an opaque fill, which works and leaves two
+       materials in one interface: glass cards beside slab menus.
+       These do the same job with the filter still on. `contrast` pulls
+       every channel toward the middle, which erases the DETAIL behind
+       without a blur to do it; `brightness` then moves the whole
+       narrowed band to one end, which bounds the LUMINANCE. Together
+       any backdrop — a white map, a black table — lands in the same
+       narrow strip, so the surface looks the same whatever is under it.
+       That sameness is what opacity used to buy.
+       Measured both ways. Rendered over a white map and a dark table,
+       the text behind drops from 12.2 and 19.7 to 3.2 and 4.1 — the
+       floor the menu's own type sets — and the menu's ink reads 10.6:1
+       and 12.1:1 where the unfiltered version read 4.37:1 over the map
+       and failed. Computed against the extremes, 4.78:1 dark and 4.80:1
+       light, and alpha barely moves either: the flattening does the
+       work, not the opacity.
+       THE DIRECTION FOLLOWS THE MODE, the way the rim already does. A
+       dark menu wants its backdrop pushed DOWN; a light one pushed UP,
+       and pushing a light menu's backdrop down would put its dark ink
+       on a dark ground. Light's numbers are gentler because its palette
+       is already at the ceiling — the safe flattening there is almost
+       white, so the material shows less. Same story as light glass
+       everywhere else. */
+    --surface-occlude-alpha: 0.62;
+    --surface-occlude-contrast: 0.04;
+    --surface-occlude-brightness: 1.8;
     --glass-sheen: 1;
     /* THE RIM IS TWO COLOURS, and they are not the same one at two
        strengths. The first version used white for both modes and was
@@ -172,6 +202,9 @@
     /* Under the 0.52 the measurement allows at this alpha, with room
        left for the clarity the material still owes. It is no longer
        carrying the job of separating panes: the rim is. */
+    /* Down rather than up — see the note on the light values. */
+    --surface-occlude-contrast: 0.14;
+    --surface-occlude-brightness: 0.34;
     --glass-sheen: 0.45;
     --glass-rim-top: rgb(255 255 255 / calc(0.55 * var(--light-strength, 1)));
     --glass-rim-foot: rgb(0 0 0 / calc(0.45 * var(--light-strength, 1)));
@@ -335,11 +368,38 @@
      Whatever the exact mechanism, it is the ONLY property that differs
      between Solid and Glass on those three elements, and Solid is the
      mode where the menus work. */
-  :root[data-material="glass"] .surface-opaque,
+  /* THE FLOATING SET OCCLUDES BY FLATTENING, not by going solid.
+     `backdrop-filter: none` was the old answer and it worked — it also
+     left two materials in one interface: glass cards beside slab
+     menus, which is a conflict a reader sees even if no guard can.
+     The filter stays on and does the occluding instead. No blur: the
+     whole material is at 0 and this is not the place to make an
+     exception, so `contrast` erases the detail and `brightness` bounds
+     the luminance. The numbers, and why the direction flips per mode,
+     are on the tokens above. */
   :root[data-material="glass"] .surface.surface-popover,
   :root[data-material="glass"] .surface.absolute,
   :root[data-material="glass"] .surface.fixed,
-  :root[data-material="glass"] .surface.sticky,
+  :root[data-material="glass"] .surface.sticky {
+    background-color: color-mix(
+      in oklab,
+      var(--surface-base, var(--popover)) calc(var(--surface-occlude-alpha) * 100%),
+      transparent
+    );
+    -webkit-backdrop-filter:
+      contrast(var(--surface-occlude-contrast)) brightness(var(--surface-occlude-brightness));
+    backdrop-filter:
+      contrast(var(--surface-occlude-contrast)) brightness(var(--surface-occlude-brightness));
+  }
+
+  /* TWO STAY FULLY SOLID, for reasons that are not the one above.
+     `.surface-opaque` is the hatch a call site takes when it KNOWS
+     geometry cannot see its case — flattening it would be second-
+     guessing that. And `.chrome-pane` steps aside for a wallpaper: it
+     has nothing of its own to filter, and a backdrop filter on it
+     creates a containing block for every menu in the product, which is
+     the bug this whole file's frame rules exist to avoid. */
+  :root[data-material="glass"] .surface-opaque,
   :root[data-material="glass"] .surface.chrome-pane {
     background-color: var(--surface-base, var(--card));
     -webkit-backdrop-filter: none;
