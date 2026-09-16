@@ -46,12 +46,16 @@ const sides = (): { where: string; cls: string }[] => {
   return out;
 };
 
-describe('the four sides of the frame are one object', () => {
-  it('there are four of them', () => {
-    // Left, top, right, bottom. Not a taste: fewer means a side has
-    // gone back to being padding, more means something else started
-    // painting the chrome and nobody decided whether it is frame.
-    expect(sides().map((s) => s.where)).toHaveLength(4);
+describe('the sides of the frame are one object', () => {
+  it('there are five of them, and each one is a decision', () => {
+    // The rail, the header, the bottom, and TWO vertical gutters: the
+    // one that ends the page — which becomes the split between the two
+    // pages when the assistant opens — and the one that ends the
+    // sub-page beside it. Not a taste: fewer means a side has gone back
+    // to being padding or a margin, which is how both of the bugs in
+    // this file's docstring started, and more means something else
+    // began painting the chrome without anyone deciding it is frame.
+    expect(sides().map((s) => s.where)).toHaveLength(5);
   });
 
   it('and every one carries the same markers', () => {
@@ -138,5 +142,67 @@ describe('a material may not switch the wallpaper off', () => {
     expect(transparent(mount('glass', 'none')),
       'the chrome went transparent with no pattern behind it — the rail has vanished')
       .toBe(false);
+  });
+});
+
+/**
+ * THE SECOND PAGE IS A PAGE.
+ *
+ * The assistant sits beside the first one in the shell's content row.
+ * Two things about it are load-bearing and neither is visible in a
+ * screenshot, because both fail by making it look like something else
+ * that is also plausible:
+ *
+ * It must not be a `.surface`. Under Glass the rule that makes menus
+ * occlude what they float over is `.surface` plus a positioned class —
+ * `.fixed`, `.absolute`, `.sticky`, `.surface-popover`. The dock used
+ * to be `fixed .surface`, so it matched, and it was made of a different
+ * material than the rail two hundred pixels to its left while both wore
+ * the same colour.
+ *
+ * And it must be a `page-ground`. A pattern reaches a page through that
+ * class and nothing else; the dock once mirrored every other thing
+ * about `<main>` except this one, and sat as a flat slab while the page
+ * behind it wore the wallpaper.
+ */
+describe('the assistant is the second page, not a panel over the first', () => {
+  const src = read('features/ai/AssistantPanel.tsx');
+
+  it('paints no chrome and claims no surface', () => {
+    for (const cls of src.match(CLASSNAME) ?? []) {
+      expect(cls, 'the sub-page claims `.surface` — under glass that plus a '
+        + 'positioned class is the rule that makes a menu occlude, and it would '
+        + 'stop being made of the same thing as the page beside it')
+        .not.toMatch(/\bsurface(?![\w-])/);
+      expect(cls, 'the sub-page paints the chrome colour — it is a page, and the '
+        + 'frame around it is what wears that')
+        .not.toMatch(CHROME_FILL);
+    }
+  });
+
+  it('and wears the ground a page wears', () => {
+    expect(src, 'the sub-page lost `page-ground`, so a page wallpaper stops at its edge')
+      .toMatch(/\bpage-ground\b/);
+  });
+
+  it('and is laid out by the row rather than pinned to the viewport', () => {
+    // `fixed` is what put it outside the frame in the first place: it
+    // covered the frame's right side instead of sitting inside it, and
+    // the space beside it was a margin rather than an object.
+    expect(src.match(/className=\{`[^`]*\bfixed\b[^`]*`\}|className="[^"]*\bfixed\b[^"]*"/g) ?? [],
+      'the sub-page is pinned to the viewport again')
+      .toEqual([]);
+  });
+
+  it('and the shell reads one answer for whether it is there', () => {
+    // The gutter that closes the frame beside the sub-page and the
+    // sub-page itself must agree, or the frame closes around nothing.
+    // `open` is not that answer — the panel also refuses to render on
+    // /ai and without the permission.
+    const shell = read('shells/AppShell.tsx');
+    expect(shell, 'the shell decides on its own whether the sub-page is there')
+      .toMatch(/useAssistantDock\(\)/);
+    expect(shell.match(/dock\.docked/g) ?? [], 'the frame does not follow the sub-page')
+      .not.toEqual([]);
   });
 });

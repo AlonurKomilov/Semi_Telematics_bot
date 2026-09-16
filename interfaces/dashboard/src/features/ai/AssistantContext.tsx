@@ -14,7 +14,9 @@
  * string across the open.
  */
 import { createContext, useContext, useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { usePreference } from '../../preferences';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { playUiCue } from '../../mods/sound/cue';
 
 /** Coarse run state the chat publishes so surfaces OUTSIDE the chat (the
@@ -213,18 +215,50 @@ export function useAssistant(): AssistantState {
 }
 
 /**
- * Class the shells apply to their `<main>` content card so an open,
- * DOCKED panel resizes the content (not the topbar) beside it — the
- * Samsara/Gemini pattern where the topbar stays full-width and the
- * assistant sits below it on the right.  Width comes from the
- * `--assistant-w` var so a divider drag repaints the margin without a
- * React re-render; expanded mode overlays instead of pushing, so no
- * margin there.
+ * IS THE SUB-PAGE ACTUALLY ON SCREEN — one answer, for everyone who
+ * needs it.
+ *
+ * `open` alone is not that answer: the panel also refuses to render on
+ * the `/ai/*` routes (the full page IS the assistant there) and for a
+ * persona without `can_view_ai_assistant`. While the panel was a fixed
+ * overlay that mismatch was invisible — the content kept a right margin
+ * with nothing in it. In the frame it would hide the page and show
+ * nothing in its place, so the gate has to be in ONE place that the
+ * shell and the panel both read.
+ */
+export function useAssistantDock(): { docked: boolean; expanded: boolean } {
+  const { open, panelExpanded } = useAssistant();
+  const { hasAny } = useViewPermissions();
+  const location = useLocation();
+  const docked = open
+    && hasAny('can_view_ai_assistant')
+    && !location.pathname.startsWith('/ai');
+  return { docked, expanded: docked && panelExpanded };
+}
+
+/**
+ * What the page card does when the sub-page opens beside it.
+ *
+ * The assistant is a SECOND PAGE in the same frame, not a sheet over
+ * the first one — so this is no longer a margin that opens a hole for
+ * an overlay to sit in. The row lays both pages out, and this says
+ * whether the first one is in it:
+ *
+ *   · closed — nothing, the page has the row to itself
+ *   · docked, wide — the two sit side by side with a gutter between
+ *   · docked, narrow — the sub-page takes the whole view. Two pages do
+ *     not fit in a phone's width, and the owner's call was that the
+ *     sub-page wins there rather than hovering over a page nobody can
+ *     read behind it.
+ *   · expanded — the sub-page takes the row at every width
+ *
+ * `hidden`, not unmounted: display:none keeps the page's React state
+ * and its scroll position, so coming back from the assistant lands
+ * where you left. The centre gutter takes this same class — when the
+ * page is not there, neither is the split between them.
  */
 export function useDockedContentClass(): string {
-  const { open, panelExpanded, panelResizing } = useAssistant();
-  const pushed = open && !panelExpanded;
-  return `${panelResizing ? '' : 'transition-[margin-right] duration-200'} ${
-    pushed ? 'xl:mr-[var(--assistant-w)]' : ''
-  }`;
+  const { docked, expanded } = useAssistantDock();
+  if (!docked) return '';
+  return expanded ? 'hidden' : 'hidden xl:block';
 }

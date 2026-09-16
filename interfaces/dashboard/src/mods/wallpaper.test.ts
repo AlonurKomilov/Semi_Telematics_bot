@@ -237,12 +237,18 @@ describe('the ground is where it can be seen', () => {
    * painted only into the 8px gutter and reached the owner as "how do I
    * see the wallpaper?".
    */
-  const OVER_CONTENT: Record<string, string> = {
-    'features/ai/AssistantPanel.tsx':
-      'the dock floats over the page, so transparency would show the page '
-      + 'through it. It brings its own grounds instead — `chrome-ground` on '
-      + 'the frame, `page-ground` on the chat canvas.',
-  };
+  /**
+   * EMPTY, and that is a result rather than an oversight.
+   *
+   * Its one entry was the assistant dock, which floated over the page
+   * and so could not go transparent — behind it was the page it was
+   * covering. It is not an overlay any more: it is a second PAGE in the
+   * shell's content row, so it wears what a page wears and paints no
+   * chrome at all. The bucket stays because the next float-over-content
+   * surface will need it, and because deleting it would delete the
+   * reason.
+   */
+  const OVER_CONTENT: Record<string, string> = {};
 
   /**
    * The two chrome surfaces the shell's ground does not contain.
@@ -255,7 +261,11 @@ describe('the ground is where it can be seen', () => {
    * question a source scan can answer.
    */
   const BRING_THEIR_OWN: Record<string, string> = {
-    'features/ai/AssistantPanel.tsx': 'rendered beside the shell, not inside it',
+    // The dock used to be here too, for the same reason it was in
+    // OVER_CONTENT: rendered beside the shell, it sat outside
+    // `.chrome-ground` and had no plane for a pattern to paint on. It
+    // is inside the shell's row now, so it inherits the ground the way
+    // every page does.
     'components/shell/MobileNavDrawer.tsx': 'portalled onto <body> by the sheet',
   };
 
@@ -270,9 +280,13 @@ describe('the ground is where it can be seen', () => {
     return out;
   };
 
+  // `bg-sidebar`, not `bg-sidebar-border` or `bg-sidebar-accent`. `\b`
+  // alone treats the hyphen as a boundary, so the old pattern counted a
+  // drag handle's border colour as a chrome surface.
+  const CHROME_FILL = /\bbg-sidebar(?![\w-])/;
+
   it('every chrome surface steps aside for it, or says why it must not', () => {
     let checked = 0;
-    let exempted = 0;
     const SRC = join(__dirname, '..');
     for (const full of tsxFiles(SRC)) {
       const rel = relative(SRC, full).split(sep).join('/');
@@ -289,12 +303,8 @@ describe('the ground is where it can be seen', () => {
           "className=\\{'[^']*'\\}",
         ].join('|'), 'g',
       );
-      // `bg-sidebar`, not `bg-sidebar-border` or `bg-sidebar-accent`.
-      // `\b` alone treats the hyphen as a boundary, so the old pattern
-      // counted a drag handle's border colour as a chrome surface.
-      const CHROME_FILL = /\bbg-sidebar(?![\w-])/;
       for (const m of src.match(CLASSNAME)?.filter((c) => CHROME_FILL.test(c)) ?? []) {
-        if (OVER_CONTENT[rel]) { exempted++; continue; }
+        if (OVER_CONTENT[rel]) continue;
         checked++;
         expect(m, `${rel}: a chrome surface paints bg-sidebar and never steps aside.\n`
           + 'Either add `chrome-pane`, or — if it floats OVER content — add the file '
@@ -302,10 +312,29 @@ describe('the ground is where it can be seen', () => {
           .toMatch(/\bchrome-pane\b/);
       }
     }
-    expect(exempted, 'the exemption list names a file that no longer paints the chrome')
-      .toBeGreaterThan(0);
     expect(checked, 'no chrome surfaces found — this test measures nothing')
       .toBeGreaterThanOrEqual(3);
+  });
+
+  it('and no exemption has gone stale', () => {
+    // ITS OWN TEST, not a tail on the sweep above. It used to be a
+    // counter asserted after the loop — `exempted > 0` — and that had
+    // two faults at once: it went vacuously false the day the list
+    // emptied, and it sat downstream of an expect() that can throw, so
+    // while any surface in the app was failing the sweep this never ran
+    // at all. A mutation aimed at it came back green for that reason.
+    // An exemption whose file has stopped painting the chrome excuses
+    // nothing and only hides the next one.
+    const SRC = join(__dirname, '..');
+    for (const rel of Object.keys(OVER_CONTENT)) {
+      // Comments stripped, like every other scan in this file. Read raw,
+      // this passed on a file whose only `bg-sidebar` was a sentence
+      // ABOUT the chrome — which is how the first mutation of this
+      // assertion came back green.
+      const src = readFileSync(join(SRC, rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(src, `${rel} is exempted but no longer paints `
+        + 'the chrome — drop it from OVER_CONTENT').toMatch(CHROME_FILL);
+    }
   });
 
   it('and the two outside it bring a ground of their own', () => {

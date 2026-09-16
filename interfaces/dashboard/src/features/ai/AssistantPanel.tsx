@@ -60,8 +60,15 @@ export default function AssistantPanel() {
     // that renders 30% wider than where the user let go — and then wider
     // again on the next drag.
     const scale = panelScale();
+    // MEASURED TO THE PANEL'S OWN RIGHT EDGE, not the window's. They
+    // used to be the same line — the dock was `fixed right-0`. It is a
+    // page in the row now and the frame closes beside it, so the window
+    // edge is a gutter's width away and every drag would have committed
+    // a panel that much wider than where the pointer was let go.
+    const panel = el.parentElement;
     const onMove = (ev: PointerEvent) => {
-      latest = clampPanelW((window.innerWidth - ev.clientX) / scale);
+      const right = panel ? panel.getBoundingClientRect().right : window.innerWidth;
+      latest = clampPanelW((right - ev.clientX) / scale);
       setPanelWidthVar(latest);
     };
     const finish = () => {
@@ -99,33 +106,42 @@ export default function AssistantPanel() {
 
   return (
     <>
-      {/* Slide-over panel — non-modal, right-docked.  Styled as SHELL
-          CHROME (bg-sidebar) holding the chat in a rounded bg-background
-          canvas — the exact anatomy of the app frame (see the shells'
-          `<main className="bg-background rounded-xl">` inside a bg-sidebar
-          wrapper), so a docked panel reads as a second canvas in the SAME
-          frame, not a foreign white card floating over it.
+      {/* THE SUB-PAGE. A second page card in the same frame as the
+          first, laid out BESIDE it by the shell's content row — not a
+          sheet over it.
 
-          Which is why it carries `chrome-ground` and the sidebar
-          surface. The dock is rendered as a SIBLING of the shell, so it
-          sits outside the app's own ground: without one of its own there
-          is no plane for a frame wallpaper to paint, and it read as a
-          flat slab under every pattern. It must NOT be `chrome-pane` —
-          that nulls the colour to reveal a ground BEHIND, and behind
-          this one is the page it is covering. */}
+          It used to be `fixed right-0 top-12 bottom-0`, a sibling of
+          the shell, and everything odd about it followed from that. It
+          covered the frame's right side instead of sitting inside it.
+          The space between it and the page was the page's own
+          `margin-right`, so the split the owner could see was not an
+          object anybody could style. It carried the chrome colour and a
+          `chrome-ground` of its own, because outside the shell there
+          was no ground for a frame wallpaper to paint on. And under
+          Glass it matched `.surface.fixed` — the rule that makes menus
+          OCCLUDE what they float over — so it was made of a different
+          material than the rail two hundred pixels to its left.
+
+          In the row none of that is needed: it is a page, so it wears
+          what a page wears (`page-ground`, the background colour, the
+          border and the radius), and the frame wraps it the way the
+          frame wraps everything. The comment that used to sit here
+          already claimed this — "a second canvas in the SAME frame, not
+          a foreign white card floating over it" — it was the structure
+          that never caught up. */}
       <div
-        className={`fixed right-0 z-40 top-12 bottom-0 bg-sidebar surface surface-sidebar chrome-ground text-sidebar-foreground transition-transform duration-200 ${
+        className={`relative min-h-0 ${
           panelExpanded
-            // Expanded = fill the whole CONTENT region: right of the
-            // sidebar (--sidebar-w).  Below lg the sidebar is a drawer,
-            // so no left offset there.
-            ? 'left-0 lg:left-[var(--sidebar-w)] shadow-none'
-            // Docked = a right strip BELOW the topbar (top-12), the app
-            // topbar stays full-width and the content resizes beside it.
-            : 'w-full sm:w-[var(--assistant-w)] shadow-2xl xl:shadow-none'
-        } ${
-          open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-        }`}
+            // The whole row; the page card beside it is hidden.
+            ? 'flex-1 min-w-0'
+            // Beside the page above xl, the whole row below it — two
+            // pages do not fit in a phone's width. `flex-1` rather than
+            // `w-full` for the narrow case: the gutter that closes the
+            // frame beside it is 8px of the row, and a child asking for
+            // 100% of the row would push exactly that much of itself
+            // off the end.
+            : 'flex-1 min-w-0 xl:flex-none xl:w-[var(--assistant-w)]'
+        } ${open ? '' : 'hidden'}`}
         role="complementary"
         aria-label="AI assistant"
         aria-hidden={!open}
@@ -150,7 +166,7 @@ export default function AssistantPanel() {
             else if (e.key === 'ArrowRight') { e.preventDefault(); setPanelWidth(panelWidth - 16); }
           }}
           style={{ touchAction: 'none' }}
-          className={`absolute left-0 inset-y-0 z-10 w-1.5 cursor-col-resize items-center justify-center group focus:outline-none ${
+          className={`absolute -left-2 inset-y-0 z-10 w-2 cursor-col-resize items-center justify-center group focus:outline-none ${
             panelExpanded ? 'hidden' : 'hidden sm:flex'
           }`}
         >
@@ -159,19 +175,23 @@ export default function AssistantPanel() {
             aria-hidden
           />
         </div>
-        {/* The chat canvas — a rounded content card inside the bg-sidebar
-            chrome (mirrors the shells' <main>, `page-ground` included:
-            it mirrored everything about that element except the class
-            that lets a wallpaper reach it, so the dock sat as a flat
-            slab while the page behind it wore the pattern).  The assistant's header
+        {/* The chat canvas — and now simply a page card, the same one
+            the shell's <main> is, `page-ground` included: it mirrored
+            everything about that element except the class that lets a
+            wallpaper reach it, so the dock sat as a flat slab while the
+            page behind it wore the pattern.  The assistant's header
             now lives INSIDE this card as a mini bar with a divider
             (Samsara/Gemini), not on the chrome above it — so the title +
             controls read as the top of the chat surface, not a separate
             frame element. */}
-        {/* px-2 pb-2 (no TOP pad): the card sits flush below the topbar
-            at the same y as the shells' <main> content card, so the two
-            align — an 8px top gap here read as the chat sitting lower. */}
-        <div className="h-full px-2 pb-2">
+        {/* NO PADDING OF ITS OWN any more. It used to hold the card in
+            `px-2 pb-2` — its own private copy of the frame's gutters,
+            the third place in this app that drew a side of the frame
+            with padding. The row puts a real gutter on each side of it
+            now, and the frame's bottom runs under both pages, so the
+            card simply fills what it is given and lines up with the
+            page beside it for free. */}
+        <div className="h-full">
           <div className="relative page-ground flex h-full flex-col rounded-xl border border-border bg-background text-foreground overflow-hidden">
             {/* Mini header bar — title + New-chat / History (portalled) +
                 Expand + Close, divided from the messages by a border. */}

@@ -40,7 +40,8 @@ import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
 import { AlertsLauncher } from '../features/alerts/AlertsLauncher';
-import { useDockedContentClass } from '../features/ai/AssistantContext';
+import { useAssistantDock, useDockedContentClass } from '../features/ai/AssistantContext';
+import AssistantPanel from '../features/ai/AssistantPanel';
 import { shortcut } from '../utils/platform';
 import { sizeRegion } from '@/lib/sizeRegion';
 import ShellHero from './heroes/ShellHero';
@@ -59,6 +60,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
   // else. The gates are read at play time, in `cue.ts`.
   usePageCue();
   const dockedContentClass = useDockedContentClass();
+  const dock = useAssistantDock();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -293,17 +295,33 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
               )}
             </div>
           </main>
-            {/* THE RIGHT SIDE OF THE FRAME, and the bottom below it.
+            {/* THE RIGHT SIDE OF THE FRAME — and the SPLIT between the
+                two pages when the assistant is open. It is one element
+                doing both jobs, because they are the same job: the
+                chrome that ends a page. It takes the page's own class
+                so it is there exactly when the page beside it is.
                 Same class list as the rail and the header, because they
                 are the same object seen from four directions — the
                 guard in `frame.test.ts` is what keeps that true rather
                 than this comment. `aria-hidden`: they carry no content
-                and a screen reader announcing two empty groups around
-                every page is noise. */}
+                and a screen reader announcing empty groups around every
+                page is noise. */}
             <div
               aria-hidden
-              className="w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+              className={`w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane ${dockedContentClass}`}
             />
+            {/* THE SUB-PAGE, in the row rather than over it. It renders
+                nothing unless it is open, allowed and off the /ai
+                routes — `useAssistantDock` is that one answer, and the
+                gutter below reads the same one, so the frame can never
+                close around a page that is not there. */}
+            <AssistantPanel />
+            {dock.docked && (
+              <div
+                aria-hidden
+                className="w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+              />
+            )}
           </div>
           <div
             aria-hidden

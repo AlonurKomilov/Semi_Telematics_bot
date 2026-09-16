@@ -12,7 +12,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { AssistantProvider, useAssistant } from './AssistantContext';
 import { PageContextProvider } from './PageContext';
-import AssistantPanel from './AssistantPanel';
 
 /** Docked split view: on wide screens an open panel resizes the page
  *  CONTENT beside it (the shells push their own `<main>` via
@@ -20,7 +19,12 @@ import AssistantPanel from './AssistantPanel';
  *  topbar and beside the content — the Samsara/Gemini pattern.  This
  *  wrapper no longer pushes the whole shell (that shrank the topbar
  *  too); it only fires a reflow so maps/charts re-measure when the
- *  panel opens or expands. */
+ *  panel opens or expands.
+ *
+ *  THE PANEL ITSELF IS NOT MOUNTED HERE any more. It is a page in the
+ *  shell's content row, so `AppShell` places it — a sibling of <main>,
+ *  between the two gutters that frame it. What stays here is what has
+ *  to be above the shell: the providers, and this reflow. */
 function DockedContent({ children }: { children: ReactNode }) {
   const { open, panelExpanded } = useAssistant();
   useEffect(() => {
@@ -38,7 +42,6 @@ export default function AssistantHost({ children }: { children: ReactNode }) {
     <PageContextProvider>
       <AssistantProvider>
         <DockedContent>{children}</DockedContent>
-        <AssistantPanel />
       </AssistantProvider>
     </PageContextProvider>
   );
