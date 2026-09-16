@@ -392,3 +392,78 @@ class TestDedicatedWritersHonourTheDeclaredOwner:
             + "\nA feature's Manage may operate the feature; it may not "
               "write the account-wide values a computation reads."
         )
+
+
+class TestConfigColumn:
+    """A feature with config must SAY so on the Permissions page.
+
+    The registry below decides who may write each ``account_settings``
+    key; the Permissions matrix is where an owner reads what ticking
+    "Config · account-wide" actually hands over. Those are two lists in
+    two languages with nothing holding them together, and they drifted:
+    ELD's key landed in the registry while the matrix kept showing "–"
+    for it, so the grant moved a setting the owner could not see.
+
+    This is the same failure the matrix comment already describes for
+    Storage and Integrations, repeated once the mechanism that caused it
+    was gone. A comment did not prevent it. This does.
+    """
+
+    GRID = "interfaces/dashboard/src/features/permissions/verbGrid.ts"
+
+    #: Features whose config exists but has NO tick yet. Every name here
+    #: is a setting an owner cannot see themselves granting — the list
+    #: only shrinks, and a new feature may not join it.
+    KNOWN_MISSING = {
+        "ai",            # ai_tier — lives on the AI page, no matrix row yet
+        "integrations",  # datatruck.* — the Integrations card, not a verb row
+        "live_map",      # map.engine — billed Google tiles, owner-only today
+    }
+
+    #: Features whose config rides a flag the grid keys by another name.
+    #: Not exemptions: each IS in the grid, under the flag its own page
+    #: is gated by, which is the tick the owner actually reads.
+    ALIASED = {
+        "settings": "can_manage_account",
+        "storage": "can_manage_storage",
+        "applications": "can_manage_applications",
+    }
+
+    def _grid_flags(self) -> set:
+        src = open(os.path.join(REPO, self.GRID), encoding="utf-8").read()
+        body = src.split("const CONFIG_VIA")[1].split("};")[0]
+        return set(re.findall(r"^\s*(can_[a-z_]+):", body, re.M))
+
+    def test_every_configurable_feature_has_a_tick(self):
+        keyed = self._grid_flags()
+        missing = set()
+        for r in SETTING_OWNERS:
+            if r.kind != "config":
+                continue
+            flag = self.ALIASED.get(r.feature, f"can_view_{r.feature}")
+            if flag not in keyed:
+                missing.add(r.feature)
+        undeclared = missing - self.KNOWN_MISSING
+        assert not undeclared, (
+            "these features own account_settings keys but show no tick in "
+            f"the Config column: {sorted(undeclared)}.\n"
+            "An owner granting 'Config · account-wide' cannot see that it "
+            "moves their settings. Add the feature's view flag to "
+            f"CONFIG_VIA in {self.GRID}."
+        )
+
+    def test_the_missing_list_only_shrinks(self):
+        """A name that has gained its tick must leave the list.
+
+        Otherwise the list stops describing the gap and starts hiding a
+        feature that is fine — which is how an exception list becomes
+        permanent.
+        """
+        keyed = self._grid_flags()
+        stale = {
+            f for f in self.KNOWN_MISSING
+            if self.ALIASED.get(f, f"can_view_{f}") in keyed
+        }
+        assert not stale, (
+            f"{sorted(stale)} now has a tick — delete it from KNOWN_MISSING"
+        )

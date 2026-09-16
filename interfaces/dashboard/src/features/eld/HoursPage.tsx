@@ -22,7 +22,8 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Plug } from '../../lib/icons';
 import DataGrid from '../../components/datagrid';
-import EldSourcePanel from './EldSourcePanel';
+import EldConfigPanel from './config/EldConfigPanel';
+import FeatureConfigGear from '../_lib/FeatureConfigGear';
 import { PageHeader, CardSkeleton, EmptyState, ErrorState } from '../../components/shell';
 import { Freshness, Tip } from '../../components/tooltip';
 import { Badge } from '../../components/ui/badge';
@@ -410,14 +411,17 @@ export default function HoursPage() {
             : 'Duty status and remaining drive, shift and cycle time for every driver, mirrored from the connected electronic logging device. The ELD is the system of record — these readings are read-only, and each one shows how old it is.'
         }
         meta={data?.connected ? <HeaderMeta data={data} /> : undefined}
+        // The config family's one door, in the slot it occupies on
+        // every other feature. It self-gates on can_manage_config_all
+        // and renders nothing for everyone else — this page is read by
+        // three departments, and most of them may not change an
+        // account-wide value.
+        actions={
+          <FeatureConfigGear feature="Hours of Service">
+            <EldConfigPanel deviceCount={data?.feed?.connected?.length ?? 0} />
+          </FeatureConfigGear>
+        }
       />
-
-      {/* Only when the account really has two devices reporting — a
-          picker for a contest that cannot happen is a decision somebody
-          has to make and can get wrong for nothing. */}
-      {!isLoading && !isError && (
-        <EldSourcePanel deviceCount={data?.feed?.connected?.length ?? 0} />
-      )}
 
       {isLoading && <CardSkeleton />}
 

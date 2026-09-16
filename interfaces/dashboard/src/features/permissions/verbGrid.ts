@@ -54,11 +54,17 @@ export interface VerbBand { band: string; families: VerbFamily[] }
 // Every entry here is a feature whose account_settings rows are owned by
 // the config family rather than by the feature's own Manage — which, per
 // capabilities/settings_registry.py, is now ALL of them.  A feature
-// appears the moment it has an account_settings key; the four below are
-// the four that do.  Storage and Integrations were absent while their
-// keys were owned by can_manage_storage / can_manage_integrations, so
-// the matrix showed "–" in the Config column for settings that plainly
-// existed — the owner could not see what granting Config actually moved.
+// appears the moment it has an account_settings key.  Storage and
+// Integrations were absent while their keys were owned by
+// can_manage_storage / can_manage_integrations, so the matrix showed "–"
+// in the Config column for settings that plainly existed — the owner
+// could not see what granting Config actually moved.
+//
+// That is a drift this map cannot notice on its own: the backend
+// registry (capabilities/config/account.py) gained ELD's key and this
+// map did not, so the owner again saw "–" for a setting that exists.
+// `tests/test_settings_registry.py::TestConfigColumn` compares the two
+// and names what is still missing, in a list that only shrinks.
 type ConfigFlag = 'can_manage_config_all' | 'can_manage_config_role';
 
 const CONFIG_VIA: Record<string, [ConfigFlag, string][]> = {
@@ -72,6 +78,12 @@ const CONFIG_VIA: Record<string, [ConfigFlag, string][]> = {
   can_view_alerts: [['can_manage_config_all', 'group delivery — topics + per-type AI']],
   can_view_scorecards: [['can_manage_config_all', 'rules + pillar caps']],
   can_view_kpi: [['can_manage_config_all', 'grade thresholds']],
+  // Which ELD wins when one driver is reported by two of them.  Its own
+  // row rather than a line on Vehicles: hours of service is a different
+  // domain, a different page and a different key
+  // (`field_precedence:driver_hos`), and a tick must point at the
+  // surface the grant actually opens.
+  can_view_eld: [['can_manage_config_all', 'which device wins a driver\'s hours']],
   can_manage_storage: [['can_manage_config_all', 'backend + disk quota']],
   can_manage_applications: [['can_manage_config_all', 'DQF export passphrase']],
   can_manage_account: [['can_manage_config_all', 'account-wide values']],
