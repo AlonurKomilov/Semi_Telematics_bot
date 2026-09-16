@@ -414,10 +414,25 @@
      The FRAME is the exception, for the reason it is not frosted
      either: `.chrome-pane` steps aside for a wallpaper, so a lit edge
      on it would be an edge drawn around a pattern rather than around a
-     pane. It loses both. */
+     pane. It loses both.
+     AND IT LOSES THE SHADOW TOO, which is the third thing and took the
+     owner to find: "the joins between the sides still have lines and
+     shadows, and only under glass".
+     They do, and the shadow was drawing them. A drop shadow is paint
+     OUTSIDE the element's box, and the sides of the frame are
+     edge-to-edge with each other — so every side was casting its shadow
+     onto its neighbour, and each seam of one continuous plate read as a
+     boundary between two objects. It is the "one boundary, one object"
+     rule in design.md, arriving from the other direction: five objects
+     were describing the four seams of a thing that has none.
+     The frame is not a pane sitting ON anything. It is the ground the
+     page card sits IN, the card carries its own border, and that border
+     is the only boundary here that is real. Under a wallpaper it was
+     worse still — the shadow fell across a continuous pattern, so the
+     pattern showed a seam where the pane behind it has none. */
   :root[data-material="glass"] .surface.chrome-pane {
     background-image: none;
-    box-shadow: var(--surface-shadow);
+    box-shadow: none;
   }
 
   /* AND IT STILL STEPS ASIDE FOR A WALLPAPER — which the rule above was

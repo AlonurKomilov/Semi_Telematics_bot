@@ -130,6 +130,37 @@ describe('a material may not switch the wallpaper off', () => {
     expect(css).toMatch(/\[data-material="glass"\][^{]*\.surface\.chrome-pane/);
   });
 
+  it('and casts no shadow onto the side next to it', () => {
+    // The owner found this one by using the product: "the joins between
+    // the sides still have lines and shadows, and only under glass".
+    // A drop shadow is paint OUTSIDE the element's box and the sides of
+    // the frame are edge-to-edge, so every side was casting onto its
+    // neighbour and each seam of one continuous plate read as a
+    // boundary between two objects. Under a wallpaper it fell across
+    // the pattern, which has no seam at all.
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    const style = document.createElement('style');
+    style.textContent = assembledCss();
+    document.head.appendChild(style);
+    document.documentElement.setAttribute('data-material', 'glass');
+    document.documentElement.setAttribute('data-wallpaper', 'none');
+    const shadowOf = (cls: string) => {
+      const el = document.createElement('div');
+      el.className = cls;
+      document.body.appendChild(el);
+      return getComputedStyle(el).boxShadow;
+    };
+    expect(shadowOf('surface chrome-pane'),
+      'a side of the frame casts a shadow, and the only thing next to it is another side')
+      .toBe('none');
+    // The control. Glass did not stop having shadows — a CARD is a pane
+    // sitting on the ground and still throws one, which is the whole
+    // difference between the two.
+    expect(shadowOf('surface'), 'no surface has a shadow at all — this is measuring nothing')
+      .not.toBe('none');
+  });
+
   it('glass still lets a frame pattern through', () => {
     expect(transparent(mount('glass', 'grid')),
       'the frame wallpaper is invisible under glass — a material out-specified it')
