@@ -25,30 +25,34 @@ logger = logging.getLogger(__name__)
 async def _driver_links(tenant, account_id: int, provider_id: str) -> dict:
     """The provider's driver id → our ``users.id``.
 
-    This is the one part of the feature that is NOT yet
-    provider-agnostic, and saying so is better than hiding it: the link
-    lives in ``users.samsara_driver_id``, a vendor-named column that
-    predates this arc.  A second ELD needs a general
-    ``driver_provider_links`` table, which is its own change.
+    This function used to name Samsara out loud and return nothing for
+    anybody else — the one place the feature was not provider-agnostic,
+    and it said so:
 
-    Until then an unmatched provider simply returns no links, and the
-    store writes the rows anyway with ``user_id`` NULL — the driver's
-    clocks are still recorded and still shown, just not yet attached to
-    a person on our roster.  Dropping them instead would make the
-    account's HOS answer quietly incomplete.
+        the link lives in ``users.samsara_driver_id``, a vendor-named
+        column that predates this arc.  A second ELD needs a general
+        ``driver_provider_links`` table, which is its own change.
+
+    That table exists now, and the storage reader merges the two legacy
+    vendor columns UNDER it, so Samsara and Datatruck keep every link
+    they hold while any provider can gain one. The vendor name is gone
+    from this file entirely.
+
+    A driver with no link is still written, with ``user_id`` NULL: the
+    provider reports their clocks whether or not an admin has matched
+    them, and dropping them would make the account's answer quietly
+    incomplete.
     """
-    if provider_id != "samsara":
-        return {}
     try:
-        users = await tenant.list_account_users(account_id)
+        return await tenant.driver_links_for(account_id, provider_id)
     except Exception:
-        logger.exception("eld: user lookup failed acct=%d", account_id)
+        # A feed that runs unlinked is the state every account starts
+        # in; a feed that does not run is not.
+        logger.exception(
+            "eld: driver link lookup failed acct=%d provider=%s",
+            account_id, provider_id,
+        )
         return {}
-    return {
-        sid: u.id
-        for u in users
-        if (sid := str(getattr(u, "samsara_driver_id", "") or "").strip())
-    }
 
 
 async def _ingest_one(account_id: int, provider_id: str, tenant) -> int:

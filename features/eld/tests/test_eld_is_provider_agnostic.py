@@ -165,20 +165,52 @@ async def test_an_unknown_vendor_fills_the_same_table(wired):
 
 @pytest.mark.asyncio
 async def test_the_feature_never_names_a_vendor(wired):
-    """The ingest module itself must not mention one.
+    """The ingest module's CODE, all of it.
 
-    ``_driver_links`` is the deliberate, documented exception — the
-    link column is vendor-named and predates this arc — so the check
-    is that the only occurrence is inside that function.
+    This check used to carve out ``_driver_links``, which read
+    ``users.samsara_driver_id`` and returned nothing for anybody else —
+    the one place the feature was not agnostic, exempted in the very
+    test that was supposed to prove it was. The exemption is gone with
+    its reason: ``driver_provider_links`` holds the link for any
+    provider and the storage reader merges the legacy vendor columns
+    underneath. An exception in a guard outlives the thing it was for
+    unless removing it is part of the change that fixes it.
+
+    CODE, not prose: the rule is that the feature must not USE a
+    vendor's name — in an identifier, an attribute, a column or a
+    literal it passes — and never that it may not explain WHY something
+    changed. A history note is how the next reader learns the rule; a
+    guard that forbids it just deletes the explanation.
     """
+    import ast
     import inspect
 
-    source = inspect.getsource(ingest)
-    body = source.split("async def _driver_links")[0] + \
-        source.split("async def ingest_driver_hos")[1]
-    for vendor in ("samsara", "motive", "geotab"):
-        assert vendor not in body.lower(), (
-            f"{vendor!r} leaked outside the documented link exception"
+    tree = ast.parse(inspect.getsource(ingest))
+    # Drop docstrings — a module's, a function's, a class's — and keep
+    # every other string, because a vendor name in a literal that gets
+    # PASSED somewhere is exactly the leak this is for.
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (isinstance(body, list) and body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            body.pop(0)
+
+    used: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            used.append(node.id)
+        elif isinstance(node, ast.Attribute):
+            used.append(node.attr)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            used.append(node.value)
+    haystack = " ".join(used).lower()
+
+    for vendor in ("samsara", "motive", "geotab", "orient"):
+        assert vendor not in haystack, (
+            f"{vendor!r} is USED in features/eld/ingest — the feature "
+            "learned a provider's name"
         )
 
 

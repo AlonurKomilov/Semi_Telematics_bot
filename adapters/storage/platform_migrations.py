@@ -253,6 +253,7 @@ async def run_all(conn) -> None:
     await migrate_inventory_own_flags(conn)
     await migrate_driver_trucks_registry_id(conn)
     await migrate_eld_hos_live(conn)
+    await migrate_driver_provider_links(conn)
 
 
 
@@ -5860,6 +5861,106 @@ async def migrate_plan_requests(conn) -> None:
         # which is worse than a working platform and better than a
         # crash loop.
         logger.exception("migrate_plan_requests failed")
+
+
+async def migrate_driver_provider_links(conn) -> None:
+    """``driver_provider_links`` — which provider driver IS which member.
+
+    The link used to live in a VENDOR-NAMED COLUMN, and there were
+    already two: ``users.samsara_driver_id`` and
+    ``users.datatruck_driver_id``, each with its own storage method, its
+    own picker and its own uniqueness check.  A third ELD would have
+    made three, and ``features/eld/ingest`` carries the note admitting
+    it: "a vendor-named column that predates this rule and needs a
+    general ``driver_provider_links`` table".  This is that table.
+
+    Keyed ``(account_id, provider_id, provider_driver_id)`` — what the
+    PROVIDER gives us — with ``user_id`` as the thing we learned.  Same
+    shape as ``driver_hos_live`` next door, and for the same reason: a
+    provider's id is the only stable handle we have on a person before
+    anybody has matched them.
+
+    TWO uniqueness rules, both enforced in the schema rather than by the
+    caller remembering:
+
+      * one provider driver links to at most one member — the primary
+        key;
+      * one member holds at most one identity PER PROVIDER — the partial
+        unique index.  Without it a member could accumulate two ORIENT
+        ids and every reader would silently pick whichever row sorted
+        first.
+
+    ``link_method`` records HOW, because "an admin chose this" and "a
+    CDL matched" carry different weight when one turns out to be wrong,
+    and an audit of driver PII should be able to tell them apart.
+
+    The legacy columns are NOT dropped here.  They still hold live
+    links, four features still read them, and a migration that moves
+    identity data and deletes its source in one step has no way back.
+    The reader merges both; the columns retire on their own change.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS driver_provider_links (
+                account_id          INTEGER NOT NULL,
+                provider_id         TEXT    NOT NULL,
+                provider_driver_id  TEXT    NOT NULL,
+                user_id             INTEGER NOT NULL,
+                link_method         TEXT    NOT NULL DEFAULT 'manual',
+                linked_by           INTEGER,
+                linked_at           TEXT    NOT NULL,
+                PRIMARY KEY (account_id, provider_id, provider_driver_id)
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_driver_links_user "
+            "ON driver_provider_links(account_id, user_id)")
+    except Exception:
+        # Boot must not fail for this.  Without the table the ELD feed
+        # falls back to the legacy columns, which is exactly what it
+        # reads today.
+        logger.exception("migrate_driver_provider_links: table failed")
+        return
+
+    # ── one member, one identity per provider ──
+    #
+    # Its own step, after the table: a UNIQUE index can fail on data
+    # that already violates it, and that must not take the table's
+    # creation down with it.
+    try:
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_driver_links_member "
+            "ON driver_provider_links(account_id, provider_id, user_id)")
+    except Exception:
+        logger.exception(
+            "migrate_driver_provider_links: member uniqueness index failed "
+            "— a member may hold two ids for one provider")
+
+    # ── row-level security ──
+    #
+    # Gated by ENABLE_RLS exactly like migration 057 and its siblings:
+    # FORCE RLS on a table the platform's bulk tooling does not yet set
+    # ``app.account_id`` for makes that tooling silently match zero
+    # rows.  Until the flag is on, the account_id predicate in every
+    # query is the wall, the same one every other tenant table relies
+    # on.  This table is driver PII by association, so it joins the
+    # staged rollout rather than running ahead of it.
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        return
+    try:
+        await conn.execute(
+            "ALTER TABLE driver_provider_links ENABLE ROW LEVEL SECURITY")
+        await conn.execute(
+            "ALTER TABLE driver_provider_links FORCE ROW LEVEL SECURITY")
+        await conn.execute(
+            "DROP POLICY IF EXISTS tenant_isolation ON driver_provider_links")
+        await conn.execute("""
+            CREATE POLICY tenant_isolation ON driver_provider_links
+            USING      (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK (account_id::text = current_setting('app.account_id', true))
+        """)
+    except Exception:
+        logger.exception("migrate_driver_provider_links: RLS failed")
 
 
 async def migrate_eld_hos_live(conn) -> None:
