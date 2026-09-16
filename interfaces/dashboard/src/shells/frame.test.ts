@@ -225,6 +225,40 @@ describe('the assistant is the second page, not a panel over the first', () => {
       .toEqual([]);
   });
 
+  it('and anchors its ground to the edge that does not move', () => {
+    // The divider is the page's RIGHT edge and the sub-page's LEFT one.
+    // No wallpaper pack states a `background-position`, so a pattern
+    // starts at its element's top-left — which is the pinned corner for
+    // the page and the moving one for the sub-page. Anchored left, the
+    // whole ground slid sideways on every drag and the far side of the
+    // sub-page appeared to react to a handle on the near side. The
+    // owner found it by watching the wallpaper, which is the only place
+    // it shows.
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    const style = document.createElement('style');
+    style.textContent = assembledCss();
+    document.head.appendChild(style);
+    document.documentElement.setAttribute('data-wallpaper-page', 'gauge');
+    const posOf = (cls: string) => {
+      const el = document.createElement('div');
+      el.className = cls;
+      document.body.appendChild(el);
+      return getComputedStyle(el).backgroundPosition;
+    };
+    expect(read('features/ai/AssistantPanel.tsx'),
+      'the sub-page stopped anchoring its ground, so dragging the divider slides it')
+      .toMatch(/\bground-anchor-right\b/);
+    expect(posOf('page-ground ground-anchor-right'),
+      'the class no longer moves the anchor — the rule behind it is gone or was out-specified')
+      .toBe('right top');
+    // The control: the page is anchored the other way, and must stay
+    // that way. Its left edge is the pinned one.
+    expect(posOf('page-ground'),
+      'the page started anchoring right too — then its pattern slides instead')
+      .not.toBe('right top');
+  });
+
   it('and the shell reads one answer for whether it is there', () => {
     // The gutter that closes the frame beside the sub-page and the
     // sub-page itself must agree, or the frame closes around nothing.

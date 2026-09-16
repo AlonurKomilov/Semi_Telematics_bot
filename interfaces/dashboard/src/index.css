@@ -1149,6 +1149,25 @@
      so a person picks twice, and the two never have to agree. */
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
+
+  /* A PATTERN IS ANCHORED TO THE EDGE THAT DOES NOT MOVE.
+     No pack states a `background-position`, so every pattern starts at
+     its element's top-LEFT corner. For the page that is right and
+     invisible: the page's left edge is pinned to the rail, so dragging
+     the divider shortens it from the right and the pattern inside it
+     never stirs.
+     The assistant is the mirror image. Its RIGHT edge is the pinned
+     one and its LEFT edge is the one the divider moves — so a pattern
+     anchored left slid the whole ground sideways on every drag, and
+     what the reader saw was the far side of the sub-page reacting to a
+     handle on the near side. The owner caught it by watching the
+     wallpaper: "the physics is right on the main page, because I am
+     dragging its right edge — but for the sub-page that handle is its
+     LEFT edge, and it should join from the left."
+     Anchoring to the right makes the drag do what it looks like it
+     does: more ground is revealed at the edge under the pointer, and
+     nothing already on screen moves. */
+  .ground-anchor-right { background-position: right top; }
   /* The page's small text, under a pattern. At its normal lightness
      `--muted-foreground` clears the plain light page by a hair (4.96),
      and every stop darkens the page — the strongest took it to 3.67.
