@@ -2,6 +2,8 @@ import { cloneElement, Fragment } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { Menu } from '@base-ui/react/menu';
 import { ContextMenu as Base } from '@base-ui/react/context-menu';
+import { Popover } from '@base-ui/react/popover';
+import { Tip } from '@/components/tooltip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -168,6 +170,84 @@ export function AnchoredMenu({ items, anchor, open, onOpenChange, align = 'start
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
+  );
+}
+
+/**
+ * A panel that hangs off a trigger, whose BODY is not a list of actions.
+ *
+ * `ActionMenu` is the right answer whenever a menu is `MenuAction[]`
+ * data. Two panels in the topbar are not: the account menu opens with a
+ * name and a role above its items, and the persona selector is a
+ * LISTBOX with a tier flyout on a row. Popover rather than Menu for
+ * exactly that reason — a `Menu.Popup` is `role="menu"`, and a listbox
+ * inside a menu is two contradictory answers to "what is this". A
+ * popover asserts nothing, so each caller keeps the semantics its
+ * content already has.
+ *
+ * WHY THEY HAD TO LEAVE THE TOPBAR. An element carrying a
+ * `backdrop-filter` becomes a BACKDROP ROOT: a descendant's own
+ * backdrop-filter then sees only what is painted inside that root,
+ * which is nothing. So while these two sat inside the header, the
+ * header could never be glass — the day it was, both would stop
+ * occluding and show the page straight through themselves. That is not
+ * hypothetical; it is the bug that was reported and fixed once.
+ * Portalled, they are nobody's descendants and the frame is free.
+ *
+ * It ends a second bug class on its own. An inline panel is at the
+ * mercy of every ancestor: the persona flyout was erased — not clipped,
+ * ABSENT — by an `overflow-hidden` two levels up, and the language menu
+ * once ran off the left of a phone because it measured nothing. The
+ * positioner here shifts to stay on screen.
+ *
+ * `tip` rather than a `<Tip>` around the caller's button: BOTH are
+ * base-ui triggers, and they compose only one way round — the tooltip
+ * renders the popover trigger, which renders the button. Wrapped the
+ * other way the popover clones `Tip`, which takes four named props and
+ * spreads none, so every prop that makes a trigger a trigger is
+ * dropped in silence.
+ *
+ * Controlled on purpose: both callers already own their open state and
+ * close it themselves after navigating, so the primitive is asked for
+ * placement and nothing else.
+ */
+export function Dropdown({
+  open, onOpenChange, trigger, tip, align = 'end', className, children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The trigger element. Must forward refs and props. */
+  trigger: ReactElement;
+  /** Hover label for the trigger, if it needs one. */
+  tip?: string;
+  align?: 'start' | 'center' | 'end';
+  /** Extra classes on the popup — a width, usually. */
+  className?: string;
+  children: ReactNode;
+}) {
+  const anchor = <Popover.Trigger render={trigger} />;
+  return (
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
+      {tip ? <Tip label={tip}>{anchor}</Tip> : anchor}
+      <Popover.Portal>
+        <Popover.Positioner className="z-50 outline-none" align={align} sideOffset={4}>
+          {/* The chrome a panel needs and nothing about its insides —
+              no padding and no min-width, because both callers bring
+              their own sections. `.surface` and `.surface-popover` are
+              what make it the same material as every other floating
+              thing under glass. */}
+          <Popover.Popup
+            className={cn(
+              'surface surface-popover text-popover-foreground border border-border',
+              'rounded-md shadow-lg outline-none',
+              className,
+            )}
+          >
+            {children}
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

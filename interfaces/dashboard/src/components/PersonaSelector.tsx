@@ -1,8 +1,11 @@
 import { Tip } from './tooltip';
-import { useState, useRef, useEffect } from 'react';
+import { Dropdown } from './ui/context-menu';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Eye } from '../lib/icons';
 import { useRoleView } from '../context/RoleViewContext';
+import { useAuth } from '../context/AuthContext';
+import { permissionRow, tierLabel } from '../context/roleViewTarget';
 import { Card } from '@/components/ui/card';
 
 /**
@@ -36,30 +39,20 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   const {
     activeView, viewLabel, canSwitch, availableViews, switchView,
     homeRoute, isPreviewing,
-    activeViewSupportsManager, activeViewTier, previewAsManager, setPreviewAsManager,
+    activePermissionKey, ownViewLabel,
   } = useRoleView();
-  const tierSuffix = activeViewSupportsManager && activeViewTier
-    ? ` · ${previewAsManager ? activeViewTier.senior : activeViewTier.base}` : '';
+  const { user } = useAuth();
+  const tier = tierLabel(activeView, activePermissionKey);
+  const label = `${viewLabel}${tier ? ` · ${tier}` : ''}`;
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Click-outside / Esc to close.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  // Click-outside and Escape were two `document` listeners here. They
+  // belong to the primitive now — along with the thing they could not
+  // give: this panel is PORTALLED. It was an `absolute` box inside the
+  // topbar, which is what kept the topbar from ever becoming glass (an
+  // ancestor's backdrop-filter makes a descendant's own a no-op), and
+  // what let an `overflow-hidden` two levels up erase the tier flyout
+  // entirely.
 
   // Non-switchable user (Fleet / Safety / Dispatcher / Driver): static
   // pill with no interactivity.  Shows the user what role they're in
@@ -73,10 +66,10 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
     if (compact) {
       const initial = viewLabel.trim().charAt(0).toUpperCase() || '?';
       return (
-        <Tip label={`Your role: ${viewLabel}`}>
+        <Tip label={`Your role: ${label}`}>
           <div
             className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-muted/30 text-2xs font-semibold text-muted-foreground/80 select-none"
-            aria-label={`Your role: ${viewLabel}`}
+            aria-label={`Your role: ${label}`}
           >
             {initial}
           </div>
@@ -84,17 +77,17 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
       );
     }
     return (
-      <Tip label={`Your role: ${viewLabel}`}>
+      <Tip label={`Your role: ${label}`}>
         <div className="inline-flex h-7 items-center px-2 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md">
-          {viewLabel}
+          {label}
         </div>
       </Tip>
     );
   }
 
-  const handlePick = (role: string) => {
+  const handlePick = (role: string, permissionKey?: string) => {
+    switchView(role, permissionKey);
     if (role !== activeView) {
-      switchView(role);
       // Navigate to the new persona's home route so the preview lands
       // somewhere the chosen role would normally start.  We do this
       // even when picking the operator's own role back from a preview —
@@ -108,86 +101,82 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   // persists), then enter that role — navigating only when actually switching
   // roles (a same-role tier flip just re-skins the current pages in place).
   const pickTier = (role: string, wantManager: boolean) => {
-    setPreviewAsManager(wantManager);
-    if (role !== activeView) handlePick(role);
-    else setOpen(false);
+    handlePick(role, permissionRow(role, wantManager));
   };
 
   const triggerTitle = isPreviewing
-    ? `Previewing dashboard as ${viewLabel} — click to switch back. Changes what you see, not what's stored.`
-    : `Dashboard view: ${viewLabel}. Picking a different role re-skins the UI; data and permissions remain yours.`;
+    ? `Previewing dashboard as ${label} — click to switch back. Changes what you see, not what's stored.`
+    : `Dashboard view: ${label}. Picking a different role re-skins the UI; data and permissions remain yours.`;
+
+  /* Collapsed-rail trigger.  Circular geometry matches the
+     non-switchable badge above (and AvatarMenu's identity dot) so
+     collapsed/expanded read as the same control at two densities, not
+     two different UIs.  Idle, this is an Eye ("click to preview a
+     role") — but mid-preview it swaps to the previewed role's initial,
+     since an unchanging Eye glyph can't tell you WHICH role you are
+     currently seeing, the one thing the expanded label always shows.
+     NEITHER trigger carries `onClick` or `aria-expanded` any more: the
+     primitive owns both, and a second toggle would open the panel and
+     close it again in one click. */
+  const trigger = compact ? (
+    <button
+      type="button"
+      className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
+        isPreviewing
+          ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
+          : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
+      } min-h-tap min-w-tap`}
+      aria-haspopup="listbox"
+      aria-label="View dashboard as…"
+    >
+      {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye className="size-4" />}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className={`inline-flex h-7 items-center gap-1 px-2 text-2xs rounded-md border transition ${
+        isPreviewing
+          ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
+          : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
+      } min-h-tap`}
+      aria-haspopup="listbox"
+    >
+      {isPreviewing && <Eye className="opacity-80 size-3" />}
+      <span>{label}</span>
+      <ChevronDown className="opacity-60 size-3" />
+    </button>
+  );
 
   return (
-    <div ref={ref} className="relative">
-      {compact ? (
-        // Collapsed-rail trigger.  Same dropdown; the panel overhangs the
-        // rail into the content area (no overflow clip on the sidebar).
-        // Circular geometry matches the non-switchable badge above (and
-        // AvatarMenu's identity dot) so collapsed/expanded read as the
-        // same control at two densities, not two different UIs.  Idle,
-        // this is an Eye ("click to preview a role") — but mid-preview it
-        // swaps to the previewed role's initial, since an unchanging Eye
-        // glyph can't tell you WHICH role you're currently seeing, the
-        // one thing the expanded label always shows.
-        <Tip label={triggerTitle}>
-          <button
-            type="button"
-            onClick={() => setOpen(o => !o)}
-            className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
-              isPreviewing
-                ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
-                : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
-            } min-h-tap min-w-tap`}
-            aria-haspopup="listbox"
-            aria-expanded={open}
-            aria-label="View dashboard as…"
-          >
-            {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye className="size-4" />}
-          </button>
-        </Tip>
-      ) : (
-        <Tip label={triggerTitle}>
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className={`inline-flex h-7 items-center gap-1 px-2 text-2xs rounded-md border transition ${
-            isPreviewing
-              ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
-              : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
-          } min-h-tap`}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-        >
-          {isPreviewing && <Eye className="opacity-80 size-3" />}
-          <span>{viewLabel}{tierSuffix}</span>
-          <ChevronDown className="opacity-60 size-3" />
-        </button>
-        </Tip>
-      )}
-
-      {open && (
-        <Card
-          padding="none"
-          /* `overflow-visible`, and it is load-bearing: `padding="none"`
-             brings `overflow-hidden`, and the Manager/Employee flyout on
-             a role row sits at `left-full` — OUTSIDE this box. Clipped,
-             it is not dimmed or cut off, it is completely absent, which
-             is why the row still showed its `›` and nothing happened.
-             Safe here because neither corner is painted by a child: the
-             top row has no background, and the footer already carries
-             `rounded-b-lg` to match the arc itself. */
-          className="absolute left-0 mt-1 w-64 shadow-xl text-sm z-50 overflow-visible"
-          render={<ul />} role="listbox"
-        >
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      tip={triggerTitle}
+      align="start"
+      className="w-64 text-sm"
+      trigger={trigger}
+    >
+      {/* NO `overflow-hidden` on the popup, and it is load-bearing: the
+          Manager/Employee flyout on a role row sits at `left-full` —
+          OUTSIDE this box. Clipped, it is not dimmed or cut off, it is
+          completely absent, which is why the row once showed its `›`
+          and nothing happened. */}
+      <ul role="listbox">
           <li className="px-3 py-1.5 text-2xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
+          {user && <li><button type="button" role="option" aria-selected={!isPreviewing}
+            onClick={() => handlePick(user.role)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-foreground hover:bg-muted min-h-tap">
+            <span className="flex-1">My dashboard · {ownViewLabel}</span>
+            {!isPreviewing && <Check className="size-3.5" aria-hidden />}
+          </button></li>}
           {availableViews.map(v => {
-            const isActive = v.key === activeView;
+            const isActive = isPreviewing && v.key === activeView;
             // Manager-capable role (e.g. Recruiter): the role row enters at the
             // SAVED tier; two nested rows let the operator pick Manager /
             // Employee explicitly (and that choice persists).
-            if (v.supportsManager) {
+            if (v.supportsTier) {
               // Manager-capable role: a "Recruiter ›" submenu row that opens a
               // Manager / Employee flyout on hover (mirrors the column menu's
               // "Sort › Ascending/Descending").  Clicking the role itself enters
@@ -207,9 +196,9 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                     <ChevronRight className="opacity-50 size-3.5" />
                   </button>
                   {/* Flyout — flush to the right so hover bridges without a gap. */}
-                  <Card padding="none" className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden shadow-xl" render={<ul />} role="menu">
+                  <Card padding="none" className="invisible group-hover/sub:visible group-focus-within/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden shadow-xl" render={<ul />} role="menu">
                     {([[v.tier?.senior ?? 'Manager', true], [v.tier?.base ?? 'Employee', false]] as const).map(([label, wantManager]) => {
-                      const tierActive = isActive && previewAsManager === wantManager;
+                      const tierActive = isActive && activePermissionKey === permissionRow(v.key, wantManager);
                       return (
                         <li key={label}>
                           <button
@@ -251,8 +240,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           <li className="rounded-b-lg px-3 py-1.5 text-2xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
             Changes the dashboard UI only — data and permissions stay yours.
           </li>
-        </Card>
-      )}
-    </div>
+      </ul>
+    </Dropdown>
   );
 }

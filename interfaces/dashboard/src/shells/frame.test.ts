@@ -17,7 +17,7 @@
  * holding its own copy of the thing it guards is not a guard.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assembledCss } from '../test/stylesheet';
 
@@ -341,5 +341,68 @@ describe('the desk, the frame and the page are three planes', () => {
     // assertion above passes on a stylesheet that says one thing twice.
     expect(groundAt('ondesk'), 'the desk and the frame resolve to the same ground')
       .not.toBe(groundAt('pane'));
+  });
+});
+
+/**
+ * NOTHING THAT FLOATS MAY LIVE INSIDE THE FRAME.
+ *
+ * This is the rule the frame's material depends on, and it is invisible
+ * in every other way. An element carrying a `backdrop-filter` becomes a
+ * BACKDROP ROOT: a descendant's own backdrop-filter then sees only what
+ * is painted inside that root, which is nothing. So a menu rendered as
+ * an `absolute` child of the rail or the header cannot occlude once the
+ * frame is glass — it shows the page straight through itself, crisply,
+ * which is exactly how this was reported the first time.
+ *
+ * Both offenders are portalled now and the frame is free. What this
+ * holds is that they stay that way, because the failure is silent:
+ * nothing breaks until the day someone gives the frame a filter, and
+ * then it breaks somewhere else entirely.
+ *
+ * The list is derived, not typed: the components the frame RENDERS are
+ * read out of the shell and the rail, so one added tomorrow is measured
+ * without anybody remembering this file exists.
+ */
+describe('the frame holds nothing that floats', () => {
+  /** Every component the rail and the header render, by file. */
+  const inhabitants = (): string[] => {
+    const out = new Set<string>();
+    for (const host of ['shells/AppShell.tsx', 'components/Sidebar.tsx']) {
+      const src = read(host);
+      for (const m of src.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g)) {
+        const tag = m[1];
+        // Resolve the tag to the file it is imported from — a relative
+        // import inside this app, never a package.
+        const imp = new RegExp(`import\\s+(?:\\{[^}]*\\b${tag}\\b[^}]*\\}|${tag})\\s+from\\s+'([./@][^']*)'`)
+          .exec(src)?.[1];
+        if (!imp) continue;
+        const rel = imp.replace(/^@\//, '').replace(/^\.\.\//, '').replace(/^\.\//, host.includes('/') ? `${host.split('/')[0]}/` : '');
+        for (const ext of ['.tsx', '.ts'])
+          if (existsSync(join(SRC, rel + ext))) out.add(rel + ext);
+      }
+    }
+    return [...out];
+  };
+
+  it('finds the components the frame renders', () => {
+    // Without this the sweep below can pass by resolving nothing.
+    const found = inhabitants();
+    expect(found.length, 'no component of the frame was resolved — this measures nothing')
+      .toBeGreaterThan(5);
+    expect(found, 'the account menu is not among them').toContain('components/AvatarMenu.tsx');
+    expect(found, 'the persona selector is not among them').toContain('components/PersonaSelector.tsx');
+  });
+
+  it('and none of them pins a surface inside it', () => {
+    for (const rel of inhabitants()) {
+      for (const cls of read(rel).match(CLASSNAME) ?? []) {
+        if (!/\bsurface(?![\w-])/.test(cls)) continue;
+        expect(cls, `${rel}: a floating surface is rendered INSIDE the frame. Under glass `
+          + 'the frame is a backdrop root, so this cannot occlude — it will show the page '
+          + 'through itself. Portal it (see `Dropdown` in components/ui/context-menu.tsx).')
+          .not.toMatch(/\b(absolute|fixed|sticky)\b/);
+      }
+    }
   });
 });
