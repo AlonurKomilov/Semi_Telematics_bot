@@ -1424,7 +1424,7 @@ listing ten of the fifteen that existed. Keep it current: a row missing
 from here reads as "not enforced", which is how a rule gets broken on
 purpose.
 
-These fail `npm test`. Forty-one live in `src/components/ui/chrome.test.ts`;
+These fail `npm test`. Forty-three live in `src/components/ui/chrome.test.ts`;
 the rest are noted per row. That count is itself checked — add a guard
 there and this sentence has to move with it, which is the only reason
 this table has any chance of staying true.
@@ -1476,6 +1476,8 @@ this table has any chance of staying true.
 | nothing reads the chart ramp except the tone layer (§8) | `var(--chart-N)` in a component pins it to a slot NUMBER, and the ramp rotates with the accent — slot 2 is green under most accents and blue under a green one, so a raw var silently opts that component out. It also bypasses `chartColor()`, which is the only place that knows the ramp wraps. Nothing else greps for this |
 | `codeOnly` blanks exactly the comments (§11) | it is the floor every source-reading guard stands on, and it was wrong three ways at once, each of which made guards pass silently over code: `accept="image/…"` opened what a regex reads as a block comment and swallowed 714 lines of the public applicant form; an apostrophe in JSX text opened a string that ran to the next apostrophe in the file; and a template literal was treated as opaque although `${…}` holds CODE, so the first backtick in a comment written there read as the template's close. A fixture now pins all three, plus that line numbers survive — anything reporting a location depends on that |
 | an element-scoped tint sets every accent-derived token (§2) | got wrong three times running — `--ring`, then `--primary-hover`, then `--primary-text` — because the failure is invisible: a custom property's `var()` resolves on the element that DECLARES it, so `:root`'s derivation cannot see a tint applied to a div, and the public apply form keeps the 4truck accent on a carrier-branded page while looking deliberate. The required set is read out of index.css, not listed in the test, because a hand-written list is what goes stale on the fourth token |
+| no submenu is trapped inside a box that clips it (§6) | `<Card padding="none">` brings `overflow-hidden`, and a flyout anchored at `left-full` sits outside that box — so the clip does not cut it off, it erases it. Nothing errors, the row still draws its `›`, and hovering does nothing. It shipped: the persona switcher's Manager/Employee flyout was added in July and the dropdown around it became a `<Card>` in August, so for three weeks an owner could not pick a tier |
+| and the scanner can see a trap (§6) | the control on the guard above, and it earns its own row because three ad-hoc versions of that scan returned the wrong answer before the reason was found: `render={<ul />}` puts a `>` inside an attribute, and a tag matcher that stops at the first `>` reads the element as self-closing and walks straight past every Card that has one |
 | this table lists every guard | counts the guards in `chrome.test.ts` against the number spelled out above it — the table had gone five guards stale before anyone checked |
 
 Three carry NAMED DEBT lists for migrations older than the guards

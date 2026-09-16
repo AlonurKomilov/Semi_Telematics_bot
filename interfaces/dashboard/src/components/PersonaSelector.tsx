@@ -166,7 +166,19 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
       )}
 
       {open && (
-        <Card padding="none" className="absolute left-0 mt-1 w-64 shadow-xl text-sm z-50" render={<ul />} role="listbox">
+        <Card
+          padding="none"
+          /* `overflow-visible`, and it is load-bearing: `padding="none"`
+             brings `overflow-hidden`, and the Manager/Employee flyout on
+             a role row sits at `left-full` — OUTSIDE this box. Clipped,
+             it is not dimmed or cut off, it is completely absent, which
+             is why the row still showed its `›` and nothing happened.
+             Safe here because neither corner is painted by a child: the
+             top row has no background, and the footer already carries
+             `rounded-b-lg` to match the arc itself. */
+          className="absolute left-0 mt-1 w-64 shadow-xl text-sm z-50 overflow-visible"
+          render={<ul />} role="listbox"
+        >
           <li className="px-3 py-1.5 text-2xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>

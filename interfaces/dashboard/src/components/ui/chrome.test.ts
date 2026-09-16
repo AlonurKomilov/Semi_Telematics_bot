@@ -2089,3 +2089,97 @@ describe('UI chrome', () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * A FLYOUT INSIDE A CLIPPED BOX IS NOT CUT OFF — IT IS ABSENT.
+ *
+ * `<Card padding="none">` brings `overflow-hidden`, because a rounded
+ * box that hands its edge to a child has to clip or the child paints
+ * over the arc. A submenu anchored at `left-full` sits OUTSIDE that
+ * box, so the same clip erases it completely: the row still renders its
+ * `›`, hovering still fires, and nothing appears. Nothing errors and no
+ * test fails, which is why this one exists.
+ *
+ * It shipped. The persona switcher's Manager / Employee flyout was
+ * added in July and the dropdown around it became a `<Card>` in August;
+ * for three weeks an owner could not pick a tier, and the only symptom
+ * was a chevron that did nothing.
+ *
+ * The tag scanner tracks BRACE DEPTH rather than stopping at the first
+ * `>`. Three ad-hoc versions of this scan got the wrong answer before
+ * that was the reason: `render={<ul />}` puts a `>` inside an
+ * attribute, and a matcher that stops there reads the element as
+ * self-closing and walks straight past it.
+ */
+describe('flyouts and the boxes that clip them', () => {
+  const OUTSIDE = /\b(?:left-full|right-full|top-full|bottom-full)\b/;
+
+  /** Every `<Card …>` tag in a file, as [start, end, text, selfClosing]. */
+  function cardTags(src: string) {
+    const out: { at: number; text: string; self: boolean }[] = [];
+    for (let i = src.indexOf('<Card'); i >= 0; i = src.indexOf('<Card', i + 1)) {
+      // Not `<Cardboard`, and not a closing tag.
+      if (/[\w]/.test(src[i + 5] ?? '')) continue;
+      let depth = 0, j = i + 5;
+      for (; j < src.length; j++) {
+        const c = src[j];
+        if (c === '{') depth++;
+        else if (c === '}') depth--;
+        else if (c === '>' && depth === 0) break;
+      }
+      const text = src.slice(i, j + 1);
+      out.push({ at: i, text, self: text.trimEnd().endsWith('/>') });
+    }
+    return out;
+  }
+
+  const clips = (tag: string) =>
+    tag.includes('padding="none"') && !tag.includes('overflow-visible');
+
+  it('no submenu is trapped inside a box that clips it', () => {
+    const trapped: string[] = [];
+    for (const f of TSX) {
+      // COMMENTS BLANKED, and the first version of this guard did not do
+      // it — so the sentence explaining `overflow-visible`, written
+      // inside the very tag it explains, counted as the class itself.
+      // Removing the real class left the guard green. Same trap the
+      // material and ladder guards each hit once.
+      const src = codeOnly(f.src);
+      const tags = cardTags(src);
+      const closes = [...src.matchAll(/<\/Card>/g)].map((m) => m.index!);
+      const events = [
+        ...tags.filter((t) => !t.self).map((t) => ({ at: t.at, open: true, clip: clips(t.text) })),
+        ...closes.map((at) => ({ at, open: false, clip: false })),
+      ].sort((a, b) => a.at - b.at);
+
+      for (const m of src.matchAll(new RegExp(OUTSIDE, 'g'))) {
+        const stack: boolean[] = [];
+        for (const e of events) {
+          if (e.at >= m.index!) break;
+          if (e.open) stack.push(e.clip); else stack.pop();
+        }
+        // The innermost open tag is the flyout's OWN; what traps it is a
+        // clipping card ABOVE that one.
+        if (stack.slice(0, -1).some(Boolean))
+          trapped.push(`${f.rel}:${src.slice(0, m.index!).split('\n').length}`);
+      }
+    }
+    expect(trapped, 'a flyout sits outside a box that clips it — it will not render at all')
+      .toEqual([]);
+  });
+
+  it('and the scanner can see a trap', () => {
+    // The control. Without it this passes just as happily on a matcher
+    // that walks past every Card in the tree — which is exactly what the
+    // first three attempts did.
+    const rigged = [
+      '<Card padding="none" render={<ul />}>',
+      '  <li><Card padding="none" className="absolute left-full" /></li>',
+      '</Card>',
+    ].join('\n');
+    const tags = cardTags(rigged);
+    expect(tags.length, 'the scanner lost a Card to a `>` inside an attribute').toBe(2);
+    expect(tags[0].self, 'the outer tag was read as self-closing').toBe(false);
+    expect(clips(tags[0].text)).toBe(true);
+  });
+});
