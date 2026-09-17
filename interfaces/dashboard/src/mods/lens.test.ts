@@ -16,7 +16,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bevelMap, RESOLUTION, NEUTRAL, type Bevel, type OpenSpan } from './lens';
+import { bevelMap, RESOLUTION, NEUTRAL, type Bevel } from './lens';
+import type { OpenSpan } from './edges';
 import { MATERIAL_PACKS, materialPackById } from './store/items/material';
 
 const BEVEL: Bevel = { band: 30, falloff: 2.2, strength: 13 };

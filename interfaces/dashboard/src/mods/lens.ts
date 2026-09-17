@@ -27,6 +27,7 @@
  * purpose, and `RESOLUTION` below is a performance decision with a
  * measurement behind it rather than a default nobody questioned.
  */
+import type { OpenSpan } from './edges';
 
 /** The shape of the edge, in CSS pixels of the surface it describes. */
 export interface Bevel {
@@ -73,39 +74,6 @@ export const RESOLUTION = { w: 32, h: 40 } as const;
  *  middle of the range and NOT zero — a map of zeroes would shove the
  *  whole backdrop half a scale to one side. */
 export const NEUTRAL = 128;
-
-/**
- * WHERE THE GLASS ACTUALLY ENDS, in surface pixels along one side.
- *
- * A lens bends light where the pane stops, and a pane of the frame
- * stops in fewer places than it has sides. Two things are not edges:
- *
- *   · a SEAM. Where two panes of the same sheet meet, the glass does
- *     not end. Bending there draws a line across something with no
- *     boundary — which is what the owner saw at the corner of the rail
- *     and the header.
- *   · the WINDOW'S OWN BOUNDARY. The top of the top bar has nothing
- *     beyond it: there is no backdrop out there to bend, and a
- *     displacement at that edge samples outside the region and smears
- *     whatever the browser clamps in. As he put it, the top bar's edge
- *     is the one facing DOWN, toward the page.
- *
- * And a side is rarely all one thing, which is the part a boolean per
- * side could not say. The rail meets the header for the header's 48px
- * and faces the page for the six hundred below it — read as a boolean,
- * one flush neighbour sealed the whole side, so the rail bent along its
- * OUTER edge and not along the one facing the page. Exactly backwards,
- * and the reason the effect read as weak and misplaced.
- *
- * So a side carries the RANGES of it that are still edges, and the
- * engine is told nothing else: `lensMount` measures them.
- */
-export interface OpenSpan {
-  readonly side: 'top' | 'right' | 'bottom' | 'left';
-  /** Along that side, in surface pixels, from its start. */
-  readonly from: number;
-  readonly to: number;
-}
 
 export interface LensMap {
   readonly width: number;

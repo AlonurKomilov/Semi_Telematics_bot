@@ -18,9 +18,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BUCKET, LENS_VAR, bucketed, lensFilterId, ensureFilter, applyLens, radiusOf,
-  installLens, openSpans, spanKey, type Encoder,
+  installLens, spanKey, type Encoder,
 } from './lensMount';
-import type { Bevel, OpenSpan } from './lens';
+import type { Bevel } from './lens';
+import type { OpenSpan } from './edges';
 
 const BEVEL: Bevel = { band: 30, falloff: 2.2, strength: 13 };
 /** Counts what it was asked to encode, so a test can tell a cache hit
@@ -304,70 +305,24 @@ describe('installing', () => {
 });
 
 /**
- * WHERE THE GLASS ENDS, MEASURED AND NOT DECLARED.
+ * Two panes that end differently must not share a map.
  *
- * This is what lets one rule written for the frame reach all five of
- * its sides without any of them saying a word about its own geometry.
+ * The measurement itself lives with the service that owns it — see
+ * `edges.test.ts`. What belongs here is what the MOUNT does with the
+ * answer, and the one way it can go wrong quietly: reuse.
  */
-describe('where a pane actually ends', () => {
-  const VIEW = { innerWidth: 1400, innerHeight: 900 };
-  const box = (left: number, top: number, w: number, h: number): DOMRect => ({
-    left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top,
-    toJSON: () => ({}),
-  } as DOMRect);
-  const sideOf = (spans: OpenSpan[], side: OpenSpan['side']) =>
-    spans.filter((s) => s.side === side);
-
-  it('closes only the stretch a neighbour actually covers', () => {
-    // THE BUG THE OWNER FOUND, in numbers. The rail runs the height of
-    // the window and the header sits against the top 48px of its right
-    // side; the rest of that side faces the page. Read as a boolean,
-    // one flush neighbour sealed the whole side, so the rail bent along
-    // its OUTER edge and not along the one facing the page — exactly
-    // backwards.
-    const rail = box(0, 0, 224, 800);
-    const header = box(224, 0, 1176, 48);
-    const right = sideOf(openSpans(rail, [header], VIEW), 'right');
-    expect(right.length, 'the whole side was sealed by a 48px neighbour').toBe(1);
-    expect(Math.round(right[0].from), 'the open stretch starts at the top').toBe(48);
-    expect(Math.round(right[0].to), 'the open stretch runs to the bottom').toBe(800);
-  });
-
-  it('and drops a side that lies on the window itself', () => {
-    // The owner's own example: the top bar's edge is the one facing
-    // DOWN. Above it there is nothing to bend, and a displacement there
-    // samples outside the region and smears whatever gets clamped in.
-    const header = box(224, 0, 1176, 48);
-    const spans = openSpans(header, [], VIEW);
-    expect(sideOf(spans, 'top'), 'the top bar bends against the window edge').toEqual([]);
-    expect(sideOf(spans, 'right'), 'it bends against the window edge sideways').toEqual([]);
-    expect(sideOf(spans, 'bottom').length, 'it stopped bending toward the page').toBe(1);
-  });
-
-  it('and leaves a side open when the neighbour is merely near', () => {
-    // The control, and why the tolerance is a fraction of a pixel
-    // rather than a design value: two cards with a gap between them are
-    // two panes, and both keep the edge that faces the other.
-    const card = box(100, 100, 300, 200);
-    const nextTo = box(412, 100, 300, 200);
-    expect(sideOf(openSpans(card, [nextTo], VIEW), 'right').length, 'a real gap read as a seam')
-      .toBe(1);
-  });
-
-  it('and a pane boxed in on every side gets no lens at all', () => {
-    // The centre gutter with the assistant open: page on one side,
-    // sub-page on the other, window above and below. Nothing of it is
-    // an edge, so there is nothing to bend and no filter to mount.
-    const gutter = box(700, 0, 8, 900);
-    const page = box(0, 0, 700, 900);
-    const sub = box(708, 0, 692, 900);
-    expect(openSpans(gutter, [page, sub], VIEW), 'a fully enclosed strip still bends').toEqual([]);
-  });
-
-  it('and two panes that end differently do not share a filter', () => {
+describe('a filter is named after where its pane ends', () => {
+  it('and two panes that end differently do not share one', () => {
     const a: OpenSpan[] = [{ side: 'right', from: 0, to: 800 }];
     const b: OpenSpan[] = [{ side: 'right', from: 48, to: 800 }];
     expect(spanKey(a)).not.toBe(spanKey(b));
     expect(lensFilterId(240, 800, 0, a)).not.toBe(lensFilterId(240, 800, 0, b));
+  });
+
+  it('and a pane with no spans measured keeps the plain name', () => {
+    // `undefined` is not an empty list: it means the question could not
+    // be asked, and such a pane is drawn as a lone one — the same
+    // filter it had before any of this existed.
+    expect(lensFilterId(240, 800, 0)).toBe('lens-240x800r0');
   });
 });

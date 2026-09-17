@@ -24,7 +24,8 @@
  * element: a 3px difference in width moves the band by a fraction of a
  * map column, and nobody can see it.
  */
-import { bevelMap, type Bevel, type OpenSpan, type LensMap } from './lens';
+import { bevelMap, type Bevel, type LensMap } from './lens';
+import { readEdges, SURFACES, type OpenSpan } from './edges';
 
 /**
  * How coarsely sizes are rounded before they become a filter.
@@ -65,69 +66,6 @@ export const lensFilterId = (
 ): string => (open
   ? `lens-${w}x${h}r${Math.round(r)}-${spanKey(open)}`
   : `lens-${w}x${h}r${Math.round(r)}`);
-
-/**
- * How close two panes have to be before the gap between them stops
- * being a gap.
- *
- * A fraction of a pixel of rounding, not a design tolerance: the
- * frame's sides are laid out flush, and what varies is subpixel layout
- * and the Size multiplier's rounding. Anything wider is a real gap, and
- * a real gap means the glass really does end there.
- */
-const SEAM = 1.5;
-
-/** What is left of `[0, len]` after the closed stretches are taken out
- *  of it. Anything shorter than a seam is not a stretch of edge. */
-function remaining(len: number, closed: [number, number][]): [number, number][] {
-  const out: [number, number][] = [];
-  let at = 0;
-  for (const [a, b] of [...closed].sort((p, q) => p[0] - q[0])) {
-    if (a > at + SEAM) out.push([at, Math.min(a, len)]);
-    at = Math.max(at, b);
-    if (at >= len) break;
-  }
-  if (at < len - SEAM) out.push([at, len]);
-  return out.filter(([a, b]) => b - a > SEAM);
-}
-
-/**
- * Where this pane's glass actually ends, measured rather than declared.
- *
- * Two things are not edges and both are read off the layout: a side
- * with another pane flush against it is a SEAM for exactly the stretch
- * they share, and a side lying on the window's own boundary has nothing
- * beyond it to bend.
- */
-export function openSpans(
-  rect: DOMRect, others: readonly DOMRect[], view: { innerWidth: number; innerHeight: number },
-): OpenSpan[] {
-  const out: OpenSpan[] = [];
-  const add = (side: OpenSpan['side'], len: number, closed: [number, number][], onWindow: boolean) => {
-    if (onWindow) return;
-    for (const [from, to] of remaining(len, closed)) out.push({ side, from, to });
-  };
-
-  const closed: Record<OpenSpan['side'], [number, number][]> = {
-    top: [], right: [], bottom: [], left: [],
-  };
-  for (const o of others) {
-    const overY: [number, number] = [
-      Math.max(o.top, rect.top) - rect.top, Math.min(o.bottom, rect.bottom) - rect.top];
-    const overX: [number, number] = [
-      Math.max(o.left, rect.left) - rect.left, Math.min(o.right, rect.right) - rect.left];
-    if (Math.abs(o.right - rect.left) <= SEAM && overY[1] - overY[0] > SEAM) closed.left.push(overY);
-    if (Math.abs(o.left - rect.right) <= SEAM && overY[1] - overY[0] > SEAM) closed.right.push(overY);
-    if (Math.abs(o.bottom - rect.top) <= SEAM && overX[1] - overX[0] > SEAM) closed.top.push(overX);
-    if (Math.abs(o.top - rect.bottom) <= SEAM && overX[1] - overX[0] > SEAM) closed.bottom.push(overX);
-  }
-
-  add('left', rect.height, closed.left, rect.left <= SEAM);
-  add('right', rect.height, closed.right, rect.right >= view.innerWidth - SEAM);
-  add('top', rect.width, closed.top, rect.top <= SEAM);
-  add('bottom', rect.width, closed.bottom, rect.bottom >= view.innerHeight - SEAM);
-  return out;
-}
 
 /** Turns a map into something `feImage` can load. Injected rather than
  *  called directly so the mounting can be tested without a canvas —
@@ -247,11 +185,6 @@ export function applyLens(
   el.style.setProperty(LENS_VAR, `url(#${id})`);
 }
 
-/** Every surface the stylesheet might spend a lens on. Deliberately the
- *  WHOLE class and not the translucent subset — see the file docstring:
- *  choosing here is how the selector ends up written twice. */
-const SURFACES = '.surface';
-
 export interface LensInstall {
   readonly doc: Document;
   readonly view: Window;
@@ -290,12 +223,12 @@ export function installLens({ doc, view, bevel, encode }: LensInstall): () => vo
   const draw = encode ?? canvasEncoder(doc);
 
   const ro = new RO((entries) => {
-    // EVERY pane's box, not just the ones that resized: a seam is a
-    // fact about two panes, and the one that moved is rarely the one
-    // whose edge just closed. Gathered here with the other reads, ahead
-    // of the first write, so it costs the same single layout.
-    const boxes: DOMRect[] = [];
-    doc.querySelectorAll(SURFACES).forEach((n) => boxes.push(n.getBoundingClientRect()));
+    // EVERY pane's edges, not just the ones that resized: a seam is a
+    // fact about TWO panes, and the one that moved is rarely the one
+    // whose edge just closed. One reading, from the service that owns
+    // the question — folded in with the other reads, ahead of the first
+    // write, so it costs a single layout however many axes ask.
+    const edges = readEdges(doc, view);
 
     // Read every shape first…
     const work: {
@@ -306,21 +239,7 @@ export function installLens({ doc, view, bevel, encode }: LensInstall): () => vo
       const box = e.borderBoxSize?.[0];
       const w = box ? box.inlineSize : e.contentRect.width;
       const h = box ? box.blockSize : e.contentRect.height;
-      // WHERE IT IS, which is a different question from how big it is.
-      // An element with no measurable box — not laid out, or an
-      // environment that does not do layout — cannot be told apart from
-      // its neighbours, and inventing seams from zeroes would silently
-      // take the lens off everything. Unmeasured means a lone pane:
-      // every side an edge, which is what it was before any of this.
-      const rect = el.getBoundingClientRect();
-      const placed = rect.width > 0 && rect.height > 0;
-      // Its own box is in the list; a pane is not its own neighbour.
-      const others = boxes.filter((b) => b !== rect
-        && !(b.left === rect.left && b.top === rect.top && b.width === rect.width && b.height === rect.height));
-      work.push({
-        el, w, h, r: radiusOf(el, view),
-        open: placed ? openSpans(rect, others, view) : undefined,
-      });
+      work.push({ el, w, h, r: radiusOf(el, view), open: edges.of(el) });
     }
     // …then write every one of them.
     for (const { el, w, h, r, open } of work) applyLens(el, w, h, r, bevel, doc, draw, open);
