@@ -262,6 +262,11 @@ export interface Vehicle {
   /** Row-level freshness — freshest known reading time (GPS, else
    *  fuel/DEF) emitted by the list endpoint's _simplify. */
   time?: string;
+  /** How old this row's readings may be before they mislead, in
+   *  minutes — the vehicle-state dataset's declared freshness_sla_min,
+   *  stamped by _simplify.  Freshness cues fire at THIS age, not the
+   *  flat hour, so the screen agrees with the reader and the watchdog. */
+  sla_min?: number;
   /** Registry row id for the manage UI's edit/delete.  Null for a
    *  live-only vehicle the registry hasn't caught yet. */
   registry_id?: number | null;

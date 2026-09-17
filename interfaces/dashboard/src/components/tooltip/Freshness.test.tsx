@@ -65,4 +65,31 @@ describe('Freshness thresholds', () => {
     render(<Freshness ts={'2025-06-26T20:03:22Z'}>Anaheim</Freshness>);
     expect(screen.getByText(/· Jun 26, 2025/)).toBeTruthy();
   });
+
+  // The hour is a default, not the policy.  A reading whose dataset
+  // declares its own tolerance gets the dot at THAT age — the same age
+  // the backend reader falls back and the watchdog pages — so the
+  // screen stops disagreeing with the other two.
+  it('a declared SLA fires the dot before the flat hour', () => {
+    render(<Freshness ts={iso(20)} sla={15}>Idle</Freshness>);
+    expect(document.querySelector('[aria-label="updated 20m ago"]')).toBeTruthy();
+    expect(screen.queryByText(/·/)).toBeNull();          // inline age still 24h
+  });
+
+  it('the same age with no declared SLA keeps the hour: no dot', () => {
+    render(<Freshness ts={iso(20)}>Idle</Freshness>);
+    expect(document.querySelector('[aria-label^="updated"]')).toBeNull();
+  });
+
+  it('a declared SLA longer than the hour holds the dot back', () => {
+    // Day-grain data is not stale at 90 minutes just because an hour
+    // passed — its dataset says two days.
+    render(<Freshness ts={iso(90)} sla={2 * 24 * 60}>7.2 mpg</Freshness>);
+    expect(document.querySelector('[aria-label^="updated"]')).toBeNull();
+  });
+
+  it('a non-positive or missing SLA is "no declaration", not "always stale"', () => {
+    render(<Freshness ts={iso(20)} sla={0}>Idle</Freshness>);
+    expect(document.querySelector('[aria-label^="updated"]')).toBeNull();
+  });
 });

@@ -180,7 +180,7 @@ const ALL_COLUMNS: AnyColumn[] = [
     // freshest known reading for the row (_simplify: GPS, else
     // fuel/DEF), so a frozen row announces itself in the list.
     render: (v, row) => (
-      <Freshness ts={(row as Vehicle).time ?? null}>
+      <Freshness ts={(row as Vehicle).time ?? null} sla={(row as Vehicle).sla_min}>
         <StatusBadge status={v as string} />
       </Freshness>
     ),

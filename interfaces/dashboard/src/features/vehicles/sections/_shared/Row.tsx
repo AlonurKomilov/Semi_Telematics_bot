@@ -15,14 +15,17 @@ interface RowProps {
   ts?: string | null;
   /** Forwarded to Freshness — false = tooltip only, no visible cue. */
   cue?: boolean;
+  /** Forwarded to Freshness — the reading's own tolerance in minutes
+   *  (the row's ``sla_min``); absent = the flat hour. */
+  sla?: number | null;
 }
 
-export function Row({ label, value, children, ts, cue }: RowProps) {
+export function Row({ label, value, children, ts, cue, sla }: RowProps) {
   const content = children || <span>{value ?? '—'}</span>;
   return (
     <div className="flex justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      {ts ? <Freshness ts={ts} cue={cue}>{content}</Freshness> : content}
+      {ts ? <Freshness ts={ts} cue={cue} sla={sla}>{content}</Freshness> : content}
     </div>
   );
 }

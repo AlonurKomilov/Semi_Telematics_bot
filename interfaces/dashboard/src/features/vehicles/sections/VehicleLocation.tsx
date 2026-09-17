@@ -28,6 +28,7 @@ export default function VehicleLocation({ vehicleName, company }: VehicleSection
         longitude={loc.longitude ?? v.longitude ?? null}
         speedMph={v.speed_mph ?? null}
         ts={loc.time ?? null}
+        sla={v.sla_min}
       />
     </Card>
   );

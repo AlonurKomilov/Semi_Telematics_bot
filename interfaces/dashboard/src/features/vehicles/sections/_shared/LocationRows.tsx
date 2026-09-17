@@ -18,6 +18,8 @@ interface LocationRowsProps {
    *  visible staleness cue; Speed/Coordinates get tooltip-only so a
    *  stale fix doesn't paint three dots. */
   ts?: string | null;
+  /** The fix's own tolerance in minutes (the row's ``sla_min``). */
+  sla?: number | null;
 }
 
 export function LocationRows({
@@ -26,6 +28,7 @@ export function LocationRows({
   longitude,
   speedMph,
   ts,
+  sla,
 }: LocationRowsProps) {
   const [copied, setCopied] = useState(false);
   const hasCoords = latitude != null && longitude != null;
@@ -49,7 +52,7 @@ export function LocationRows({
     <>
       <div className="flex justify-between text-sm gap-3">
         <span className="text-muted-foreground flex-shrink-0">Address</span>
-        <Freshness ts={ts}>
+        <Freshness ts={ts} sla={sla}>
           {address && mapsHref ? (
             <Tip label="Open in Google Maps">
             <a

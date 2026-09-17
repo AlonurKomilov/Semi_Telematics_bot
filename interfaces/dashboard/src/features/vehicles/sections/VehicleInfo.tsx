@@ -54,14 +54,14 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
           four rows.  Without a callout an empty state still says "No
           data" rather than "unknown": we are not confused about the
           engine, we know nothing arrived. */}
-      <Row label="Engine" ts={v.location?.time}>
+      <Row label="Engine" sla={v.sla_min} ts={v.location?.time}>
         {(v.engineState || v.engine_state)
           ? <StatusBadge status={v.engineState || v.engine_state || ''} />
           : blindCallout
             ? <CalloutInline callout={blindCallout} explained />
             : <StatusBadge status="no data" />}
       </Row>
-      <Row label="Fuel" ts={v.fuel?.time}>
+      <Row label="Fuel" sla={v.sla_min} ts={v.fuel?.time}>
         {fuel != null ? (
           <span>{`${Math.round(fuel)}%`}</span>
         ) : blindCallout ? (
@@ -70,7 +70,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
           <span>—</span>
         )}
       </Row>
-      {defPct != null && <Row label="DEF" ts={v.def_level?.time} value={`${Math.round(defPct)}%`} />}
+      {defPct != null && <Row label="DEF" sla={v.sla_min} ts={v.def_level?.time} value={`${Math.round(defPct)}%`} />}
       {/* Odometer + engine hours both come from the warehouse via
           /api/vehicles/{name}, refreshed every 60s by
           ingest_vehicle_state.  Always rendered so users can see the
@@ -78,7 +78,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
           when the device is the reason it is empty, the bare "—" is
           replaced by the callout that says so, because an unexplained
           dash reads as OUR bug rather than a truck's wiring. */}
-      <Row label="Odometer" ts={v.odometer_time}>
+      <Row label="Odometer" sla={v.sla_min} ts={v.odometer_time}>
         {v.odometer_miles != null ? (
           <span>{`${Math.round(v.odometer_miles).toLocaleString()} mi`}</span>
         ) : blindCallout ? (
@@ -87,7 +87,7 @@ export default function VehicleInfo({ vehicleName, company }: VehicleSectionProp
           <span>—</span>
         )}
       </Row>
-      <Row label="Engine Hours" ts={v.engine_hours_time}>
+      <Row label="Engine Hours" sla={v.sla_min} ts={v.engine_hours_time}>
         {v.engine_hours != null ? (
           <span>{`${Math.round(v.engine_hours).toLocaleString()} h`}</span>
         ) : blindCallout ? (

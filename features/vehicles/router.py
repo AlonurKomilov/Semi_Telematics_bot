@@ -40,6 +40,7 @@ from interfaces.api.deps import (
     resolve_user_id,
 )
 from capabilities import source as reconciliation
+from capabilities.data_lifecycle.staleness import sla_minutes
 from features.vehicles.service import (
     get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,
@@ -209,6 +210,11 @@ def _simplify(v: dict) -> dict:
         "id": v.get("id"),
         "name": v.get("name", ""),
         "company": v.get("_org", ""),
+        # How old these readings may be before they mislead — the
+        # vehicle-state dataset's declared tolerance, on the row so
+        # every cue that renders it fires at the age the reader falls
+        # back and the watchdog pages.  One number, not a fourth one.
+        "sla_min": sla_minutes("vehicles.state"),
         # Registry fields — drive the Type column + source hint on the
         # Vehicles page.  Default to truck/samsara for any live row the
         # registry overlay didn't tag (steady state: none).
