@@ -175,10 +175,10 @@ def extension_route_allowed(request) -> bool:
     return normalize_api_path(_request_path(request)) in _EXTENSION_ROUTES
 
 
-async def get_current_user(
+async def _resolve_request_identity(
     request: Request,
-    authorization: str | None = Header(default=None),
-    auth_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
+    authorization: str | None,
+    auth_token: str | None,
 ):
     """Extract and validate JWT from either the Authorization header
     or the cross-subdomain auth cookie.
@@ -249,6 +249,17 @@ async def get_current_user(
             logging.getLogger("api.deps").warning(
                 "scoped token outside its routes: jti=%s path=%s", jti, _request_path(request))
             raise HTTPException(status_code=403, detail="This token is scoped to the live map.")
+        from interfaces.api.auth import validate_session_payload
+        try:
+            payload = await validate_session_payload(payload)
+        except JWTError as exc:
+            last_error = exc
+            continue
+        # Row-less platform operators have no customer permissions.
+        if not payload.get("uid") and payload.get("account_id") == 0:
+            path = normalize_api_path(_request_path(request))
+            if not path.startswith("/system/") and path not in ("/auth/logout", "/auth/refresh"):
+                raise HTTPException(status_code=403, detail="Operator session is restricted to the system console")
         _fire_heartbeats(payload)
         # Stamp the account onto the request so outer middleware (the
         # capacity metering counter) can attribute this request to a
@@ -277,6 +288,40 @@ async def get_current_user(
         status_code=401,
         detail=f"Invalid or expired token: {last_error}" if last_error else "Invalid token",
     )
+
+
+async def resolve_request_identity(
+    request: Request, authorization: str | None = None, auth_token: str | None = None,
+) -> dict:
+    """One credential decision per request, shared by enforcement and routes.
+
+    Cache failures too: a route must not retry a different identity after
+    middleware has already decided which session it is enforcing.
+    """
+    state = request.state
+    cached = getattr(state, "_auth_identity", None)
+    if isinstance(cached, HTTPException):
+        raise cached
+    if cached is not None:
+        return cached
+    authorization = authorization if authorization is not None else request.headers.get("authorization")
+    auth_token = auth_token if auth_token is not None else request.cookies.get(AUTH_COOKIE_NAME)
+    try:
+        identity = await _resolve_request_identity(request, authorization, auth_token)
+    except HTTPException as exc:
+        state._auth_identity = exc
+        raise
+    state._auth_identity = identity
+    return identity
+
+
+async def get_current_user(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    auth_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
+):
+    """Require the same verified identity that request middleware uses."""
+    return await resolve_request_identity(request, authorization, auth_token)
 
 
 async def resolve_user_id(user: dict) -> int:
@@ -410,8 +455,8 @@ async def get_user_company_codes(user: dict) -> list[str]:
         return []
     platform_db = _get_router().platform
     db_user = await get_current_db_user(user, platform_db)
-    if not db_user:
-        return []
+    if not db_user or db_user.account_id != user["account_id"]:
+        raise HTTPException(status_code=401, detail="User no longer active")
     # Per-user company assignment (Team Management); empty = all companies.
     return await platform_db.get_user_company_codes(db_user.id)
 
@@ -503,27 +548,18 @@ def filter_by_company_map(
     company_map: dict,
     key: str = "vehicle_name",
 ) -> list[dict]:
-    """Company-filter rows whose company ISN'T on the row itself.
+    """Only verified company membership grants a restricted caller access.
 
-    For endpoints whose rows carry no company column (alerts → vehicle,
-    drivers → user_id, coaching → samsara driver_id): the caller builds a
-    ``row[key] → company-code(s)`` map and passes it here.
-
-    FAIL-OPEN on ambiguity so legitimate data is never hidden:
-      • ``allowed_codes`` empty → unrestricted → all rows.
-      • ``company_map`` empty (source cold/unavailable) → all rows.
-      • a row whose key isn't in the map (unresolved) → kept.
-    A row is dropped ONLY when its company is KNOWN and excluded.  Map
-    values may be a single code (str) or a list of codes.
+    An empty allowed_codes list is a verified unrestricted assignment.
+    An empty company map or an unresolved row grants nothing.
     """
-    if not allowed_codes or not company_map:
+    if not allowed_codes:
         return rows
     allowed_upper = {c.upper() for c in allowed_codes}
     out = []
     for r in rows:
         codes = company_map.get(r.get(key))
         if not codes:
-            out.append(r)  # unresolved → keep (fail-open)
             continue
         if isinstance(codes, str):
             codes = [codes]
@@ -533,25 +569,16 @@ def filter_by_company_map(
 
 
 async def vehicle_company_map(account_id: int, tenant_db) -> dict:
-    """``vehicle_id -> company_code`` for one account.
+    """Provider vehicle id -> verified company, from the durable registry.
 
-    The companion to :func:`filter_by_company_map` for rows that carry no
-    company column of their own — camera checks, alerts — where the
-    company lives on the VEHICLE.
-
-    Keyed by ``vehicle_id`` (globally unique), NOT ``vehicle_name``:
-    names collide across companies (truck "103" can exist in two), and a
-    name key would silently mis-map one of them.
-
-    Best-effort — any read failure returns ``{}``, which makes
-    ``filter_by_company_map`` fail OPEN (shows everything) rather than
-    hiding every row behind a cold data source.
+    A telemetry cache going cold cannot change ownership. Ambiguous ids
+    grant nothing; a failed authorization lookup is a temporary error.
     """
     try:
-        states = await tenant_db.get_vehicle_state(account_id)
-        return {s.get("vehicle_id"): s.get("company_code") for s in states}
+        return await tenant_db.get_vehicle_company_codes(account_id)
     except Exception:
-        return {}
+        _log.exception("Vehicle company lookup failed for account %s", account_id)
+        raise HTTPException(status_code=503, detail="Company access verification temporarily unavailable") from None
 
 
 async def get_user_vehicle_scope(user: dict) -> "VehicleScope | None":

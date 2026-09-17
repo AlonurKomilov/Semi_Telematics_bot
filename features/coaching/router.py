@@ -96,8 +96,7 @@ async def list_assignments(
             user["account_id"], driver_id=driver_id, status=status, limit=limit,
         )
         # Company scoping — restricted users see only their companies'
-        # drivers' coaching.  Fail-open: a driver whose Samsara id isn't
-        # linked to a user/company stays visible.
+        # drivers' coaching. An unlinked driver grants no company access.
         allowed = await get_user_company_codes(user)
         if allowed:
             drv_map = await platform_db.get_driver_company_codes_by_samsara(user["account_id"])

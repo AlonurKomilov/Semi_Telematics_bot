@@ -349,6 +349,7 @@ class _DatabaseCore:
     def _row_to_user(self, row) -> User:
         return User(
             id=row["id"], telegram_id=row["telegram_id"],
+            auth_version=int(row["auth_version"]),
             account_id=row["account_id"],
             role=Role.from_str(row["role"]),
             truck_num=row["truck_num"],

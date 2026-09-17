@@ -283,6 +283,7 @@ def create_jwt(
     remember_me: bool = False,
     jti: str | None = None,
     user_id: int | None = None,
+    auth_version: int = 0,
     is_manager: bool = False,
     is_primary_owner: bool = False,
     aud: str | None = None,
@@ -327,13 +328,13 @@ def create_jwt(
         "remember": bool(remember_me),
         "exp": now + ttl,
         "iat": now,
+        "auth_version": auth_version,
         "jti": jti or secrets.token_urlsafe(16),
     }
     if user_id and user_id > 0:
         payload["uid"] = int(user_id)
-    # Manager tier — carried so the permission overlay is stateless (no
-    # per-request DB read).  Omitted when False to keep legacy tokens
-    # forward-compatible; deps default a missing claim to False.
+    # Role flags describe the sign-in snapshot. Request validation
+    # replaces them with the current database state before authorization.
     if is_manager:
         payload["is_manager"] = True
     # Primary-owner flag — lets enforcement resolve the PRIMARY owner (full)
@@ -353,7 +354,7 @@ def create_jwt(
 # console can show where a user is logged in.  Captures: parsed device
 # label, raw User-Agent, client IP (from X-Forwarded-For), the JWT's
 # ``jti`` (so a future revoke can target a specific device), and the
-# JWT's expiry.  Failures are warning-logged but never break auth.
+# JWT's expiry. A customer token is returned only after its row exists.
 
 def _parse_user_agent(ua: str) -> str:
     """Return a short, human-readable device label from a User-Agent.
@@ -411,6 +412,49 @@ def _client_ip(request: Request) -> str:
     return (request.client.host if request.client else "")[:64]
 
 
+async def validate_session_payload(payload: dict, db=None) -> dict:
+    """Revalidate customer identity against durable state on every request.
+
+    Old tokens without a version require a new login. Redis is only a
+    fast revocation signal; database state remains authoritative when
+    Redis is unavailable or another worker has a positive-cache entry.
+    """
+    if type(payload.get("auth_version")) is not int:
+        raise JWTError("Session predates security update. Sign in again.")
+    try:
+        account_id = int(payload.get("account_id", -1))
+        uid = int(payload.get("uid") or 0)
+        telegram_id = int(payload.get("sub") or 0)
+    except (TypeError, ValueError):
+        raise JWTError("Invalid session identity") from None
+    if account_id == 0 and not uid:
+        from capabilities.permissions.roles import is_system_owner
+        if not is_system_owner(telegram_id):
+            raise JWTError("Unknown platform operator")
+        return payload
+    if account_id <= 0:
+        raise JWTError("Invalid account")
+    if db is None:
+        from infra.platform import get_platform_db
+        db = get_platform_db()
+    try:
+        if not uid:
+            legacy_user = await db.get_user_by_telegram_id(telegram_id)
+            uid = legacy_user.id if legacy_user else 0
+        state = await db.get_user_auth_state(uid, str(payload.get("jti") or ""))
+    except Exception:
+        logging.getLogger("api.auth").exception("Session state lookup failed")
+        raise HTTPException(status_code=503, detail="Sign-in verification temporarily unavailable") from None
+    if (not state or not state["is_active"] or state["account_id"] != account_id
+            or state["auth_version"] != payload["auth_version"] or state["revoked_at"]):
+        raise JWTError("Session is no longer valid. Sign in again.")
+    # A token proves identity; current storage decides the person's role.
+    return {**payload, "uid": state["id"], "role": state["role"],
+            "sub": str(state["telegram_id"] or 0),
+            "is_manager": bool(state["is_manager"]),
+            "is_primary_owner": bool(state["is_primary_owner"])}
+
+
 async def mint_session_token(
     db,
     request: Request,
@@ -420,6 +464,7 @@ async def mint_session_token(
     account_id: int,
     role: str,
     remember_me: bool,
+    auth_version: int = 0,
     is_manager: bool = False,
     is_primary_owner: bool = False,
     aud: str | None = None,
@@ -451,6 +496,11 @@ async def mint_session_token(
     from datetime import datetime, timezone
 
     if account_id and account_id > 0:
+        try:
+            await validate_session_payload({"uid": user_id, "sub": str(telegram_id or 0),
+                "account_id": account_id, "auth_version": auth_version}, db)
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Identity changed during sign-in. Try again.") from None
         try:
             lc = await db.get_account_lifecycle(account_id)
         except Exception:
@@ -508,49 +558,45 @@ async def mint_session_token(
         telegram_id, account_id, role,
         remember_me=remember_me, jti=jti,
         user_id=user_id if (user_id and user_id > 0) else None,
+        auth_version=auth_version,
         is_manager=is_manager,
         is_primary_owner=is_primary_owner,
         aud=aud, scope=scope,
     )
     if user_id and user_id > 0:
+        now_dt = datetime.now(timezone.utc)
+        exp_ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
+        ua = (request.headers.get("user-agent") or "")[:500]
+        device_label = device_label or _parse_user_agent(ua)
+        client_ip = _client_ip(request)
+        from interfaces.api.security_notifications import (
+            announce_new_device_signin, is_new_device)
+        notify_new_device = always_notify
         try:
-            now_dt = datetime.now(timezone.utc)
-            exp_ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
-            ua = (request.headers.get("user-agent") or "")[:500]
-            # A client that names itself gets its own label in Active
-            # Sessions — "Browser extension" is a different device from
-            # "Chrome on Windows" even when it is the same laptop, because
-            # it holds a different token.
-            device_label = device_label or _parse_user_agent(ua)
-            client_ip = _client_ip(request)
-            # New-device sign-in notice (system.security) — checked BEFORE
-            # the new session row is inserted so it can't match itself.
-            # Both the check and the announce are non-fatal by construction.
-            from interfaces.api.security_notifications import (
-                announce_new_device_signin, is_new_device)
             notify_new_device = always_notify or await is_new_device(db, user_id, device_label)
+        except Exception:
+            logging.getLogger("api.auth").exception("New-device lookup failed for user %s", user_id)
+        # A credential must have a durable revocation record before it leaves.
+        # Notification delivery is independent of this security requirement.
+        try:
             session_id = await db.create_user_session(
-                user_id=user_id,
-                jti=jti,
-                device_label=device_label,
-                user_agent=ua,
-                ip=client_ip,
-                created_at=now_dt.isoformat(),
-                last_seen=now_dt.isoformat(),
-                expires_at=datetime.fromtimestamp(
-                    int(now_dt.timestamp()) + exp_ttl, tz=timezone.utc
-                ).isoformat(),
+                user_id=user_id, jti=jti, device_label=device_label,
+                user_agent=ua, ip=client_ip, created_at=now_dt.isoformat(),
+                last_seen=now_dt.isoformat(), expires_at=datetime.fromtimestamp(
+                    int(now_dt.timestamp()) + exp_ttl, tz=timezone.utc).isoformat(),
             )
-            if notify_new_device:
+            if session_id is None:
+                raise RuntimeError("Session row was not recorded")
+        except Exception:
+            logging.getLogger("api.auth").exception("Session record failed for user %s", user_id)
+            raise HTTPException(status_code=503, detail="Could not create a session. Try again.") from None
+        if notify_new_device:
+            try:
                 await announce_new_device_signin(
-                    db, account_id, user_id,
-                    device_label=device_label, ip=client_ip,
-                    session_id=session_id)
-        except Exception as e:
-            # Session bookkeeping is non-critical — never break login.
-            logging.getLogger("api.auth").warning(
-                "session record failed for user_id=%s: %s", user_id, e
-            )
+                    db, account_id, user_id, device_label=device_label,
+                    ip=client_ip, session_id=session_id)
+            except Exception:
+                logging.getLogger("api.auth").exception("Sign-in notice failed for user %s", user_id)
     return token
 
 
@@ -571,10 +617,8 @@ def decode_jwt(token: str) -> dict:
 #      the flag on every authenticated request and 401s if it hits.
 #
 # Redis is a fast-path cache, not the source of truth.  When Redis is
-# unavailable both ``setex_flag`` and ``exists`` no-op (see infra.cache),
-# which means revocation silently soft-degrades to "kicks in at JWT
-# expiry".  That trade-off is acceptable for a fleet console — the row
-# is still marked revoked in the DB and the operator can see it.
+# unavailable, validate_session_payload still reads the user version
+# and user_sessions.revoked_at from Postgres before granting access.
 
 _DENYLIST_KEY_PREFIX = "revoked_jti:"
 
@@ -622,9 +666,8 @@ async def is_jti_revoked(jti: str) -> bool:
     try:
         return await _cache_exists(_denylist_key(jti))
     except Exception:
-        # Soft-degrade: any unexpected error here is treated as "not
-        # revoked" so a Redis hiccup can't lock everyone out of the
-        # dashboard.  The DB row is still correct for audit / display.
+        # The durable state check in validate_session_payload still
+        # enforces customer revocation when this fast signal is absent.
         return False
 
 
@@ -734,10 +777,13 @@ async def refresh_token(request: Request, response: Response, authorization: str
         # would turn a fifteen-minute setup window into a standing key.
         raise HTTPException(status_code=403, detail="Finish setting up your company first.")
 
-    telegram_id = int(payload["sub"])
-    user = await db.get_user_by_telegram_id(telegram_id)
+    try:
+        payload = await validate_session_payload(payload, db)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Session is no longer valid. Sign in again.") from None
+    user = await db.get_user_by_id(int(payload.get("uid") or 0))
     if not user or not user.is_active:
-        raise HTTPException(status_code=403, detail="User no longer active")
+        raise HTTPException(status_code=401, detail="User no longer active")
 
     # Preserve the original session length — if the user opted into a
     # long-lived session at login, refresh extends THAT, not a short
@@ -754,6 +800,7 @@ async def refresh_token(request: Request, response: Response, authorization: str
     new_token = create_jwt(
         user.telegram_id, user.account_id, user.role.value,
         remember_me=remember, jti=new_jti,
+        auth_version=payload["auth_version"],
         user_id=user.id,
         # Re-read from DB so a manager-tier / owner-tier / role change
         # propagates to enforcement on the next token refresh.
@@ -879,6 +926,7 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
+        auth_version=user.auth_version,
         account_id=user.account_id, role=user.role.value,
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
@@ -1015,6 +1063,7 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
+        auth_version=user.auth_version,
         account_id=user.account_id, role=user.role.value,
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
@@ -1266,6 +1315,7 @@ async def auth_system_telegram_login(
         token = await mint_session_token(
             db, request,
             user_id=user.id, telegram_id=user.telegram_id,
+            auth_version=user.auth_version,
             account_id=user.account_id, role=user.role.value,
             is_manager=user.is_manager,
             is_primary_owner=user.is_primary_owner,
@@ -1340,6 +1390,7 @@ async def auth_system_telegram_init(request: Request, body: AuthRequest):
         token = await mint_session_token(
             db, request,
             user_id=user.id, telegram_id=user.telegram_id,
+            auth_version=user.auth_version,
             account_id=user.account_id, role=user.role.value,
             is_manager=user.is_manager,
             is_primary_owner=user.is_primary_owner,
@@ -1452,11 +1503,20 @@ async def bot_login_check(request: Request, response: Response, token: str):
         # default per ``registration.start_bot_login_approval``).
         access_token = data.get("access_token", "")
         if access_token:
+            from infra.platform import get_platform_db
+            db = get_platform_db()
             try:
-                claims = decode_jwt(access_token)
-                remember = bool(claims.get("remember", True))
-            except Exception:
-                remember = True
+                claims = await validate_session_payload(decode_jwt(access_token), db)
+            except JWTError:
+                raise HTTPException(status_code=401, detail="Login approval expired. Sign in again.") from None
+            remember = bool(claims.get("remember", True))
+            access_token = await mint_session_token(
+                db, request, user_id=claims["uid"], telegram_id=int(claims["sub"]),
+                account_id=claims["account_id"], role=claims["role"],
+                auth_version=claims["auth_version"], remember_me=remember,
+                is_manager=claims["is_manager"], is_primary_owner=claims["is_primary_owner"],
+            )
+            data = {**data, "access_token": access_token}
             _set_auth_cookie(response, access_token, remember_me=remember)
         return data
 
@@ -1670,6 +1730,7 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
+        auth_version=user.auth_version,
         account_id=user.account_id, role=user.role.value,
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
@@ -1972,7 +2033,7 @@ async def _resolve_google_user(db, g: dict, *, ua: str, ip: str):
         await db.link_google_to_user(user.id, g["sub"], g["email"])
     except ValueError:
         raise await _miss("google_link_refused", user.id)
-    return user, True
+    return await db.get_user_by_id(user.id), True
 
 
 def _auth_user_dict(user, name: str | None = None) -> dict:
@@ -1998,6 +2059,7 @@ async def _resume_setup_if_pending(db, request: Request, user) -> dict | None:
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=None,
+        auth_version=user.auth_version,
         account_id=user.account_id, role=user.role.value,
         remember_me=False, aud=SETUP_AUDIENCE, scope=(),
         device_label="setup", always_notify=False,
@@ -2035,6 +2097,7 @@ async def google_login(
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
+        auth_version=user.auth_version,
         account_id=user.account_id, role=user.role.value,
         is_manager=user.is_manager,
         is_primary_owner=user.is_primary_owner,
@@ -2123,6 +2186,7 @@ async def google_register(request: Request, body: GoogleRegisterRequest):
         token = await mint_session_token(
             db, request,
             user_id=user.id, telegram_id=None,
+            auth_version=user.auth_version,
             account_id=user.account_id, role=user.role.value,
             remember_me=False,
         )
@@ -2166,6 +2230,7 @@ async def google_register(request: Request, body: GoogleRegisterRequest):
     setup_token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=None,
+        auth_version=user.auth_version,
         account_id=account.id, role=user.role.value,
         remember_me=False, aud=SETUP_AUDIENCE, scope=(),
         device_label="setup", always_notify=False,
@@ -2198,6 +2263,10 @@ async def complete_setup(
         raise HTTPException(status_code=401, detail="Session revoked. Sign in again.")
     from infra.platform import get_platform_db
     db = get_platform_db()
+    try:
+        user_claims = await validate_session_payload(user_claims, db)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Setup session is no longer valid") from None
     user = await db.get_user_by_id(int(user_claims["uid"]))
     if not user or not user.is_active or user.role.value != "owner":
         raise HTTPException(status_code=404, detail="User not found")
@@ -2237,9 +2306,11 @@ async def complete_setup(
             await db.revoke_user_session_by_jti(str(user_claims["jti"]))
         except Exception as e:
             logging.getLogger("api.auth").warning("setup jti revoke failed: %s", e)
+    user = await db.get_user_by_id(user.id)
     token = await mint_session_token(
         db, request,
         user_id=user.id, telegram_id=None,
+        auth_version=user.auth_version,
         account_id=user.account_id, role=user.role.value,
         is_primary_owner=True, remember_me=False,
     )

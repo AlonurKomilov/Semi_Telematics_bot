@@ -58,7 +58,7 @@ class TestCameraCompanyWall:
     async def test_restricted_caller_sees_only_their_company(self, monkeypatch):
         cr = self._patch(monkeypatch, ["AAA"])
         got = await cr._company_scoped(self.CHECKS, {"account_id": 1}, None)
-        assert [c["id"] for c in got] == [1, 3]   # 3 unresolved -> kept
+        assert [c["id"] for c in got] == [1]   # unresolved ownership grants no access
 
     @pytest.mark.asyncio
     async def test_unrestricted_caller_sees_everything(self, monkeypatch):
@@ -79,12 +79,11 @@ class TestCameraCompanyWall:
             assert not await cr._company_scoped([c], {"account_id": 1}, None)
 
     @pytest.mark.asyncio
-    async def test_cold_map_fails_OPEN_not_closed(self, monkeypatch):
-        """A read failure yields {} — showing everything beats hiding a
-        fleet's whole camera history behind a transient outage."""
+    async def test_cold_map_grants_no_access(self, monkeypatch):
+        """Missing ownership cannot widen a restricted viewer's access."""
         cr = self._patch(monkeypatch, ["AAA"], veh_map={})
         got = await cr._company_scoped(self.CHECKS, {"account_id": 1}, None)
-        assert len(got) == 3
+        assert got == []
 
     @pytest.mark.asyncio
     async def test_keyed_on_id_because_names_collide_across_companies(

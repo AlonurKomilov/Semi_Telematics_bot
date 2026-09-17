@@ -486,6 +486,8 @@ async def _handle_bot_login(
     # session — same default we give Telegram Mini App / Login Widget.
     jwt_token = create_jwt(
         user.telegram_id, user.account_id, user.role.value,
+        user_id=user.id, auth_version=user.auth_version,
+        is_manager=user.is_manager, is_primary_owner=user.is_primary_owner,
         remember_me=True,
     )
 

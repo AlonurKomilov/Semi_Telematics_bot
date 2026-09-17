@@ -228,8 +228,8 @@ async def list_drivers(
     )
     rows = [_profile_to_dict(p) for p in drivers]
     # Company scoping — a restricted user sees only their companies' drivers.
-    # Fail-open: a driver with NO company assignment stays visible (so HR can
-    # still onboard / assign them); only known-other-company drivers drop.
+    # A restricted viewer needs verified company membership; unassigned
+    # drivers remain visible to unrestricted staff who can assign them.
     allowed = await get_user_company_codes(user)
     if allowed:
         user_map = await platform_db.get_all_user_company_codes(user["account_id"])

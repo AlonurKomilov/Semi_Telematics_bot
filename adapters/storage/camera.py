@@ -138,48 +138,50 @@ class CameraMixin:
                 logger.debug("camera prune: could not remove %s", full)
         return removed
 
+    async def get_camera_check(self, account_id: int, check_id: int) -> dict | None:
+        cur = await self._db.execute(
+            "SELECT * FROM camera_checks WHERE account_id = ? AND id = ?",
+            (account_id, check_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def get_camera_check_history(
         self, account_id: int, limit: int = 30,
         vehicle_name: str | None = None,
         latest_only: bool = False,
+        *, vehicle_ids: list[str] | None = None,
     ) -> list[dict]:
-        """Get recent camera check history, newest first.
+        """Apply account and vehicle access before latest-selection and limit.
 
-        Optionally filter by vehicle_name.
-        If latest_only=True, return only the most recent check per vehicle.
+        None is unrestricted; [] explicitly allows no vehicles. Latest
+        checks are grouped by vehicle identity, never a reusable name.
         """
+        if vehicle_ids == []:
+            return []
+        where = ["account_id = ?"]
+        params: list = [account_id]
+        if vehicle_name:
+            where.append("vehicle_name = ?")
+            params.append(vehicle_name)
+        if vehicle_ids is not None:
+            where.append("vehicle_id IN (" + ",".join("?" for _ in vehicle_ids) + ")")
+            params.extend(vehicle_ids)
+        predicate = " AND ".join(where)
         if latest_only:
-            base = (
-                "SELECT c.* FROM camera_checks c "
-                "INNER JOIN ("
-                "  SELECT vehicle_name, camera_type, MAX(checked_at) AS max_ts "
-                "  FROM camera_checks WHERE account_id = ? "
-                "  GROUP BY vehicle_name, camera_type"
-                ") latest ON c.vehicle_name = latest.vehicle_name "
-                "  AND c.camera_type = latest.camera_type "
-                "  AND c.checked_at = latest.max_ts "
-                "WHERE c.account_id = ? "
-            )
-            params: list = [account_id, account_id]
-            if vehicle_name:
-                base += "AND c.vehicle_name = ? "
-                params.append(vehicle_name)
-            base += "ORDER BY c.checked_at DESC LIMIT ?"
-            params.append(limit)
-            cur = await self._db.execute(base, params)
-        elif vehicle_name:
-            cur = await self._db.execute(
-                "SELECT * FROM camera_checks "
-                "WHERE account_id = ? AND vehicle_name = ? "
-                "ORDER BY checked_at DESC LIMIT ?",
-                (account_id, vehicle_name, limit),
+            query = (
+                "SELECT * FROM (SELECT c.*, ROW_NUMBER() OVER ("
+                "PARTITION BY vehicle_id, camera_type ORDER BY checked_at DESC, id DESC"
+                ") AS camera_rank FROM camera_checks c WHERE " + predicate + ") ranked "
+                "WHERE camera_rank = 1 ORDER BY checked_at DESC, id DESC LIMIT ?"
             )
         else:
-            cur = await self._db.execute(
-                "SELECT * FROM camera_checks "
-                "WHERE account_id = ? "
-                "ORDER BY checked_at DESC LIMIT ?",
-                (account_id, limit),
-            )
-        rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+            query = "SELECT * FROM camera_checks WHERE " + predicate + " ORDER BY checked_at DESC, id DESC LIMIT ?"
+        params.append(limit)
+        cur = await self._db.execute(query, params)
+        out = []
+        for row in await cur.fetchall():
+            item = dict(row)
+            item.pop("camera_rank", None)
+            out.append(item)
+        return out

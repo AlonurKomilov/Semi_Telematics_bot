@@ -49,34 +49,21 @@ class TestTheWallItself:
             rows, ["G1"], {1: "G1", 2: "OSY"}, key="registry_id")
         assert kept == [{"registry_id": 1}]
 
-    def test_an_unresolved_row_is_kept_not_hidden(self):
-        """The helper's documented fail-open. A device nobody has placed
-        yet is exactly what the identity card exists to surface, so an
-        unplaced row must not vanish behind a wall it cannot be judged
-        against."""
+    def test_an_unresolved_row_grants_no_access(self):
         rows = [{"registry_id": None}, {"registry_id": 99}]
-        assert filter_by_company_map(
-            rows, ["G1"], {1: "G1"}, key="registry_id") == rows
+        assert filter_by_company_map(rows, ["G1"], {1: "G1"}, key="registry_id") == []
 
-    def test_a_cold_map_hides_nothing(self):
+    def test_a_cold_map_grants_no_access(self):
         rows = [{"registry_id": 1}]
-        assert filter_by_company_map(rows, ["G1"], {}, key="registry_id") == rows
+        assert filter_by_company_map(rows, ["G1"], {}, key="registry_id") == []
 
 
 class TestNullCompanyIsUnscoped:
-    """A vehicle with no company_code belongs to no company, so it is
-    manageable by anyone holding the permission — the same answer
-    inventory/router.py:_resolve_vehicle gives. On the live account 87 of
-    188 active vehicles are in this state, so treating null as "denied"
-    would have hidden nearly half the fleet from every restricted user.
-    """
+    """Only unrestricted staff can see records with unresolved ownership."""
 
-    def test_a_null_company_row_survives_the_filter(self):
+    def test_a_null_company_row_is_hidden_from_restricted_users(self):
         rows = [{"registry_id": 7}]
-        # 7 is absent from the map, which is how _registry_company_map
-        # represents "no company" — omitted rather than mapped to ''.
-        assert filter_by_company_map(
-            rows, ["G1"], {1: "G1"}, key="registry_id") == rows
+        assert filter_by_company_map(rows, ["G1"], {1: "G1"}, key="registry_id") == []
 
     def test_creating_without_a_company_is_allowed_when_unrestricted(self):
         validate_company_access([], None)                 # no raise

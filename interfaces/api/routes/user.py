@@ -238,11 +238,10 @@ async def set_credentials(
     Verification semantics
     ----------------------
     The new email is stored with ``email_verified = 0`` and a
-    verification link is dispatched.  The user can KEEP using the
-    dashboard via their existing session (Telegram or current email);
-    but sign-in via the NEW email is blocked until they click the
-    link.  Mirrors the /register flow exactly — no path adds an
-    email-login method without a verified inbox.
+    verification link is dispatched. Changing credentials invalidates
+    existing sessions on every device. Sign-in via the new email is
+    blocked until the user confirms the link; a linked Telegram account
+    remains another way to sign in.
 
     This closes a gap where a compromised Telegram session could
     attach an arbitrary email + password and persist after the
@@ -301,9 +300,9 @@ async def set_credentials(
         "verification_sent":     verification_sent,
         "email":                 body.email,
         "message": (
-            "Check your inbox for a verification link.  You can keep "
-            "using the dashboard via your current session, but signing "
-            "in with this email is blocked until you confirm it."
+            "Your credentials changed. Sign in again on each device. "
+            "Check your inbox and confirm the verification link before "
+            "signing in with this email."
         ),
     }
 

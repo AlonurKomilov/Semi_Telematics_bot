@@ -114,6 +114,7 @@ from .push_subscriptions import PushSubscriptionsMixin
 from .errors import ErrorLogMixin
 from .security_requests import SecurityRequestsMixin
 from .suite_runs import SuiteRunsMixin
+from .security_events import SecurityEventsMixin
 from .eld import EldMixin
 from .driver_links import DriverLinksMixin
 from .scan_log import ScanLogMixin
@@ -200,6 +201,7 @@ class Database(
     ErrorLogMixin,
     SecurityRequestsMixin,
     SuiteRunsMixin,
+    SecurityEventsMixin,
     EldMixin,
     DriverLinksMixin,
     ScanLogMixin,

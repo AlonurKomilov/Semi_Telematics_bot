@@ -713,11 +713,13 @@ async def test_archived_rows_speak_the_grids_column_names(pg_db, monkeypatch):
         return pg_db
     monkeypatch.setattr(vr, "_get_tenant_db", _fake_tenant)
     # The handler also asks which companies the caller may see — the
-    # company wall, added after this test was written. That lookup goes
-    # through the platform handle, not the tenant one, so the test has to
-    # provide it or the assertion never gets as far as the columns.
-    import infra.platform as _plat
-    monkeypatch.setattr(_plat, "_db", pg_db, raising=False)
+    # company wall, added after this test was written. It resolves the
+    # caller to a real user row and fails CLOSED when it cannot (a bare
+    # claims dict is nobody), so the test answers the wall itself, the
+    # way test_registry_company_wall does: this test is about columns.
+    async def _unrestricted(_user):
+        return []
+    monkeypatch.setattr(vr, "get_user_company_codes", _unrestricted)
 
     out = await vr.list_archived_vehicles(user={"account_id": acct})
     assert out["count"] == 1

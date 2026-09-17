@@ -44,8 +44,8 @@ async def _company_scoped(rows: list[dict], user: dict, tenant_db) -> list[dict]
     users today are a dispatcher and two drivers, and none of them holds
     ``can_view_cameras``.
 
-    Fail-open on ambiguity, matching ``filter_by_company_map``: no
-    restriction, a cold map, or an unresolved vehicle keeps the row.
+    Restricted callers must have verified company membership for each
+    vehicle. Unresolved identities grant no access.
     """
     allowed = await get_user_company_codes(user)
     if not allowed:
@@ -66,13 +66,19 @@ async def camera_checks(
     tenant_db=Depends(get_tenant_db),
 ):
     """Camera check history — obstruction, alignment, quality per vehicle."""
+    allowed = await get_user_company_codes(user)
+    vehicle_ids = None
+    if allowed:
+        company_map = await vehicle_company_map(user["account_id"], tenant_db)
+        codes = {code.upper() for code in allowed}
+        vehicle_ids = [vid for vid, code in company_map.items() if code.upper() in codes]
     checks = await tenant_db.get_camera_check_history(
         user["account_id"],
+        vehicle_ids=vehicle_ids,
         limit=limit,
         vehicle_name=vehicle if vehicle else None,
         latest_only=latest_only,
     )
-    checks = await _company_scoped(checks, user, tenant_db)
     return {"checks": checks, "count": len(checks)}
 
 
@@ -86,10 +92,7 @@ async def camera_check_image(
     tenant_db=Depends(get_tenant_db),
 ):
     """Serve the dashcam screenshot for a camera check."""
-    checks = await tenant_db.get_camera_check_history(
-        user["account_id"], limit=500,
-    )
-    check = next((c for c in checks if c.get("id") == check_id), None)
+    check = await tenant_db.get_camera_check(user["account_id"], check_id)
     if not check:
         raise HTTPException(status_code=404, detail="Camera check not found")
     # The image route is the one that actually discloses: a check id is

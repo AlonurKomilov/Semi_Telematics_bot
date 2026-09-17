@@ -19,11 +19,10 @@ from interfaces.api.auth import (
 
 
 def _req(path: str):
-    """A request fake with what get_current_user reads: a path and a state."""
-    class _R:
-        url = type("U", (), {"path": path})()
-        state = type("S", (), {})()
-    return _R
+    """A real Request gives each invocation its own state and credentials."""
+    from starlette.requests import Request
+    return lambda: Request({"type": "http", "method": "GET", "path": path,
+                            "headers": [], "query_string": b""})
 
 
 def test_a_scoped_token_carries_its_audience_and_scope():
@@ -64,6 +63,8 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
     import infra.platform as _cp
 
     acct = (await pg_db.create_account("Scoped Co")).id
+    from adapters.storage import Role
+    member = await pg_db.create_user(1, acct, role=Role.OWNER)
     monkeypatch.setattr(_cp, "_db", pg_db)
 
     async def _not_revoked(_jti):
@@ -72,7 +73,7 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
 
     _Req = _req("/api/map/vehicles")
 
-    scoped = create_jwt(1, acct, "owner", user_id=7, is_primary_owner=True,
+    scoped = create_jwt(1, acct, "owner", user_id=member.id, auth_version=member.auth_version, is_primary_owner=True,
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
     user = await deps.get_current_user(_Req(), authorization=f"Bearer {scoped}", auth_token=None)
 
@@ -85,7 +86,7 @@ async def test_the_owner_behind_an_extension_token_cannot_archive_a_truck(pg_db,
         assert e.value.status_code == 403, denied
 
     # And the same owner's ordinary token is untouched.
-    full = create_jwt(1, acct, "owner", user_id=7, is_primary_owner=True)
+    full = create_jwt(1, acct, "owner", user_id=member.id, auth_version=member.auth_version, is_primary_owner=True)
     user_full = await deps.get_current_user(_Req(), authorization=f"Bearer {full}", auth_token=None)
     assert await deps.require_permission("can_manage_vehicles")(user=dict(user_full))
 
@@ -108,13 +109,17 @@ async def test_the_panel_may_aim_its_own_attention_but_not_redefine_the_fleet(pg
     import infra.platform as _cp
 
     acct = (await pg_db.create_account("Config Scoped Co")).id
+    from adapters.storage import Role
+    member = await pg_db.create_user(1, acct, role=Role.FLEET)
+    await pg_db.update_user(member.id, is_manager=True)
+    member = await pg_db.get_user_by_id(member.id)
     monkeypatch.setattr(_cp, "_db", pg_db)
 
     async def _not_revoked(_jti):
         return False
     monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
 
-    scoped = create_jwt(1, acct, "fleet", user_id=7, is_manager=True,
+    scoped = create_jwt(1, acct, "fleet", user_id=member.id, auth_version=member.auth_version, is_manager=True,
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
     user = await deps.get_current_user(
         _req("/api/extension/inventory-config")(),
@@ -150,13 +155,15 @@ async def test_an_owner_aims_focus_from_the_dashboard_not_from_the_panel(pg_db, 
     import infra.platform as _cp
 
     acct = (await pg_db.create_account("Owner Panel Co")).id
+    from adapters.storage import Role
+    member = await pg_db.create_user(1, acct, role=Role.OWNER)
     monkeypatch.setattr(_cp, "_db", pg_db)
 
     async def _not_revoked(_jti):
         return False
     monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
 
-    scoped = create_jwt(1, acct, "owner", user_id=7, is_primary_owner=True,
+    scoped = create_jwt(1, acct, "owner", user_id=member.id, auth_version=member.auth_version, is_primary_owner=True,
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
     user = await deps.get_current_user(
         _req("/api/extension/inventory-config")(),
@@ -411,31 +418,18 @@ async def test_refresh_refuses_a_revoked_session(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_refreshing_an_extension_token_sets_no_cookie(monkeypatch):
+async def test_refreshing_an_extension_token_sets_no_cookie(pg_db, monkeypatch):
     """The panel's refresh must never become the dashboard's cookie: a
     two-permission key would overwrite a full session, or a lifted
     panel token would gain one."""
     from starlette.responses import Response
-    from types import SimpleNamespace
-    tok = create_jwt(1, 42, "owner", user_id=7, jti="ext-jti",
-                     aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
-
-    async def _not_revoked(_jti):
-        return False
-    monkeypatch.setattr(auth_mod, "is_jti_revoked", _not_revoked)
-
-    role = SimpleNamespace(value="owner")
-    user = SimpleNamespace(id=7, telegram_id=1, account_id=42, role=role,
-                           is_active=True, is_manager=False, is_primary_owner=True,
-                           display_name="A")
-
-    class _DB:
-        async def get_user_by_telegram_id(self, _tid):
-            return user
-        async def update_user_session_on_refresh(self, *a, **k):
-            return None
+    from adapters.storage import Role
     import infra.platform as _cp
-    monkeypatch.setattr(_cp, "get_platform_db", lambda: _DB())
+    acct = await pg_db.create_account("Refresh scope")
+    member = await pg_db.create_user(1, acct.id, role=Role.OWNER)
+    monkeypatch.setattr(_cp, "_db", pg_db)
+    tok = create_jwt(1, acct.id, "owner", user_id=member.id, jti="ext-jti",
+                     aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
 
     class _Req:
         headers = {"user-agent": "x"}
@@ -447,7 +441,7 @@ async def test_refreshing_an_extension_token_sets_no_cookie(monkeypatch):
 
     # And the unscoped counterpart DOES get its cookie — the guard is
     # about the audience, not a regression for the dashboard.
-    plain = create_jwt(1, 42, "owner", user_id=7, jti="dash-jti")
+    plain = create_jwt(1, acct.id, "owner", user_id=member.id, jti="dash-jti")
     res2 = Response()
     await auth_mod.refresh_token.__wrapped__(_Req(), res2, authorization=f"Bearer {plain}")
     assert "set-cookie" in {k.decode().lower() for k, _ in res2.raw_headers}
@@ -485,7 +479,7 @@ async def test_connect_mints_the_scoped_token_as_its_own_announced_session(monke
     role = SimpleNamespace(value="owner")
     db_user = SimpleNamespace(id=7, telegram_id=1, account_id=42, role=role,
                               is_active=True, is_manager=False,
-                              is_primary_owner=True, display_name="Allen")
+                              is_primary_owner=True, display_name="Allen", auth_version=0)
     seen = {}
 
     async def _db_user(user, db):
@@ -856,17 +850,22 @@ def test_path_normalization_strips_both_mounts_and_a_trailing_slash():
 
 
 @pytest.mark.asyncio
-async def test_a_scoped_token_is_refused_outside_its_routes_with_403(monkeypatch):
+async def test_a_scoped_token_is_refused_outside_its_routes_with_403(pg_db, monkeypatch):
     """"Cannot", not "does not": a lifted panel token knocking on the
     profile, the package download or a custom-layer write is turned
     away before any handler runs — 403, so a stray call does not make
     the panel drop its token, and no fall-through to a cookie."""
     from interfaces.api import deps
+    from adapters.storage import Role
+    import infra.platform as platform
+    account = await pg_db.create_account("Route scope")
+    member = await pg_db.create_user(1, account.id, role=Role.OWNER)
+    monkeypatch.setattr(platform, "_db", pg_db)
 
     async def _not_revoked(_jti):
         return False
     monkeypatch.setattr(deps, "_is_revoked_with_cache", _not_revoked)
-    scoped = create_jwt(1, 42, "owner", user_id=7, jti="ext-1",
+    scoped = create_jwt(1, account.id, "owner", user_id=member.id, jti="ext-1",
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
 
     for path in ("/api/user/me", "/api/v1/user/me", "/api/extension/info",
@@ -894,7 +893,7 @@ async def test_a_scoped_token_is_refused_outside_its_routes_with_403(monkeypatch
         assert user["aud"] == "extension", path
 
     # The same person's ordinary token goes everywhere it always did.
-    full = create_jwt(1, 42, "owner", user_id=7, jti="dash-1")
+    full = create_jwt(1, account.id, "owner", user_id=member.id, jti="dash-1")
     assert (await deps.get_current_user(_req("/api/user/me")(), authorization=f"Bearer {full}", auth_token=None))["sub"] == "1"
 
 

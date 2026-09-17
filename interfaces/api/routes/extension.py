@@ -96,6 +96,7 @@ async def connect_extension(request: Request, user: dict = Depends(get_current_u
     token = await mint_session_token(
         db, request,
         user_id=db_user.id, telegram_id=db_user.telegram_id,
+        auth_version=db_user.auth_version,
         account_id=db_user.account_id, role=db_user.role.value,
         is_manager=db_user.is_manager,
         is_primary_owner=db_user.is_primary_owner,

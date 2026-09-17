@@ -254,6 +254,7 @@ async def run_all(conn) -> None:
     await migrate_driver_trucks_registry_id(conn)
     await migrate_eld_hos_live(conn)
     await migrate_driver_provider_links(conn)
+    await migrate_user_auth_version(conn)
 
 
 
@@ -6114,3 +6115,40 @@ async def migrate_eld_hos_live(conn) -> None:
         """)
     except Exception:
         logger.exception("migrate_eld_hos_live: RLS failed")
+
+
+async def migrate_user_auth_version(conn) -> None:
+    """Complete the durable session-version contract used by the API.
+
+    The API reader and credential writers depend on this column. Identity
+    changes revoke recorded and unrecorded sessions in the same transaction;
+    ordinary profile edits preserve the session version.
+    """
+    sql = r"""
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version BIGINT NOT NULL DEFAULT 0;
+    CREATE OR REPLACE FUNCTION invalidate_user_auth_version() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+    BEGIN
+        IF ROW(NEW.role, NEW.is_manager, NEW.is_primary_owner, NEW.is_active,
+               NEW.password_hash, NEW.email, NEW.account_id, NEW.telegram_id, NEW.google_sub)
+           IS DISTINCT FROM
+           ROW(OLD.role, OLD.is_manager, OLD.is_primary_owner, OLD.is_active,
+               OLD.password_hash, OLD.email, OLD.account_id, OLD.telegram_id, OLD.google_sub)
+           OR NEW.auth_version IS DISTINCT FROM OLD.auth_version THEN
+            NEW.auth_version := GREATEST(OLD.auth_version + 1, NEW.auth_version);
+            UPDATE user_sessions
+            SET revoked_at = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || '+00:00'
+            WHERE user_id = OLD.id AND revoked_at IS NULL;
+        END IF;
+        RETURN NEW;
+    END;
+    $$;
+    DROP TRIGGER IF EXISTS users_auth_version_changed ON users;
+    CREATE TRIGGER users_auth_version_changed BEFORE UPDATE OF role, is_manager,
+        is_primary_owner, is_active, password_hash, email, account_id, telegram_id,
+        google_sub, auth_version ON users FOR EACH ROW
+        EXECUTE FUNCTION invalidate_user_auth_version();
+    """
+    async with conn._acquire() as pg:
+        async with pg.transaction():
+            await pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('users/auth_version/schema', 0))")
+            await pg.execute(sql)

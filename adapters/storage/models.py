@@ -183,6 +183,7 @@ class User:
     alerts_on: bool
     is_active: bool
     created_at: str
+    auth_version: int = 0
     # Manager tier — a per-user seniority layered on the base role (see
     # capabilities/permissions/roles.MANAGER_GRANTS).  Only meaningful for
     # roles with a manager tier; a no-op otherwise.

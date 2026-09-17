@@ -1114,15 +1114,13 @@ class DeviceEventResolve(BaseModel):
 async def _registry_company_map(tenant, account_id: int) -> dict:
     """``registry_id -> company_code`` for this account's vehicles.
 
-    Rows with no company are omitted rather than mapped to '': absent
-    from the map means "unresolved", which `filter_by_company_map` keeps
-    — and an unscoped vehicle should be visible to anyone holding the
-    permission, which is the same answer.
+    Rows with no company grant no access to a company-restricted viewer.
+    Unrestricted staff can still resolve and assign those vehicles.
     """
     try:
         rows = await tenant.list_vehicles(account_id)
     except Exception:
-        return {}                      # cold source -> helper fails open
+        return {}                      # an unresolved source grants no company access
     return {v.id: v.company_code for v in rows
             if getattr(v, "company_code", "")}
 

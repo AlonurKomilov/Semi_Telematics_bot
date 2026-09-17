@@ -421,6 +421,17 @@ class UsersMixin:
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def get_user_auth_state(self, user_id: int, jti: str) -> dict | None:
+        """Authoritative identity and revocation read; never cached across requests."""
+        cur = await self._db.execute(
+            "SELECT u.id, u.telegram_id, u.account_id, u.role, u.is_active, "
+            "u.auth_version, u.is_manager, u.is_primary_owner, s.revoked_at "
+            "FROM users u LEFT JOIN user_sessions s ON s.user_id = u.id AND s.jti = ? "
+            "WHERE u.id = ?", (jti, user_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def create_user_session(
         self,
         *,
@@ -605,7 +616,12 @@ class UsersMixin:
             (user_id, current_jti),
         )
         rows = [dict(r) for r in await cur.fetchall()]
+        if not current_jti:
+            await self._db.execute(
+                "UPDATE users SET auth_version = auth_version + 1 WHERE id = ?", (user_id,),
+            )
         if not rows:
+            await self._db.commit()
             return []
         await self._db.execute(
             """UPDATE user_sessions SET revoked_at = ?
