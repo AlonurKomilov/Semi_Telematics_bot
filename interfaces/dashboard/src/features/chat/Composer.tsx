@@ -90,7 +90,11 @@ export function Composer({ session, room, reply, editing, onClear, registerGuard
   }
   const body = editing ? editBody : pending?.body ?? buffer.value.body;
   const quote = unavailableReply ? t('chat.quoteUnavailable') : reply?.body ?? (room.draft.reply?.status === 'available' && room.draft.reply.id === buffer.value.reply_to_id ? room.draft.reply.body : t('chat.reply'));
-  return <div ref={input} className="shrink-0 border-t border-border p-3 space-y-2 bg-card text-card-foreground">
+  // No ground of its own: the panel above already paints `--card`, so
+  // `bg-card` here was the same colour twice — and a SURFACE tone on a
+  // plain element, which the material axis cannot reach. Under glass it
+  // stayed a solid bar across a pane that had gone translucent.
+  return <div ref={input} className="shrink-0 border-t border-border p-3 space-y-2 text-card-foreground">
     {(editing || buffer.value.reply_to_id !== null || unavailableReply) && <div className="flex items-center gap-2 border-l-2 border-primary pl-3 text-sm"><div className="min-w-0 flex-1"><p className="font-medium text-foreground">{t(editing ? 'chat.edit' : 'chat.reply')}</p><p className="truncate text-muted-foreground">{editing?.body ?? quote}</p></div><Button className="text-foreground" size="icon-sm" variant="ghost" aria-label={t('chat.cancel')} disabled={busy || !!pending} onClick={() => { if (!editing) { buffer.update({ ...buffer.value, reply_to_id: null }); setDismissedReplyVersion(room.draft.version); } onClear(); }}><X /></Button></div>}
     {!allowed && <p role="status" className="text-sm text-muted-foreground">{t(room.conversation.archived ? 'chat.groupArchived' : room.conversation.kind === 'direct' ? 'chat.peerUnavailable' : 'chat.adminsOnly')}</p>}
     <Textarea aria-label={t('chat.message')} placeholder={t('chat.message')} rows={2} maxLength={8000} disabled={!allowed || busy || !!pending} value={body}
