@@ -50,13 +50,16 @@ describe('fuel brand chips', () => {
   });
 
   it('gives every brand the layer admits on its NAME a chip to be found by', () => {
-    // The backend allowlist (features/live_map/poi/layers.py) admits these
-    // on the brand alone, so each is a chain a driver may want to isolate.
-    // A brand with no chip is drawn but cannot be filtered to — which is
-    // the whole point of admitting it rather than deleting it.
-    for (const brand of ['Petro-Canada', 'Kwik Trip', 'Kwik Star', 'Kwik Fill',
-                         'Maverik', "Love's", 'Pilot', 'Flying J', 'TA',
-                         'Petro', 'Sapp Bros.', 'Road Ranger']) {
+    // EVERY brand the backend allowlist admits on its name
+    // (features/live_map/poi/layers.py) — kept COMPLETE on purpose.  An
+    // incomplete list here hides the very thing the test is for: `TA
+    // Express` and `Speedco` were both admitted and both unfilterable,
+    // and this test said nothing, because neither was written down.
+    for (const brand of ['Pilot', 'Flying J', "Love's", 'TA', 'TA Express',
+                         'Petro', 'Sapp Bros', 'Sapp Bros.', 'Road Ranger',
+                         'AmBest', 'Bosselman', 'Speedco', 'Kwik Trip',
+                         'Kwik-Trip', 'Kwik Star', 'Kwik Fill', 'Maverik',
+                         'Petro-Canada', 'Petro Canada']) {
       expect(claimedBy(brand), `${brand} has no chip`).not.toHaveLength(0);
     }
   });

@@ -235,7 +235,8 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'ta_petro',
         label:      'TA / Petro',
-        matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'],
+        matchTerms: ['TA', 'TA Express', 'Petro', 'TravelCenters of America',
+                     'Petro Stopping Centers', 'TA Travel Center'],
       },
       //
       //   Sapp Bros Truck Stops: brand=Sapp Bros or brand=Sapp Bros.
@@ -274,6 +275,9 @@ export const POI_LAYERS: PoiLayerDef[] = [
       //   measurement — 11 of 11 tagged stations sell diesel — so it earns a
       //   chip of its own, never a seat under Kwik Trip's name.
       { value: 'kwik_fill', label: 'Kwik Fill', matchTerms: ['Kwik Fill'] },
+      //   Speedco is Love's truck-service arm.  On the fuel allowlist, so
+      //   it needs a chip or it is drawn and unfilterable.
+      { value: 'speedco',   label: 'Speedco',   matchTerms: ['Speedco'] },
 
       // ── Independent fuel stations ──────────────────────────────────────
       { value: 'Shell',   label: 'Shell' },
@@ -332,7 +336,8 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'ta_petro',
         label:      'TA / Petro',
-        matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'],
+        matchTerms: ['TA', 'TA Express', 'Petro', 'TravelCenters of America',
+                     'Petro Stopping Centers', 'TA Travel Center'],
       },
       {
         value:      'sapp_bros',

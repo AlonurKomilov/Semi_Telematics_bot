@@ -253,7 +253,12 @@ const TRUCK_STOP_BRANDS: PoiBrand[] = [
   { value: 'loves', label: "Love's",
     matchTerms: ["Love's", 'Loves', "Love's Travel Stop", 'Loves Travel Stop'] },
   { value: 'ta_petro', label: 'TA / Petro',
-    matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'] },
+    matchTerms: ['TA', 'TA Express', 'Petro', 'TravelCenters of America',
+                 'Petro Stopping Centers', 'TA Travel Center'] },
+  // Love's truck-service arm.  On the backend allowlist, so it needs a
+  // chip or it is drawn and unfilterable — the gap this list keeps
+  // growing to close.
+  { value: 'speedco', label: 'Speedco', matchTerms: ['Speedco'] },
   { value: 'sapp_bros', label: 'Sapp Bros', matchTerms: ['Sapp Bros', 'Sapp Bros.'] },
   // Its own chip, because it is its own company.  Admitted to the fuel
   // layer by measurement (147 of 173 tagged stations sell diesel) rather
