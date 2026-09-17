@@ -10,7 +10,12 @@ export function MessageView({ message, own, pinned = false, actions = [], onQuot
   const { t } = useTranslation();
   return <ContextMenu items={actions} render={<article data-message-id={message.id} />}>
     <div className={cn('flex gap-2 py-2', own && 'flex-row-reverse')}>
-      <Card padding="compact" className={cn('min-w-0 max-w-xl flex-1', own ? 'bg-primary/10 text-foreground' : 'text-card-foreground')}>
+      {/* The tint alone cannot say "mine". It is a GROUND, and the material
+          axis repaints a surface's ground — under glass every bubble takes
+          the same wash and the tint is gone. A border is not the material's
+          to touch, so the edge carries the distinction in every material,
+          and the tint stays as the softer half of it where it survives. */}
+      <Card padding="compact" className={cn('min-w-0 max-w-xl flex-1', own ? 'border-primary/40 bg-primary/10 text-foreground' : 'text-card-foreground')}>
         <div className="flex items-center justify-between gap-3 mb-1"><span className="text-xs font-semibold text-foreground break-words">{message.author.display_name}</span>{pinned && <Pin className="size-3 shrink-0 text-muted-foreground" aria-label={t('chat.pinned')} />}</div>
         {message.reply && <Button size="sm" variant="ghost" className="text-foreground mb-2 h-auto w-full justify-start whitespace-normal border-l-2 border-border text-left" disabled={message.reply.status !== 'available' || !onQuote} onClick={() => { if (message.reply?.status === 'available') onQuote?.(message.reply.id); }}>{message.reply.status === 'available' ? <span className="line-clamp-2 break-all">{message.reply.body}</span> : t('chat.quoteUnavailable')}</Button>}
         <p className={cn('whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]', message.deleted_at && 'italic text-muted-foreground')}>{message.deleted_at ? t('chat.deleted') : message.body}</p>
