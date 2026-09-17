@@ -24,7 +24,7 @@
  * element: a 3px difference in width moves the band by a fraction of a
  * map column, and nobody can see it.
  */
-import { bevelMap, type Bevel, type LensMap } from './lens';
+import { bevelMap, ALL_EDGES, type Bevel, type Edges, type LensMap } from './lens';
 
 /**
  * How coarsely sizes are rounded before they become a filter.
@@ -55,8 +55,41 @@ export const bucketed = (px: number): number =>
 
 /** The name of the filter for one pane shape. Shape, not element —
  *  every pane of these dimensions shares it. */
-export const lensFilterId = (w: number, h: number, r: number): string =>
-  `lens-${w}x${h}r${Math.round(r)}`;
+/** The four sides as four letters, upper for an edge and lower for a
+ *  seam — so a pane with a neighbour gets its own filter rather than
+ *  quietly sharing one drawn for a pane that has none. */
+export const edgeKey = (e: Edges): string =>
+  `${e.top ? 'T' : 't'}${e.right ? 'R' : 'r'}${e.bottom ? 'B' : 'b'}${e.left ? 'L' : 'l'}`;
+
+export const lensFilterId = (w: number, h: number, r: number, e: Edges = ALL_EDGES): string =>
+  `lens-${w}x${h}r${Math.round(r)}-${edgeKey(e)}`;
+
+/**
+ * How close two panes have to be before the gap between them stops
+ * being a gap.
+ *
+ * A fraction of a pixel of rounding, not a design tolerance: the frame's
+ * sides are laid out flush, and what varies is subpixel layout and the
+ * Size multiplier's rounding. Anything wider than this is a real gap,
+ * and a real gap means two edges rather than a seam.
+ */
+const SEAM = 1.5;
+
+/** Which of a pane's sides are real edges, measured rather than
+ *  declared: a side with another pane flush against it is a SEAM, and
+ *  glass does not bend where it does not end. */
+export function openEdges(rect: DOMRect, others: readonly DOMRect[]): Edges {
+  const overlapsY = (o: DOMRect) => Math.min(o.bottom, rect.bottom) - Math.max(o.top, rect.top) > SEAM;
+  const overlapsX = (o: DOMRect) => Math.min(o.right, rect.right) - Math.max(o.left, rect.left) > SEAM;
+  let top = true, right = true, bottom = true, left = true;
+  for (const o of others) {
+    if (Math.abs(o.right - rect.left) <= SEAM && overlapsY(o)) left = false;
+    if (Math.abs(o.left - rect.right) <= SEAM && overlapsY(o)) right = false;
+    if (Math.abs(o.bottom - rect.top) <= SEAM && overlapsX(o)) top = false;
+    if (Math.abs(o.top - rect.bottom) <= SEAM && overlapsX(o)) bottom = false;
+  }
+  return { top, right, bottom, left };
+}
 
 /** Turns a map into something `feImage` can load. Injected rather than
  *  called directly so the mounting can be tested without a canvas —
@@ -110,11 +143,12 @@ function host(doc: Document): SVGSVGElement {
  */
 export function ensureFilter(
   doc: Document, w: number, h: number, r: number, bevel: Bevel, encode: Encoder,
+  edges: Edges = ALL_EDGES,
 ): string {
-  const id = lensFilterId(w, h, r);
+  const id = lensFilterId(w, h, r, edges);
   if (doc.getElementById(id)) return id;
 
-  const href = encode(bevelMap(w, h, r, bevel));
+  const href = encode(bevelMap(w, h, r, bevel, edges));
   if (!href) return '';
 
   const f = doc.createElementNS(SVG_NS, 'filter');
@@ -163,10 +197,10 @@ export function radiusOf(el: Element, view: Window): number {
  */
 export function applyLens(
   el: HTMLElement, w: number, h: number, r: number, bevel: Bevel,
-  doc: Document, encode: Encoder,
+  doc: Document, encode: Encoder, edges: Edges = ALL_EDGES,
 ): void {
   if (w < 1 || h < 1) { el.style.removeProperty(LENS_VAR); return; }
-  const id = ensureFilter(doc, bucketed(w), bucketed(h), r, bevel, encode);
+  const id = ensureFilter(doc, bucketed(w), bucketed(h), r, bevel, encode, edges);
   if (!id) { el.style.removeProperty(LENS_VAR); return; }
   el.style.setProperty(LENS_VAR, `url(#${id})`);
 }
@@ -214,17 +248,28 @@ export function installLens({ doc, view, bevel, encode }: LensInstall): () => vo
   const draw = encode ?? canvasEncoder(doc);
 
   const ro = new RO((entries) => {
+    // EVERY pane's box, not just the ones that resized: a seam is a
+    // fact about two panes, and the one that moved is rarely the one
+    // whose edge just closed. Gathered here with the other reads, ahead
+    // of the first write, so it costs the same single layout.
+    const boxes: DOMRect[] = [];
+    doc.querySelectorAll(SURFACES).forEach((n) => boxes.push(n.getBoundingClientRect()));
+
     // Read every shape first…
-    const work: { el: HTMLElement; w: number; h: number; r: number }[] = [];
+    const work: { el: HTMLElement; w: number; h: number; r: number; edges: Edges }[] = [];
     for (const e of entries) {
       const el = e.target as HTMLElement;
       const box = e.borderBoxSize?.[0];
       const w = box ? box.inlineSize : e.contentRect.width;
       const h = box ? box.blockSize : e.contentRect.height;
-      work.push({ el, w, h, r: radiusOf(el, view) });
+      const rect = el.getBoundingClientRect();
+      // Its own box is in the list; a pane is not its own neighbour.
+      const others = boxes.filter((b) => b !== rect
+        && !(b.left === rect.left && b.top === rect.top && b.width === rect.width && b.height === rect.height));
+      work.push({ el, w, h, r: radiusOf(el, view), edges: openEdges(rect, others) });
     }
     // …then write every one of them.
-    for (const { el, w, h, r } of work) applyLens(el, w, h, r, bevel, doc, draw);
+    for (const { el, w, h, r, edges } of work) applyLens(el, w, h, r, bevel, doc, draw, edges);
   });
 
   const watch = (root: ParentNode) => {

@@ -74,6 +74,30 @@ export const RESOLUTION = { w: 32, h: 40 } as const;
  *  whole backdrop half a scale to one side. */
 export const NEUTRAL = 128;
 
+/**
+ * Which of a pane's four sides are actually EDGES.
+ *
+ * A lens bends light where the glass ends. Where two panes of the same
+ * sheet meet, the glass does not end — and bending there draws a line
+ * across something that has no boundary, which is exactly what the
+ * owner saw at the join of the rail and the header: "at the junction I
+ * can see the lens, which means they still think they are separate".
+ *
+ * The engine is TOLD nothing about which is which. `lensMount` measures
+ * it: an edge with another pane flush against it is sealed. So one rule
+ * written for the frame still reaches all five sides, and none of them
+ * declares anything about its own geometry.
+ */
+export interface Edges {
+  readonly top: boolean;
+  readonly right: boolean;
+  readonly bottom: boolean;
+  readonly left: boolean;
+}
+
+/** A pane with nothing against it — every side is an edge. */
+export const ALL_EDGES: Edges = { top: true, right: true, bottom: true, left: true };
+
 export interface LensMap {
   readonly width: number;
   readonly height: number;
@@ -98,7 +122,10 @@ export interface LensMap {
  * sampled at `RESOLUTION` and stretched back over the surface by the
  * filter.
  */
-export function bevelMap(w: number, h: number, r: number, bevel: Bevel): LensMap {
+export function bevelMap(
+  w: number, h: number, r: number, bevel: Bevel, edges: Edges = ALL_EDGES,
+): LensMap {
+  const whole = edges.top && edges.right && edges.bottom && edges.left;
   const { w: MW, h: MH } = RESOLUTION;
   const data = new Uint8ClampedArray(MW * MH * 4);
   // Clamp the radius the way CSS does: a corner cannot be larger than
@@ -114,27 +141,57 @@ export function bevelMap(w: number, h: number, r: number, bevel: Bevel): LensMap
     for (let mx = 0; mx < MW; mx++) {
       const x = ((mx + 0.5) / MW) * w;
 
-      // Signed distance to the rounded rectangle, positive inside.
-      const qx = Math.abs(x - w / 2) - (w / 2 - rad);
-      const qy = Math.abs(y - h / 2) - (h / 2 - rad);
-      const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
-      const inside = Math.min(Math.max(qx, qy), 0);
-      const depth = -(outside + inside);
-
-      // The inward normal, from the gradient of that field. Away from
-      // the corners this is a unit vector along one axis; in a corner
-      // it is the diagonal, which is what makes the corner bend round
-      // rather than fold.
+      let depth: number;
       let nx = 0, ny = 0;
-      if (qx > 0 || qy > 0) {
-        const ox = Math.max(qx, 0), oy = Math.max(qy, 0);
-        const len = Math.hypot(ox, oy) || 1;
-        nx = (Math.sign(x - w / 2) * ox) / len;
-        ny = (Math.sign(y - h / 2) * oy) / len;
-      } else if (qx > qy) {
-        nx = Math.sign(x - w / 2);
+
+      if (whole) {
+        // Signed distance to the rounded rectangle, positive inside.
+        const qx = Math.abs(x - w / 2) - (w / 2 - rad);
+        const qy = Math.abs(y - h / 2) - (h / 2 - rad);
+        const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+        const inside = Math.min(Math.max(qx, qy), 0);
+        depth = -(outside + inside);
+
+        // The inward normal, from the gradient of that field. Away from
+        // the corners this is a unit vector along one axis; in a corner
+        // it is the diagonal, which is what makes the corner bend round
+        // rather than fold.
+        if (qx > 0 || qy > 0) {
+          const ox = Math.max(qx, 0), oy = Math.max(qy, 0);
+          const len = Math.hypot(ox, oy) || 1;
+          nx = (Math.sign(x - w / 2) * ox) / len;
+          ny = (Math.sign(y - h / 2) * oy) / len;
+        } else if (qx > qy) {
+          nx = Math.sign(x - w / 2);
+        } else {
+          ny = Math.sign(y - h / 2);
+        }
       } else {
-        ny = Math.sign(y - h / 2);
+        // A PANE WITH A SEAM measures to its open sides only. The
+        // rounded-rect field above cannot express that: it is one
+        // distance to the whole outline, so sealing one side would
+        // still leave the corner it shares bending. Distance per side,
+        // nearest one wins, and a sealed side simply never wins.
+        //
+        // No corner rounding here, and none is missed: a pane with a
+        // seam is a strip of the frame, and the frame's sides are
+        // square — the radius belongs to the page card they surround.
+        const dl = edges.left ? x : Infinity;
+        const dr = edges.right ? w - x : Infinity;
+        const dt = edges.top ? y : Infinity;
+        const db = edges.bottom ? h - y : Infinity;
+        depth = Math.min(dl, dr, dt, db);
+        if (!Number.isFinite(depth)) { depth = Infinity; }
+        // Within half a pixel of two open sides at once is a corner of
+        // the OPEN outline, and it takes both, the way the field above
+        // does its own corners.
+        const near = 0.5;
+        if (dl - depth <= near) nx -= 1;
+        if (dr - depth <= near) nx += 1;
+        if (dt - depth <= near) ny -= 1;
+        if (db - depth <= near) ny += 1;
+        const len = Math.hypot(nx, ny);
+        if (len > 0) { nx /= len; ny /= len; }
       }
 
       // Deep inside the pane this is 0, so the centre is exactly

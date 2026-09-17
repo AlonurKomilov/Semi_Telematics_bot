@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BUCKET, LENS_VAR, bucketed, lensFilterId, ensureFilter, applyLens, radiusOf,
-  installLens, type Encoder,
+  installLens, openEdges, edgeKey, type Encoder,
 } from './lensMount';
 import type { Bevel } from './lens';
 
@@ -298,5 +298,57 @@ describe('installing', () => {
     expect(el.style.getPropertyValue(LENS_VAR), 'the surface kept a filter nobody will rebuild')
       .toBe('');
     expect(disconnected, 'an observer was left running').toBe(2);
+  });
+});
+
+/**
+ * WHICH SIDES ARE REAL, MEASURED AND NOT DECLARED.
+ *
+ * This is what lets one rule written for the frame reach all five of
+ * its sides without any of them saying anything about its own
+ * geometry. The engine looks at where the panes actually are.
+ */
+describe('a seam is where two panes meet', () => {
+  const box = (left: number, top: number, w: number, h: number): DOMRect => ({
+    left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top,
+    toJSON: () => ({}),
+  } as DOMRect);
+
+  it('seals the side a flush neighbour is against', () => {
+    // The rail and the header: the header's bottom sits on the rail's
+    // top, so neither has an edge there.
+    const rail = box(0, 48, 224, 600);
+    const header = box(0, 0, 1400, 48);
+    expect(openEdges(rail, [header]).top, 'the rail still bends where the header sits on it')
+      .toBe(false);
+    expect(openEdges(rail, [header]).right, 'the rail stopped bending toward the page')
+      .toBe(true);
+  });
+
+  it('and leaves a side open when the neighbour is merely near', () => {
+    // The control, and the reason the tolerance is a fraction of a
+    // pixel rather than a design value: two cards with a gap between
+    // them are two panes, and both keep the edge that faces the other.
+    const card = box(0, 0, 300, 200);
+    const nextTo = box(312, 0, 300, 200);
+    expect(openEdges(card, [nextTo]).right, 'a real gap was read as a seam').toBe(true);
+  });
+
+  it('and ignores a neighbour that only shares a line, not a side', () => {
+    // Flush on x but nowhere near on y — the corner of something
+    // elsewhere on the page. Touching at a point is not a seam.
+    const card = box(0, 0, 300, 200);
+    const below = box(300, 900, 300, 200);
+    expect(openEdges(card, [below]).right, 'a distant pane sealed a side').toBe(true);
+  });
+
+  it('and a sealed pane gets its own filter, not the whole one\'s', () => {
+    // Two panes of the same SIZE but different seams must not share a
+    // map: the id is what keeps them apart, and without the mask in it
+    // the second one would silently reuse the first one's bevel.
+    const whole = { top: true, right: true, bottom: true, left: true };
+    const sealed = { ...whole, left: false };
+    expect(edgeKey(whole)).not.toBe(edgeKey(sealed));
+    expect(lensFilterId(240, 600, 0, whole)).not.toBe(lensFilterId(240, 600, 0, sealed));
   });
 });
