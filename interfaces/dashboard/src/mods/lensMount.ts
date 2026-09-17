@@ -24,7 +24,7 @@
  * element: a 3px difference in width moves the band by a fraction of a
  * map column, and nobody can see it.
  */
-import { bevelMap, ALL_EDGES, type Bevel, type Edges, type LensMap } from './lens';
+import { bevelMap, type Bevel, type OpenSpan, type LensMap } from './lens';
 
 /**
  * How coarsely sizes are rounded before they become a filter.
@@ -55,40 +55,78 @@ export const bucketed = (px: number): number =>
 
 /** The name of the filter for one pane shape. Shape, not element —
  *  every pane of these dimensions shares it. */
-/** The four sides as four letters, upper for an edge and lower for a
- *  seam — so a pane with a neighbour gets its own filter rather than
- *  quietly sharing one drawn for a pane that has none. */
-export const edgeKey = (e: Edges): string =>
-  `${e.top ? 'T' : 't'}${e.right ? 'R' : 'r'}${e.bottom ? 'B' : 'b'}${e.left ? 'L' : 'l'}`;
+/** A stable name for one set of open stretches, so two panes of the
+ *  same size that end in different places do not share a filter. */
+export const spanKey = (open: readonly OpenSpan[]): string =>
+  open.map((o) => `${o.side[0]}${Math.round(o.from)}-${Math.round(o.to)}`).join('_') || 'none';
 
-export const lensFilterId = (w: number, h: number, r: number, e: Edges = ALL_EDGES): string =>
-  `lens-${w}x${h}r${Math.round(r)}-${edgeKey(e)}`;
+export const lensFilterId = (
+  w: number, h: number, r: number, open?: readonly OpenSpan[],
+): string => (open
+  ? `lens-${w}x${h}r${Math.round(r)}-${spanKey(open)}`
+  : `lens-${w}x${h}r${Math.round(r)}`);
 
 /**
  * How close two panes have to be before the gap between them stops
  * being a gap.
  *
- * A fraction of a pixel of rounding, not a design tolerance: the frame's
- * sides are laid out flush, and what varies is subpixel layout and the
- * Size multiplier's rounding. Anything wider than this is a real gap,
- * and a real gap means two edges rather than a seam.
+ * A fraction of a pixel of rounding, not a design tolerance: the
+ * frame's sides are laid out flush, and what varies is subpixel layout
+ * and the Size multiplier's rounding. Anything wider is a real gap, and
+ * a real gap means the glass really does end there.
  */
 const SEAM = 1.5;
 
-/** Which of a pane's sides are real edges, measured rather than
- *  declared: a side with another pane flush against it is a SEAM, and
- *  glass does not bend where it does not end. */
-export function openEdges(rect: DOMRect, others: readonly DOMRect[]): Edges {
-  const overlapsY = (o: DOMRect) => Math.min(o.bottom, rect.bottom) - Math.max(o.top, rect.top) > SEAM;
-  const overlapsX = (o: DOMRect) => Math.min(o.right, rect.right) - Math.max(o.left, rect.left) > SEAM;
-  let top = true, right = true, bottom = true, left = true;
-  for (const o of others) {
-    if (Math.abs(o.right - rect.left) <= SEAM && overlapsY(o)) left = false;
-    if (Math.abs(o.left - rect.right) <= SEAM && overlapsY(o)) right = false;
-    if (Math.abs(o.bottom - rect.top) <= SEAM && overlapsX(o)) top = false;
-    if (Math.abs(o.top - rect.bottom) <= SEAM && overlapsX(o)) bottom = false;
+/** What is left of `[0, len]` after the closed stretches are taken out
+ *  of it. Anything shorter than a seam is not a stretch of edge. */
+function remaining(len: number, closed: [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  let at = 0;
+  for (const [a, b] of [...closed].sort((p, q) => p[0] - q[0])) {
+    if (a > at + SEAM) out.push([at, Math.min(a, len)]);
+    at = Math.max(at, b);
+    if (at >= len) break;
   }
-  return { top, right, bottom, left };
+  if (at < len - SEAM) out.push([at, len]);
+  return out.filter(([a, b]) => b - a > SEAM);
+}
+
+/**
+ * Where this pane's glass actually ends, measured rather than declared.
+ *
+ * Two things are not edges and both are read off the layout: a side
+ * with another pane flush against it is a SEAM for exactly the stretch
+ * they share, and a side lying on the window's own boundary has nothing
+ * beyond it to bend.
+ */
+export function openSpans(
+  rect: DOMRect, others: readonly DOMRect[], view: { innerWidth: number; innerHeight: number },
+): OpenSpan[] {
+  const out: OpenSpan[] = [];
+  const add = (side: OpenSpan['side'], len: number, closed: [number, number][], onWindow: boolean) => {
+    if (onWindow) return;
+    for (const [from, to] of remaining(len, closed)) out.push({ side, from, to });
+  };
+
+  const closed: Record<OpenSpan['side'], [number, number][]> = {
+    top: [], right: [], bottom: [], left: [],
+  };
+  for (const o of others) {
+    const overY: [number, number] = [
+      Math.max(o.top, rect.top) - rect.top, Math.min(o.bottom, rect.bottom) - rect.top];
+    const overX: [number, number] = [
+      Math.max(o.left, rect.left) - rect.left, Math.min(o.right, rect.right) - rect.left];
+    if (Math.abs(o.right - rect.left) <= SEAM && overY[1] - overY[0] > SEAM) closed.left.push(overY);
+    if (Math.abs(o.left - rect.right) <= SEAM && overY[1] - overY[0] > SEAM) closed.right.push(overY);
+    if (Math.abs(o.bottom - rect.top) <= SEAM && overX[1] - overX[0] > SEAM) closed.top.push(overX);
+    if (Math.abs(o.top - rect.bottom) <= SEAM && overX[1] - overX[0] > SEAM) closed.bottom.push(overX);
+  }
+
+  add('left', rect.height, closed.left, rect.left <= SEAM);
+  add('right', rect.height, closed.right, rect.right >= view.innerWidth - SEAM);
+  add('top', rect.width, closed.top, rect.top <= SEAM);
+  add('bottom', rect.width, closed.bottom, rect.bottom >= view.innerHeight - SEAM);
+  return out;
 }
 
 /** Turns a map into something `feImage` can load. Injected rather than
@@ -143,12 +181,12 @@ function host(doc: Document): SVGSVGElement {
  */
 export function ensureFilter(
   doc: Document, w: number, h: number, r: number, bevel: Bevel, encode: Encoder,
-  edges: Edges = ALL_EDGES,
+  open?: readonly OpenSpan[],
 ): string {
-  const id = lensFilterId(w, h, r, edges);
+  const id = lensFilterId(w, h, r, open);
   if (doc.getElementById(id)) return id;
 
-  const href = encode(bevelMap(w, h, r, bevel, edges));
+  const href = encode(bevelMap(w, h, r, bevel, open));
   if (!href) return '';
 
   const f = doc.createElementNS(SVG_NS, 'filter');
@@ -197,10 +235,14 @@ export function radiusOf(el: Element, view: Window): number {
  */
 export function applyLens(
   el: HTMLElement, w: number, h: number, r: number, bevel: Bevel,
-  doc: Document, encode: Encoder, edges: Edges = ALL_EDGES,
+  doc: Document, encode: Encoder, open?: readonly OpenSpan[],
 ): void {
   if (w < 1 || h < 1) { el.style.removeProperty(LENS_VAR); return; }
-  const id = ensureFilter(doc, bucketed(w), bucketed(h), r, bevel, encode, edges);
+  // A pane that ends NOWHERE has no lens at all: every side of it is a
+  // seam or the window's own boundary, so there is no glass edge to
+  // bend and a filter would only cost a compositing layer.
+  if (open && open.length === 0) { el.style.removeProperty(LENS_VAR); return; }
+  const id = ensureFilter(doc, bucketed(w), bucketed(h), r, bevel, encode, open);
   if (!id) { el.style.removeProperty(LENS_VAR); return; }
   el.style.setProperty(LENS_VAR, `url(#${id})`);
 }
@@ -256,20 +298,32 @@ export function installLens({ doc, view, bevel, encode }: LensInstall): () => vo
     doc.querySelectorAll(SURFACES).forEach((n) => boxes.push(n.getBoundingClientRect()));
 
     // Read every shape first…
-    const work: { el: HTMLElement; w: number; h: number; r: number; edges: Edges }[] = [];
+    const work: {
+      el: HTMLElement; w: number; h: number; r: number; open: OpenSpan[] | undefined;
+    }[] = [];
     for (const e of entries) {
       const el = e.target as HTMLElement;
       const box = e.borderBoxSize?.[0];
       const w = box ? box.inlineSize : e.contentRect.width;
       const h = box ? box.blockSize : e.contentRect.height;
+      // WHERE IT IS, which is a different question from how big it is.
+      // An element with no measurable box — not laid out, or an
+      // environment that does not do layout — cannot be told apart from
+      // its neighbours, and inventing seams from zeroes would silently
+      // take the lens off everything. Unmeasured means a lone pane:
+      // every side an edge, which is what it was before any of this.
       const rect = el.getBoundingClientRect();
+      const placed = rect.width > 0 && rect.height > 0;
       // Its own box is in the list; a pane is not its own neighbour.
       const others = boxes.filter((b) => b !== rect
         && !(b.left === rect.left && b.top === rect.top && b.width === rect.width && b.height === rect.height));
-      work.push({ el, w, h, r: radiusOf(el, view), edges: openEdges(rect, others) });
+      work.push({
+        el, w, h, r: radiusOf(el, view),
+        open: placed ? openSpans(rect, others, view) : undefined,
+      });
     }
     // …then write every one of them.
-    for (const { el, w, h, r, edges } of work) applyLens(el, w, h, r, bevel, doc, draw, edges);
+    for (const { el, w, h, r, open } of work) applyLens(el, w, h, r, bevel, doc, draw, open);
   });
 
   const watch = (root: ParentNode) => {

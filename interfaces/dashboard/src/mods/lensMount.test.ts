@@ -18,9 +18,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BUCKET, LENS_VAR, bucketed, lensFilterId, ensureFilter, applyLens, radiusOf,
-  installLens, openEdges, edgeKey, type Encoder,
+  installLens, openSpans, spanKey, type Encoder,
 } from './lensMount';
-import type { Bevel } from './lens';
+import type { Bevel, OpenSpan } from './lens';
 
 const BEVEL: Bevel = { band: 30, falloff: 2.2, strength: 13 };
 /** Counts what it was asked to encode, so a test can tell a cache hit
@@ -54,13 +54,15 @@ describe('bucketing', () => {
     // The point of bucketing: a list that grows a scrollbar changes its
     // pane by a few px, and minting a filter per pixel mints one per
     // interaction.
-    expect(lensFilterId(bucketed(313), bucketed(300), 12))
-      .toBe(lensFilterId(bucketed(320), bucketed(300), 12));
+    const whole: OpenSpan[] = [{ side: 'top', from: 0, to: 300 }];
+    expect(lensFilterId(bucketed(313), bucketed(300), 12, whole))
+      .toBe(lensFilterId(bucketed(320), bucketed(300), 12, whole));
   });
 
   it('but not panes of a different shape', () => {
-    expect(lensFilterId(240, 300, 12)).not.toBe(lensFilterId(240, 300, 28));
-    expect(lensFilterId(240, 300, 12)).not.toBe(lensFilterId(480, 300, 12));
+    const whole: OpenSpan[] = [{ side: 'top', from: 0, to: 300 }];
+    expect(lensFilterId(240, 300, 12, whole)).not.toBe(lensFilterId(240, 300, 28, whole));
+    expect(lensFilterId(240, 300, 12, whole)).not.toBe(lensFilterId(480, 300, 12, whole));
   });
 });
 
@@ -302,53 +304,70 @@ describe('installing', () => {
 });
 
 /**
- * WHICH SIDES ARE REAL, MEASURED AND NOT DECLARED.
+ * WHERE THE GLASS ENDS, MEASURED AND NOT DECLARED.
  *
  * This is what lets one rule written for the frame reach all five of
- * its sides without any of them saying anything about its own
- * geometry. The engine looks at where the panes actually are.
+ * its sides without any of them saying a word about its own geometry.
  */
-describe('a seam is where two panes meet', () => {
+describe('where a pane actually ends', () => {
+  const VIEW = { innerWidth: 1400, innerHeight: 900 };
   const box = (left: number, top: number, w: number, h: number): DOMRect => ({
     left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top,
     toJSON: () => ({}),
   } as DOMRect);
+  const sideOf = (spans: OpenSpan[], side: OpenSpan['side']) =>
+    spans.filter((s) => s.side === side);
 
-  it('seals the side a flush neighbour is against', () => {
-    // The rail and the header: the header's bottom sits on the rail's
-    // top, so neither has an edge there.
-    const rail = box(0, 48, 224, 600);
-    const header = box(0, 0, 1400, 48);
-    expect(openEdges(rail, [header]).top, 'the rail still bends where the header sits on it')
-      .toBe(false);
-    expect(openEdges(rail, [header]).right, 'the rail stopped bending toward the page')
-      .toBe(true);
+  it('closes only the stretch a neighbour actually covers', () => {
+    // THE BUG THE OWNER FOUND, in numbers. The rail runs the height of
+    // the window and the header sits against the top 48px of its right
+    // side; the rest of that side faces the page. Read as a boolean,
+    // one flush neighbour sealed the whole side, so the rail bent along
+    // its OUTER edge and not along the one facing the page — exactly
+    // backwards.
+    const rail = box(0, 0, 224, 800);
+    const header = box(224, 0, 1176, 48);
+    const right = sideOf(openSpans(rail, [header], VIEW), 'right');
+    expect(right.length, 'the whole side was sealed by a 48px neighbour').toBe(1);
+    expect(Math.round(right[0].from), 'the open stretch starts at the top').toBe(48);
+    expect(Math.round(right[0].to), 'the open stretch runs to the bottom').toBe(800);
+  });
+
+  it('and drops a side that lies on the window itself', () => {
+    // The owner's own example: the top bar's edge is the one facing
+    // DOWN. Above it there is nothing to bend, and a displacement there
+    // samples outside the region and smears whatever gets clamped in.
+    const header = box(224, 0, 1176, 48);
+    const spans = openSpans(header, [], VIEW);
+    expect(sideOf(spans, 'top'), 'the top bar bends against the window edge').toEqual([]);
+    expect(sideOf(spans, 'right'), 'it bends against the window edge sideways').toEqual([]);
+    expect(sideOf(spans, 'bottom').length, 'it stopped bending toward the page').toBe(1);
   });
 
   it('and leaves a side open when the neighbour is merely near', () => {
-    // The control, and the reason the tolerance is a fraction of a
-    // pixel rather than a design value: two cards with a gap between
-    // them are two panes, and both keep the edge that faces the other.
-    const card = box(0, 0, 300, 200);
-    const nextTo = box(312, 0, 300, 200);
-    expect(openEdges(card, [nextTo]).right, 'a real gap was read as a seam').toBe(true);
+    // The control, and why the tolerance is a fraction of a pixel
+    // rather than a design value: two cards with a gap between them are
+    // two panes, and both keep the edge that faces the other.
+    const card = box(100, 100, 300, 200);
+    const nextTo = box(412, 100, 300, 200);
+    expect(sideOf(openSpans(card, [nextTo], VIEW), 'right').length, 'a real gap read as a seam')
+      .toBe(1);
   });
 
-  it('and ignores a neighbour that only shares a line, not a side', () => {
-    // Flush on x but nowhere near on y — the corner of something
-    // elsewhere on the page. Touching at a point is not a seam.
-    const card = box(0, 0, 300, 200);
-    const below = box(300, 900, 300, 200);
-    expect(openEdges(card, [below]).right, 'a distant pane sealed a side').toBe(true);
+  it('and a pane boxed in on every side gets no lens at all', () => {
+    // The centre gutter with the assistant open: page on one side,
+    // sub-page on the other, window above and below. Nothing of it is
+    // an edge, so there is nothing to bend and no filter to mount.
+    const gutter = box(700, 0, 8, 900);
+    const page = box(0, 0, 700, 900);
+    const sub = box(708, 0, 692, 900);
+    expect(openSpans(gutter, [page, sub], VIEW), 'a fully enclosed strip still bends').toEqual([]);
   });
 
-  it('and a sealed pane gets its own filter, not the whole one\'s', () => {
-    // Two panes of the same SIZE but different seams must not share a
-    // map: the id is what keeps them apart, and without the mask in it
-    // the second one would silently reuse the first one's bevel.
-    const whole = { top: true, right: true, bottom: true, left: true };
-    const sealed = { ...whole, left: false };
-    expect(edgeKey(whole)).not.toBe(edgeKey(sealed));
-    expect(lensFilterId(240, 600, 0, whole)).not.toBe(lensFilterId(240, 600, 0, sealed));
+  it('and two panes that end differently do not share a filter', () => {
+    const a: OpenSpan[] = [{ side: 'right', from: 0, to: 800 }];
+    const b: OpenSpan[] = [{ side: 'right', from: 48, to: 800 }];
+    expect(spanKey(a)).not.toBe(spanKey(b));
+    expect(lensFilterId(240, 800, 0, a)).not.toBe(lensFilterId(240, 800, 0, b));
   });
 });

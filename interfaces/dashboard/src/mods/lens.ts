@@ -75,28 +75,37 @@ export const RESOLUTION = { w: 32, h: 40 } as const;
 export const NEUTRAL = 128;
 
 /**
- * Which of a pane's four sides are actually EDGES.
+ * WHERE THE GLASS ACTUALLY ENDS, in surface pixels along one side.
  *
- * A lens bends light where the glass ends. Where two panes of the same
- * sheet meet, the glass does not end — and bending there draws a line
- * across something that has no boundary, which is exactly what the
- * owner saw at the join of the rail and the header: "at the junction I
- * can see the lens, which means they still think they are separate".
+ * A lens bends light where the pane stops, and a pane of the frame
+ * stops in fewer places than it has sides. Two things are not edges:
  *
- * The engine is TOLD nothing about which is which. `lensMount` measures
- * it: an edge with another pane flush against it is sealed. So one rule
- * written for the frame still reaches all five sides, and none of them
- * declares anything about its own geometry.
+ *   · a SEAM. Where two panes of the same sheet meet, the glass does
+ *     not end. Bending there draws a line across something with no
+ *     boundary — which is what the owner saw at the corner of the rail
+ *     and the header.
+ *   · the WINDOW'S OWN BOUNDARY. The top of the top bar has nothing
+ *     beyond it: there is no backdrop out there to bend, and a
+ *     displacement at that edge samples outside the region and smears
+ *     whatever the browser clamps in. As he put it, the top bar's edge
+ *     is the one facing DOWN, toward the page.
+ *
+ * And a side is rarely all one thing, which is the part a boolean per
+ * side could not say. The rail meets the header for the header's 48px
+ * and faces the page for the six hundred below it — read as a boolean,
+ * one flush neighbour sealed the whole side, so the rail bent along its
+ * OUTER edge and not along the one facing the page. Exactly backwards,
+ * and the reason the effect read as weak and misplaced.
+ *
+ * So a side carries the RANGES of it that are still edges, and the
+ * engine is told nothing else: `lensMount` measures them.
  */
-export interface Edges {
-  readonly top: boolean;
-  readonly right: boolean;
-  readonly bottom: boolean;
-  readonly left: boolean;
+export interface OpenSpan {
+  readonly side: 'top' | 'right' | 'bottom' | 'left';
+  /** Along that side, in surface pixels, from its start. */
+  readonly from: number;
+  readonly to: number;
 }
-
-/** A pane with nothing against it — every side is an edge. */
-export const ALL_EDGES: Edges = { top: true, right: true, bottom: true, left: true };
 
 export interface LensMap {
   readonly width: number;
@@ -123,9 +132,11 @@ export interface LensMap {
  * filter.
  */
 export function bevelMap(
-  w: number, h: number, r: number, bevel: Bevel, edges: Edges = ALL_EDGES,
+  w: number, h: number, r: number, bevel: Bevel, open?: readonly OpenSpan[],
 ): LensMap {
-  const whole = edges.top && edges.right && edges.bottom && edges.left;
+  // No spans given means the whole outline is an edge, which is what a
+  // card is: it sits on the page with nothing against it.
+  const whole = open === undefined;
   const { w: MW, h: MH } = RESOLUTION;
   const data = new Uint8ClampedArray(MW * MH * 4);
   // Clamp the radius the way CSS does: a corner cannot be larger than
@@ -167,31 +178,35 @@ export function bevelMap(
           ny = Math.sign(y - h / 2);
         }
       } else {
-        // A PANE WITH A SEAM measures to its open sides only. The
-        // rounded-rect field above cannot express that: it is one
-        // distance to the whole outline, so sealing one side would
-        // still leave the corner it shares bending. Distance per side,
-        // nearest one wins, and a sealed side simply never wins.
+        // A PANE THAT ENDS IN PLACES measures to those places only.
+        // Distance to a SEGMENT, not to a side: the nearest point on
+        // the open stretch, so a pixel past the end of one falls away
+        // from it the way it would from a corner.
         //
         // No corner rounding here, and none is missed: a pane with a
         // seam is a strip of the frame, and the frame's sides are
         // square — the radius belongs to the page card they surround.
-        const dl = edges.left ? x : Infinity;
-        const dr = edges.right ? w - x : Infinity;
-        const dt = edges.top ? y : Infinity;
-        const db = edges.bottom ? h - y : Infinity;
-        depth = Math.min(dl, dr, dt, db);
-        if (!Number.isFinite(depth)) { depth = Infinity; }
-        // Within half a pixel of two open sides at once is a corner of
-        // the OPEN outline, and it takes both, the way the field above
-        // does its own corners.
-        const near = 0.5;
-        if (dl - depth <= near) nx -= 1;
-        if (dr - depth <= near) nx += 1;
-        if (dt - depth <= near) ny -= 1;
-        if (db - depth <= near) ny += 1;
-        const len = Math.hypot(nx, ny);
-        if (len > 0) { nx /= len; ny /= len; }
+        let best = Infinity;
+        let bx = 0, by = 0;
+        for (const span of open!) {
+          const lo = Math.min(span.from, span.to), hi = Math.max(span.from, span.to);
+          let px: number, py: number;
+          if (span.side === 'left') { px = 0; py = Math.min(Math.max(y, lo), hi); }
+          else if (span.side === 'right') { px = w; py = Math.min(Math.max(y, lo), hi); }
+          else if (span.side === 'top') { px = Math.min(Math.max(x, lo), hi); py = 0; }
+          else { px = Math.min(Math.max(x, lo), hi); py = h; }
+          const vx = x - px, vy = y - py;
+          const d = Math.hypot(vx, vy);
+          // Within half a pixel of two stretches at once is a corner of
+          // the OPEN outline, and it takes both — the same thing the
+          // rounded-rect field does at its own corners.
+          if (d < best - 0.5) { best = d; bx = vx; by = vy; }
+          else if (d <= best + 0.5) { best = Math.min(best, d); bx += vx; by += vy; }
+        }
+        depth = best;
+        const len = Math.hypot(bx, by);
+        // The inward normal is the way back to the glass's end.
+        if (len > 0) { nx = -bx / len; ny = -by / len; }
       }
 
       // Deep inside the pane this is 0, so the centre is exactly

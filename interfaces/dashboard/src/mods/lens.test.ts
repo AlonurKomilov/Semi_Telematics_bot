@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bevelMap, RESOLUTION, NEUTRAL, ALL_EDGES, type Bevel } from './lens';
+import { bevelMap, RESOLUTION, NEUTRAL, type Bevel, type OpenSpan } from './lens';
 import { MATERIAL_PACKS, materialPackById } from './store/items/material';
 
 const BEVEL: Bevel = { band: 30, falloff: 2.2, strength: 13 };
@@ -169,51 +169,56 @@ describe('the bevel is a pack value, not an engine one', () => {
 /**
  * GLASS DOES NOT BEND WHERE IT DOES NOT END.
  *
- * The owner found this by looking at the corner where the rail meets
- * the header: "at the junction I can still see the lens, which means
- * they think they are separate — a lens only acts at an EDGE, so where
- * two parts join it should be continuous."
+ * The owner, at the corner where the rail meets the header: "a lens
+ * only acts at an EDGE, so where two parts join it should be
+ * continuous." And on the top bar: "its edge is the one facing DOWN —
+ * above it is already the outside, it does not need an edge there."
  *
- * That is the law, and it is the one thing a bevel drawn from a
- * rounded-rect field cannot express: the field is one distance to the
- * whole outline, so every side bends whether or not anything is against
- * it. Five panes laid flush then draw four lines across a surface that
- * has no boundary at all.
+ * Both are the same law, and neither can be said by a bevel drawn from
+ * a rounded-rect field: that field is ONE distance to the whole
+ * outline, so every side bends whether or not the glass ends there.
  *
- * Which sides are real is measured at runtime and handed in — nothing
- * here or in the pack declares it, so one rule written for the frame
- * still reaches all five sides.
+ * Which stretches are real is measured at runtime and handed in —
+ * nothing here or in the pack declares it, so one rule written for the
+ * frame still reaches all five of its sides.
  */
-describe('a pane with a seam', () => {
+describe('a pane that ends in only some places', () => {
   const at = (m: ReturnType<typeof bevelMap>, mx: number, my: number) => {
     const i = (my * m.width + mx) * 4;
     return { x: m.data[i] - NEUTRAL, y: m.data[i + 1] - NEUTRAL };
   };
   const mid = { x: RESOLUTION.w >> 1, y: RESOLUTION.h >> 1 };
 
-  it('does not bend along the side that is sealed', () => {
-    const sealed = bevelMap(W, H, 0, BEVEL, { ...ALL_EDGES, left: false });
-    expect(at(sealed, 0, mid.y).x, 'the sealed side still bends').toBe(0);
-    // The control, in the same map: the OPPOSITE side is still an edge
-    // and still bends, so this is not a map that came out empty.
-    expect(Math.abs(at(sealed, RESOLUTION.w - 1, mid.y).x), 'nothing bends at all')
-      .toBeGreaterThan(40);
+  it('bends toward the stretch that is an edge, and not the other way', () => {
+    const right: OpenSpan[] = [{ side: 'right', from: 0, to: H }];
+    const m = bevelMap(W, H, 0, BEVEL, right);
+    expect(at(m, RESOLUTION.w - 1, mid.y).x, 'the open side stopped bending').toBeLessThan(-40);
+    expect(at(m, 0, mid.y).x, 'the sealed side bends anyway').toBe(0);
   });
 
-  it('and a strip sealed on both long sides bends on neither', () => {
-    // The gutters: 8px of frame with the page on one side and another
-    // gutter on the other. Sealed both ways there is no edge across the
-    // strip at all, and the whole width must come out neutral.
-    const strip = bevelMap(8, H, 0, BEVEL, { ...ALL_EDGES, left: false, right: false });
+  it('and along a side, only within the stretch that is open', () => {
+    // The rail: the header covers the top of its right side, the page
+    // faces the rest. The top must be still and the bottom must bend.
+    const partial: OpenSpan[] = [{ side: 'right', from: H / 2, to: H }];
+    const m = bevelMap(W, H, 0, BEVEL, partial);
+    const outer = RESOLUTION.w - 1;
+    expect(Math.abs(at(m, outer, 1).x), 'it bends where the neighbour covers it')
+      .toBeLessThan(6);
+    expect(at(m, outer, RESOLUTION.h - 2).x, 'it stopped bending where it faces the page')
+      .toBeLessThan(-40);
+  });
+
+  it('and not at all when nothing about it is an edge', () => {
+    const m = bevelMap(8, H, 0, BEVEL, []);
     for (const mx of [0, RESOLUTION.w >> 1, RESOLUTION.w - 1])
-      expect(at(strip, mx, mid.y).x, `column ${mx} bends with both sides sealed`).toBe(0);
+      expect(at(m, mx, mid.y).x, `column ${mx} bends with no edge anywhere`).toBe(0);
   });
 
-  it('and an unsealed pane is byte-for-byte what it always was', () => {
+  it('and a pane given no spans at all is byte-for-byte what it was', () => {
     // The default has to be the old path exactly, or every card in the
     // app quietly changes the day this lands.
     const before = bevelMap(W, H, R, BEVEL);
-    const after = bevelMap(W, H, R, BEVEL, ALL_EDGES);
+    const after = bevelMap(W, H, R, BEVEL, undefined);
     expect([...after.data]).toEqual([...before.data]);
   });
 });
