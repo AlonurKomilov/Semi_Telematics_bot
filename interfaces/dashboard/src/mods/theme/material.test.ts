@@ -167,6 +167,36 @@ describe('what the solid path costs', () => {
     ).not.toMatch(/\[data-material="glass"\][^{]*::(before|after)/);
   });
 
+  it('and holds no VALUE of its own — only the neutral of each kind', () => {
+    // THE LINE THE OWNER ASKED ABOUT, made mechanical. The list above
+    // pins exact strings, which is a copy of today rather than a rule:
+    // change a default to 0.2, update the literal, and it still passes
+    // while the engine has quietly acquired a material's taste.
+    //
+    // This asks the other question — is the value the one that makes
+    // the material DO NOTHING? A strength of 0, a multiplier of 1, a
+    // length of 0, a colour of transparent, a shadow of none. Anything
+    // else is somebody's choice, and a choice belongs to a pack: the
+    // engine is what a pack is read INTO, so a number sitting here is a
+    // number no pack can be blamed for and no reader can find.
+    const NEUTRAL = new Set(['0', '0px', '1', 'none', 'transparent']);
+    const ENGINE = engineCss().replace(/\/\*[\s\S]*?\*\//g, '');
+    const found: string[] = [];
+    for (const m of ENGINE.matchAll(/(--surface-[a-z-]+):\s*([^;]+);/g)) {
+      // `--surface-base` is not a material value: it says which plane of
+      // the PALETTE a surface sits on, which is the app's own fact and
+      // the thing a material then decides what to do with.
+      if (m[1] === '--surface-base') continue;
+      found.push(m[1]);
+      expect(NEUTRAL.has(m[2].trim()),
+        `${m[1]} is "${m[2].trim()}" in the engine sheet. That is a material's choice, `
+        + 'and it belongs in a pack — everything here has to be the value that does nothing.')
+        .toBe(true);
+    }
+    expect(found.length, 'no surface token was read — this measures nothing')
+      .toBeGreaterThan(5);
+  });
+
   it('ships solid defaults that reproduce today exactly', () => {
     // The ENGINE sheet, by name: the first declaration of each token is
     // the base, and in the assembled sheet the glass pack — imported at
