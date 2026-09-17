@@ -283,6 +283,8 @@ async def test_company_connection_generic(
             try:
                 await provider.close_if_owned_by_test()
             except AttributeError:
+                # A provider without that method opened nothing for the
+                # probe, so there is nothing to close.
                 pass
     except Exception as e:
         # A probe that raises is a FAILED probe, not a broken endpoint:
