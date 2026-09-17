@@ -64,6 +64,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                 str(r.get("address") or ""),
                 str(r.get("engine_state") or ""),
                 r.get("fuel_pct"), r.get("def_pct"),
+                r.get("fuel_time"), r.get("def_time"),
                 r.get("odometer_mi"),
                 r.get("odometer_time"),
                 r.get("engine_hours"),
@@ -90,13 +91,14 @@ class VehiclesWarehouseMixin(_MixinBase):
                     vehicle_id, account_id, vehicle_name, company_code,
                     lat, lon, speed_mph, heading, address,
                     engine_state, fuel_pct, def_pct,
+                    fuel_time, def_time,
                     odometer_mi, odometer_time,
                     engine_hours, engine_hours_time,
                     fault_count, dtc_critical_count,
                     last_driver_id, last_driver_name,
                     registry_id, source_ts,
                     captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -106,6 +108,10 @@ class VehiclesWarehouseMixin(_MixinBase):
                     address=excluded.address,
                     engine_state=excluded.engine_state,
                     fuel_pct=excluded.fuel_pct, def_pct=excluded.def_pct,
+                    -- Overwritten in lockstep with the value they date.
+                    -- COALESCE here (as the odometer clock does) would
+                    -- pair a fresh value with a stale stamp.
+                    fuel_time=excluded.fuel_time, def_time=excluded.def_time,
                     odometer_mi=COALESCE(excluded.odometer_mi, vehicle_state_live.odometer_mi),
                     odometer_time=COALESCE(excluded.odometer_time, vehicle_state_live.odometer_time),
                     engine_hours=COALESCE(excluded.engine_hours, vehicle_state_live.engine_hours),
@@ -171,6 +177,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             "vehicle_id", "vehicle_name", "company_code",
             "lat", "lon", "speed_mph", "heading", "address",
             "engine_state", "fuel_pct", "def_pct",
+            "fuel_time", "def_time",
             "odometer_mi", "odometer_time",
             "engine_hours", "engine_hours_time",
             "fault_count", "dtc_critical_count",

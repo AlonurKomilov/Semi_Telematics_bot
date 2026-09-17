@@ -150,8 +150,14 @@ def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
             "engineStates":       {"value": row.get("engine_state") or ""},
             "time":               row.get("captured_at") or "",
         },
-        "fuel":      {"value": row.get("fuel_pct")} if row.get("fuel_pct") is not None else {},
-        "def_level": {"value": row.get("def_pct")} if row.get("def_pct") is not None else {},
+        # ``time`` beside the value, exactly as the live payload shapes
+        # it — the detail page reads ``v.fuel?.time`` for its freshness
+        # cue, and a warehouse row without it rendered a stale fuel level
+        # with no dot while the same row via Samsara showed "· 21d ago".
+        "fuel":      ({"value": row.get("fuel_pct"), "time": row.get("fuel_time") or ""}
+                      if row.get("fuel_pct") is not None else {}),
+        "def_level": ({"value": row.get("def_pct"), "time": row.get("def_time") or ""}
+                      if row.get("def_pct") is not None else {}),
         # Odometer surfaced as a nested dict so ``_extract_odometer``
         # in the vehicles route can consume it without knowing whether
         # the row came from the warehouse or a live Samsara fallback.

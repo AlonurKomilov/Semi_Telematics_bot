@@ -229,8 +229,8 @@ class TestShapeAdapters:
             "id": "v1", "name": "T-1", "_org": "ACME",
             "location": {"latitude": 40.5, "longitude": -74.5,
                          "speedMilesPerHour": 60, "address": "I-95"},
-            "fuel": {"value": 75},
-            "def_level": {"value": 80},
+            "fuel": {"value": 75, "time": "2026-07-14T11:00:00Z"},
+            "def_level": {"value": 80, "time": "2026-07-13T09:30:00Z"},
             "fault_codes": {"j1939": {
                 "diagnosticTroubleCodes": [{"code": "P0001"}, {"code": "P0002"}],
                 "checkEngineLights": {"red": True},
@@ -241,8 +241,33 @@ class TestShapeAdapters:
         assert row["company_code"] == "ACME"
         assert row["fuel_pct"] == 75
         assert row["def_pct"] == 80
+        # Each metric's OWN clock survives the reshape — it used to be
+        # read and dropped, which is how a warehouse fuel reading came
+        # to render with no freshness cue at all.
+        assert row["fuel_time"] == "2026-07-14T11:00:00Z"
+        assert row["def_time"] == "2026-07-13T09:30:00Z"
         assert row["fault_count"] == 2
         assert row["dtc_critical_count"] == 1
+
+    def test_fuel_and_def_clocks_come_back_out_of_the_warehouse_row(self):
+        """The round trip the detail page depends on: ``v.fuel?.time``."""
+        row = {
+            "vehicle_id": "v1", "vehicle_name": "T-1", "company_code": "ACME",
+            "fuel_pct": 45.0, "fuel_time": "2026-06-23T08:00:00Z",
+            "def_pct": 53.0, "def_time": "2026-06-23T08:00:00Z",
+            "captured_at": "2026-07-14T12:00:00Z",
+        }
+        out = warehouse_reader._warehouse_row_to_overview(row)
+        assert out["fuel"] == {"value": 45.0, "time": "2026-06-23T08:00:00Z"}
+        assert out["def_level"] == {"value": 53.0, "time": "2026-06-23T08:00:00Z"}
+
+    def test_a_metric_with_no_clock_still_ships_its_value(self):
+        """Rows written before the columns existed: value present, time
+        empty — the Row renders the value and simply draws no cue,
+        never hides the number."""
+        out = warehouse_reader._warehouse_row_to_overview(
+            {"vehicle_id": "v1", "fuel_pct": 45.0, "fuel_time": None})
+        assert out["fuel"] == {"value": 45.0, "time": ""}
 
     def test_safety_event_to_log_row_severity(self):
         hi = sync._safety_event_to_log_row({"event_id": "e1", "g_force": 2.5})

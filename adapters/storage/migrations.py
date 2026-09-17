@@ -835,6 +835,8 @@ async def migrate_warehouse_tables(conn) -> None:
             engine_state        TEXT    NOT NULL DEFAULT '',
             fuel_pct            REAL,
             def_pct             REAL,
+            fuel_time           TEXT,
+            def_time            TEXT,
             odometer_mi         REAL,
             odometer_time       TEXT,
             engine_hours        REAL,
@@ -9614,3 +9616,36 @@ async def migrate_chat_rls(conn) -> None:
     like the platform's other cross-account queues (chat_schema says why)."""
     from .chat_schema import migrate_chat_rls as migrate
     await migrate(conn)
+
+
+@_register("216_vehicle_state_fuel_def_time")
+async def migrate_vehicle_state_fuel_def_time(conn) -> None:
+    """Add ``vehicle_state_live.fuel_time`` + ``def_time``.
+
+    Every metric on the vendor payload carries its own clock, and the
+    state row kept two of them (odometer, engine hours) and dropped
+    two (fuel, DEF).  The dashboard's per-metric freshness cue reads
+    ``v.fuel?.time``, so a fuel level served from the warehouse rendered
+    with no cue at all while the same truck via the live path showed
+    "45% · 21d ago" — same number, one of them honest.
+
+    The fresh-install CREATE carries both columns; this is the upgrade
+    path for every database already running.  Idempotent — silently
+    no-ops when the columns are present (migration 055's pattern).
+    ``vehicle_state_live`` by name: the table was renamed before this
+    point in the sequence.
+    """
+    for col, ddl in (
+        ("fuel_time", "ALTER TABLE vehicle_state_live ADD COLUMN fuel_time TEXT"),
+        ("def_time",  "ALTER TABLE vehicle_state_live ADD COLUMN def_time TEXT"),
+    ):
+        try:
+            await conn.execute(ddl)
+            await conn.commit()
+            logger.info("Migration 216: added vehicle_state_live.%s", col)
+        except Exception as e:
+            logger.debug("vehicle_state_live.%s migration skipped: %s", col, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass

@@ -58,6 +58,14 @@ def _vehicle_overview_to_state_row(v: dict[str, Any]) -> dict[str, Any]:
 
     fuel_val = fuel.get("value") if isinstance(fuel, dict) else None
     def_val = def_lvl.get("value") if isinstance(def_lvl, dict) else None
+    # Each metric carries its OWN clock on the vendor payload, and this
+    # function read the value and dropped the time.  Fuel can be days
+    # staler than GPS on the same truck; with no stamp of its own, a
+    # fuel reading served from the warehouse drew no freshness cue at
+    # all — the vendor path showed "45% · 21d ago", the store path
+    # showed "45%".  Same number, one of them honest.
+    fuel_time = (fuel.get("time") or None) if isinstance(fuel, dict) else None
+    def_time = (def_lvl.get("time") or None) if isinstance(def_lvl, dict) else None
 
     return {
         "vehicle_id":   v.get("id") or "",
@@ -76,6 +84,8 @@ def _vehicle_overview_to_state_row(v: dict[str, Any]) -> dict[str, Any]:
         "engine_state_raw": v.get("engine_state_raw") or "",
         "fuel_pct":     fuel_val,
         "def_pct":      def_val,
+        "fuel_time":    fuel_time,
+        "def_time":     def_time,
         "odometer_mi":  None,  # not in the overview payload; backfilled by aggregate job if needed
         # Engine hours follows the same overlay pattern — None here,
         # filled in by ``get_current_engine_hours_readings`` before
@@ -263,6 +273,8 @@ async def ingest_vehicle_state(account_id: int) -> int:
             row.get("captured_at"),
             row.get("odometer_time"),
             row.get("engine_hours_time"),
+            row.get("fuel_time"),
+            row.get("def_time"),
         )
 
     # Stamp OUR identity onto every row before it becomes history.  The
