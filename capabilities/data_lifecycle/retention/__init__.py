@@ -17,6 +17,7 @@ from .._common import make_discover
 # modules are skipped (logged), never fatal.
 _CONTRIBUTORS = (
     "features.vehicles.lifecycle",        # owns vehicle telemetry tiers + faults (build + keep, colocated)
+    "features.eld.lifecycle",        # owns the duty-status history tier
     "features.maintenance.retention",     # consumer need on vehicle.metrics_daily
     "features.work_orders.retention",     # consumer need on vehicle.metrics_daily
     "features.drivers.retention",         # owns driver.efficiency_daily

@@ -9649,3 +9649,55 @@ async def migrate_vehicle_state_fuel_def_time(conn) -> None:
                 await conn.rollback()
             except Exception:
                 pass
+
+
+
+@_register("217_driver_hos_minute")
+async def migrate_driver_hos_minute(conn) -> None:
+    """``warehouse.driver_hos_minute`` — the duty-status history tier.
+
+    Hours of service had a live table and nothing behind it: the ELD
+    feed overwrote each driver's row every five minutes and the
+    previous reading was gone.  "Who was driving at 14:00 yesterday"
+    had no answer, and every other feed in the warehouse could answer
+    its own version of that question.  This is the same shape as
+    ``vehicle_state_minute`` — one row per (driver, slot), the live
+    row copied on a wall-aligned cron, ``source_ts`` carried unchanged
+    so the sample keeps the provider's own time rather than ours.
+
+    Schema-qualified on purpose: the pool's search_path is
+    ``public,warehouse`` with public FIRST, so an unqualified CREATE
+    here would land the tier in the wrong schema and the shadow-orphan
+    guard would refuse it.  Five-minute slots, not one: the HOS ingest
+    runs every five minutes, and sampling faster would write four
+    identical rows per reading.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS warehouse.driver_hos_minute (
+            account_id              INTEGER NOT NULL,
+            provider_id             TEXT    NOT NULL,
+            provider_driver_id      TEXT    NOT NULL,
+            captured_at             TEXT    NOT NULL,
+            user_id                 INTEGER,
+            duty_status             TEXT    NOT NULL DEFAULT 'unknown',
+            last_status_change      TEXT    NOT NULL DEFAULT '',
+            driver_name             TEXT    NOT NULL DEFAULT '',
+            source_ts               TEXT    NOT NULL DEFAULT '',
+            company_code            TEXT    NOT NULL DEFAULT '',
+            provider_vehicle        TEXT    NOT NULL DEFAULT '',
+            drive_remaining_seconds INTEGER,
+            shift_remaining_seconds INTEGER,
+            cycle_remaining_seconds INTEGER,
+            break_in_seconds        INTEGER,
+            PRIMARY KEY (account_id, provider_id, provider_driver_id, captured_at)
+        )
+        """
+    )
+    # Indexes here, never in schema.py (the known boot-crash gotcha).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_driver_hos_minute_user_time "
+        "ON warehouse.driver_hos_minute(account_id, user_id, captured_at)"
+    )
+    await conn.commit()
+    logger.info("Migration 217: warehouse.driver_hos_minute ready")

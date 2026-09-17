@@ -16,6 +16,7 @@ from .._common import make_discover
 # history; missing modules are skipped (logged), never fatal.
 _CONTRIBUTORS = (
     "features.vehicles.lifecycle",   # vehicle state → minute → hour → day → week
+    "features.eld.lifecycle",        # duty-status → minute
 )
 
 discover = make_discover(_CONTRIBUTORS)

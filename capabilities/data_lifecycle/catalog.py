@@ -72,6 +72,28 @@ async def sync_table_comments(db) -> int:
             comments[table] = _comment_for(dataset, table)
     comments.update(_EXTRA_COMMENTS)
 
+    # THE SCHEMA IS THE PREFIX — and the filter.  A dataset's ``tables``
+    # names what its job WRITES, and two of them (the spec and identity
+    # fill-only feeds) write the registry's ``vehicles`` and the
+    # platform's ``users``: operational tables that are not the
+    # warehouse and must never wear its tag.  Stamping only relations
+    # that live in the ``warehouse`` schema keeps the family comment
+    # meaning what it says.  A lookup that fails stamps nothing rather
+    # than everything.
+    try:
+        cur = await db._db.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'warehouse'"
+        )
+        in_warehouse = {
+            str(r[0] if not isinstance(r, dict) else r.get("table_name"))
+            for r in await cur.fetchall()
+        }
+    except Exception as e:
+        logger.debug("catalog: warehouse schema listing failed (%s) — stamping nothing", e)
+        return 0
+    comments = {t: c for t, c in comments.items() if t in in_warehouse}
+
     synced = 0
     for table, text in sorted(comments.items()):
         literal = text.replace("'", "''")

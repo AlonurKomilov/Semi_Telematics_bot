@@ -128,6 +128,14 @@ facade directly (beside the pre-existing permissions/vehicle_scope
 case) — legal under the guard table, listed here so it is chosen,
 not accidental.
 
+**`driver_hos` (added 2026-09-17):** `driver_hos_live` (public, the ELD
+feature's own store, PK account+provider+provider_driver) → `warehouse.driver_hos_minute`
+(5-minute slots, copied by the `driver_hos` cascade's one stage, PK adds
+`captured_at`; `source_ts` carried unchanged). No hour/day tiers: a
+duty status is categorical and its "aggregate" is the KPI feature's to
+define. Retained 30 days (`driver.hos_minute`). Migration 217; stage
+`eld_hos_snapshot`; the ELD lifecycle module is on all three rosters.
+
 ## Naming: stream + grain (the two words, kept separate)
 
 One dataset = one STREAM name; resolution is a GRAIN.  For tiered

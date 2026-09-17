@@ -164,6 +164,63 @@ class EldMixin(_MixinBase):
             written += 1
         return written
 
+    async def list_driver_hos_live_raw(self, account_id: int) -> list[dict]:
+        """The live rows as STORED — no roster join, no display name
+        preference — for the history snapshot, which must copy what the
+        feed wrote and nothing the reader dressed it with."""
+        cols = ("provider_id", "provider_driver_id", "user_id", *_HOS_FIELDS)
+        cur = await self._db.execute(
+            f"SELECT {', '.join(cols)} FROM driver_hos_live WHERE account_id = ?",
+            (account_id,),
+        )
+        rows = await cur.fetchall()
+        return [
+            (dict(r) if isinstance(r, dict) else dict(zip(cols, r)))
+            for r in rows
+        ]
+
+    async def upsert_driver_hos_minutes(self, account_id: int, rows: list[dict]) -> int:
+        """Bulk-insert one slot of duty-status history.  ``ON CONFLICT DO
+        NOTHING``: a second capture of the same slot is a no-op, never a
+        duplicate — the same rule ``vehicle_state_minute`` keeps."""
+        values = []
+        for r in rows:
+            pdid = str(r.get("provider_driver_id") or "").strip()
+            slot = str(r.get("captured_at") or "").strip()
+            if not pdid or not slot:
+                continue
+            values.append((
+                account_id, str(r.get("provider_id") or ""), pdid, slot,
+                r.get("user_id"),
+                *[str(r.get(f) or "") for f in _HOS_TEXT_FIELDS],
+                *[_clock_value(r.get(f)) for f in _HOS_CLOCK_FIELDS],
+            ))
+        if not values:
+            return 0
+        await self._db.executemany(
+            f"""
+            INSERT INTO driver_hos_minute
+                (account_id, provider_id, provider_driver_id, captured_at, user_id,
+                 {', '.join(_HOS_FIELDS)})
+            VALUES ({', '.join(['?'] * (5 + len(_HOS_FIELDS)))})
+            ON CONFLICT (account_id, provider_id, provider_driver_id, captured_at) DO NOTHING
+            """,
+            values,
+        )
+        await self._db.commit()
+        return len(values)
+
+    async def prune_driver_hos_minutes(self, account_id: int, *, days_keep: int = 30) -> int:
+        """Delete duty-status history older than ``days_keep`` for one account."""
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM driver_hos_minute WHERE account_id = ? AND captured_at < ?",
+            (account_id, cutoff),
+        )
+        await self._db.commit()
+        return int(getattr(cur, "rowcount", 0) or 0)
+
     async def get_driver_hos_live(
         self,
         account_id: int,

@@ -52,3 +52,53 @@ register_dataset(IngestDataset(
     expect_rows=True,
     label="Ingest driver hours of service",
 ))
+
+
+# ── BUILD: the history tier (rollup cascade) ────────────────────────
+from capabilities.data_lifecycle.rollups.registry import (  # noqa: E402
+    RollupCascade, RollupStage, register_cascade,
+)
+
+
+def _run_hos_snapshot(account_id: int):
+    from features.eld.warehouse.snapshot import snapshot_driver_hos
+    return snapshot_driver_hos(account_id)
+
+
+register_cascade(RollupCascade(
+    "driver_hos",
+    (
+        RollupStage(
+            # Every FIVE minutes, wall-aligned: the ingest polls the ELD
+            # every five, so sampling faster would write four identical
+            # rows per reading.  Cron rather than an interval, and UTC-
+            # pinned, for the reasons the vehicle cascade records —
+            # an interval mints a new second-offset at every restart,
+            # and an unpinned cron loses an hour to DST every year.
+            "eld_hos_snapshot",
+            {"cron": "*/5 * * * *", "tz": "UTC"},
+            _run_hos_snapshot,
+            "Capture the 5-minute duty-status history",
+            stream="driver.hos", grain="minute",
+        ),
+    ),
+))
+
+
+# ── KEEP: retention target (HOW to prune) + the feature's need (HOW LONG) ──
+from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
+    RetentionNeed, RetentionTarget, register_need, register_target,
+)
+
+register_target(RetentionTarget(
+    "driver.hos_minute", "Duty-status history (5-minute samples)", "tenant",
+    lambda db, acct, days: db.prune_driver_hos_minutes(acct, days_keep=days),
+))
+# Thirty days.  The ELD itself is the system of record and keeps the
+# regulatory horizon; this tier exists to answer "who was driving at
+# 14:00 yesterday" and to give KPI something to read — a month covers
+# both, and at 80 drivers × 288 slots it is ~700k rows per account
+# per month, which is small.  Raise it here, not in a reader.
+register_need(RetentionNeed(
+    "eld", "driver.hos_minute", 30, "duty-status audit trail + KPI inputs",
+))
