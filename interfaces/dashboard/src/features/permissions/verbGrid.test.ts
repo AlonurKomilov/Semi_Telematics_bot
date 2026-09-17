@@ -69,6 +69,11 @@ describe('verb grid completeness', () => {
         // Alerts is a service ROW now; its Group delivery config rides
         // the config family exactly as it did on the read-only band.
         'can_view_alerts',
+        // Which ELD wins when one driver is reported by two of them —
+        // `field_precedence:driver_hos`, the ELD feature's own key, on
+        // the ELD's own row rather than a line on Vehicles.  The tick
+        // follows the surface the grant opens (the Hours of Service gear).
+        'can_view_eld',
         // The first feature to ride BOTH scopes: the catalogue of what a
         // vehicle owes is account-wide (a fact about the truck), and which
         // of it a role goes red about is that role's own (attention).
