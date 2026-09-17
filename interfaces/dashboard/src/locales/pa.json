@@ -442,7 +442,7 @@
     "revoke_invite_title": "Revoke this invite?",
     "revoke_invite_body": "The link will stop working immediately. If someone has already copied it, they will no longer be able to join."
   },
-  "chat": {
+  "aiChat": {
     "title": "AI ਸਹਾਇਕ",
     "tab_chat": "ਚੈਟ",
     "switch_model": "AI ਮਾਡਲ ਬਦਲੋ",

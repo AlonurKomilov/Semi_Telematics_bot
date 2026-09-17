@@ -442,7 +442,7 @@
     "revoke_invite_title": "Revoke this invite?",
     "revoke_invite_body": "The link will stop working immediately. If someone has already copied it, they will no longer be able to join."
   },
-  "chat": {
+  "aiChat": {
     "title": "AI ረዳት",
     "tab_chat": "ቻት",
     "switch_model": "የAI ሞዴል ቀይር",

@@ -254,7 +254,7 @@ function ToolStepLink({ toolName }: { toolName?: string }) {
       className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:border-ring hover:bg-muted transition-colors min-h-tap"
     >
       <ArrowUpRight className="size-3" aria-hidden />
-      {t('chat.open_feature', { feature: t(link.labelKey) })}
+      {t('aiChat.open_feature', { feature: t(link.labelKey) })}
     </button>
   );
 }
@@ -452,7 +452,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   async function attachFiles(files: FileList | File[]) {
     for (const file of Array.from(files)) {
       if (!isDocumentFile(file)) {
-        flashAttachError(t('chat.attach_bad_type'));
+        flashAttachError(t('aiChat.attach_bad_type'));
         continue;
       }
       let parts: { name: string; content: string; kind: 'sheet' | 'text' | 'image' }[];
@@ -467,7 +467,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           ...convoFiles.map((a) => a.name),
         ]);
       } catch {
-        flashAttachError(t('chat.attach_read_failed'));
+        flashAttachError(t('aiChat.attach_read_failed'));
         continue;
       } finally {
         setPreparing((prev) => {
@@ -476,20 +476,20 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         });
       }
       if (parts.length === 0) {
-        flashAttachError(t('chat.attach_no_text'));
+        flashAttachError(t('aiChat.attach_no_text'));
         continue;
       }
       for (const part of parts) {
         const res = addPendingAttachment(attachmentsRef.current, part.name, part.content, part.kind);
         if ('error' in res) {
-          flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
+          flashAttachError(t(res.error === 'too_large' ? 'aiChat.attach_too_large' : 'aiChat.attach_limit'));
           break;   // the cap applies to the rest of this workbook too
         }
         attachmentsRef.current = res.list;   // close the race before React re-renders
         setAttachments(res.list);
         // A budget eviction is a real loss — say it, never a vanishing chip.
         if (res.evicted.length > 0) {
-          flashAttachError(t('chat.attach_evicted', { name: res.evicted.join(', ') }));
+          flashAttachError(t('aiChat.attach_evicted', { name: res.evicted.join(', ') }));
         }
       }
     }
@@ -662,10 +662,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
    *  timeline covers that ground now. */
   const liveTierLabel = (currentTier !== 'auto'
     && tiers.find((x) => x.name === currentTier)?.label)
-    || t('chat.thinking_live');
+    || t('aiChat.thinking_live');
   const lastLiveStep = liveSteps[liveSteps.length - 1];
   const liveStatusLabel = lastLiveStep?.type === 'tool'
-    ? (lastLiveStep.label || t('chat.running'))
+    ? (lastLiveStep.label || t('aiChat.running'))
     : liveTierLabel;
 
   // Close tier dropdown when clicking anywhere outside it.
@@ -746,7 +746,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setDoneFlash(null);
     // Publish to the launcher chip (visible while the panel is hidden).
     const myRun = ++runSeq;
-    setRunState('running', t('chat.working'));
+    setRunState('running', t('aiChat.working'));
 
     // Cancel any in-flight request
     abortRef.current?.abort();
@@ -775,10 +775,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           if (event.type === 'tool') {
             // Closes (and client-times) the prior step, starts this tool's clock.
             setLiveSteps((prev) => closeAndAppend(prev, { type: 'tool', name: event.name, label: event.label }));
-            if (runSeq === myRun) setRunState('running', t('chat.running'));
+            if (runSeq === myRun) setRunState('running', t('aiChat.running'));
           } else if (event.type === 'thinking') {
             liveReasoning += event.text;
-            if (runSeq === myRun) setRunState('running', t('chat.thinking_live'));
+            if (runSeq === myRun) setRunState('running', t('aiChat.thinking_live'));
             // Coalesce consecutive thinking chunks into one growing step —
             // Gemini streams token-sized fragments (keep its startedAt).
             setLiveSteps((prev) => {
@@ -846,7 +846,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       }
       // Launcher chip mirrors the flash, then rests.
       if (runSeq === myRun) {
-        setRunState('done', t('chat.done_step'));
+        setRunState('done', t('aiChat.done_step'));
         setTimeout(() => {
           if (runSeq === myRun) setRunState('idle');
         }, 4000);
@@ -897,14 +897,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setError('');
     setLoading(true);
     const myRun = ++runSeq;
-    setRunState('running', t('chat.working'));
+    setRunState('running', t('aiChat.working'));
     try {
       const data = await apiJSONAI<AISummaryResponse>('/ai/summary', { method: 'POST' });
       const aiMsg: LocalMessage = { role: 'model', text: data.summary, timestamp: new Date() };
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(data.suggestions || []);
       if (runSeq === myRun) {
-        setRunState('done', t('chat.done_step'));
+        setRunState('done', t('aiChat.done_step'));
         setTimeout(() => {
           if (runSeq === myRun) setRunState('idle');
         }, 4000);
@@ -937,7 +937,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     // A file is still being read on-device — sending now would silently
     // drop it from the turn the user attached it for.
     if (preparing.length > 0) {
-      flashAttachError(t('chat.attach_wait'));
+      flashAttachError(t('aiChat.attach_wait'));
       return;
     }
     const cmd = SLASH_COMMANDS.find((c) => `/${c.name}` === trimmed.toLowerCase());
@@ -1301,13 +1301,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       {/* New chat — ghost icon-button (the topbar's flat convention: these
           sit on chrome, so no fill/border of their own).  The two-step
           confirm borrows the destructive variant's soft tint. */}
-      <Tip label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}>
+      <Tip label={newChatConfirm ? t('aiChat.confirm_discard') : t('aiChat.new_chat')}>
         <Button
           variant={newChatConfirm ? 'destructive' : 'ghost'}
           size="icon"
           onClick={newChat}
           disabled={messages.length === 0 && conversationId === null && !loading}
-          aria-label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
+          aria-label={newChatConfirm ? t('aiChat.confirm_discard') : t('aiChat.new_chat')}
           className="shrink-0 text-muted-foreground"
         >
           <SquarePen aria-hidden />
@@ -1316,14 +1316,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
 
       {/* History — previous chats with per-chat export / delete. */}
       <div className="relative" ref={historyRef}>
-        <Tip label={t('chat.history')}>
+        <Tip label={t('aiChat.history')}>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => { setHistoryOpen(!historyOpen); setDeleteConfirmId(null); if (!historyOpen) void loadConversations(); }}
             aria-haspopup="listbox"
             aria-expanded={historyOpen}
-            aria-label={t('chat.history')}
+            aria-label={t('aiChat.history')}
             className="shrink-0 text-muted-foreground"
           >
             <History aria-hidden />
@@ -1333,7 +1333,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           <Card padding="none" className="absolute right-0 top-full mt-1 z-50 w-80 shadow-xl max-h-96 overflow-y-auto">
             {conversations.length === 0 ? (
               <div className="px-3 py-4 text-xs text-muted-foreground text-center">
-                {t('chat.no_previous_chats')}
+                {t('aiChat.no_previous_chats')}
               </div>
             ) : (
               conversations.map((conv) => (
@@ -1353,7 +1353,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     <div className="text-2xs text-muted-foreground">
                       {formatDate(new Date(conv.updated_at), { timeZone: tz })}
                       {' · '}
-                      {conv.message_count} {t('chat.messages_count')}
+                      {conv.message_count} {t('aiChat.messages_count')}
                     </div>
                   </div>
                   {deleteConfirmId === conv.id ? (
@@ -1367,30 +1367,30 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         onClick={() => void deleteConversation(conv)}
                         className="px-2 py-1 rounded-md text-2xs font-medium bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors min-h-tap"
                       >
-                        {t('chat.delete_yes')}
+                        {t('aiChat.delete_yes')}
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(null)}
                         className="px-2 py-1 rounded-md text-2xs text-muted-foreground hover:text-foreground transition-colors min-h-tap"
                       >
-                        {t('chat.cancel')}
+                        {t('aiChat.cancel')}
                       </button>
                     </div>
                   ) : (
                     <>
-                      <Tip label={t('chat.export_conversation')}>
+                      <Tip label={t('aiChat.export_conversation')}>
                         <button
                           onClick={(e) => { e.stopPropagation(); void exportConversation(conv); }}
-                          aria-label={t('chat.export_conversation')}
+                          aria-label={t('aiChat.export_conversation')}
                           className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-opacity min-h-tap min-w-tap"
                         >
                           <Download className="size-3.5" />
                         </button>
                       </Tip>
-                      <Tip label={t('chat.delete_chat')}>
+                      <Tip label={t('aiChat.delete_chat')}>
                         <button
                           onClick={(e) => { e.stopPropagation(); armDelete(conv.id); }}
-                          aria-label={t('chat.delete_chat')}
+                          aria-label={t('aiChat.delete_chat')}
                           className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-opacity min-h-tap min-w-tap"
                         >
                           <Trash2 className="size-3.5" />
@@ -1441,10 +1441,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         {messages.length === 0 && !loading && (
           <div className="text-center text-muted-foreground mt-16">
             <Bot className="mx-auto mb-3 text-primary/40 size-10" />
-            <p className="text-lg font-semibold">{t('chat.title')}</p>
+            <p className="text-lg font-semibold">{t('aiChat.title')}</p>
             <p className="text-sm mt-1">
               {isDriverView
-                ? t('chat.ask_driver')
+                ? t('aiChat.ask_driver')
                 : `Ask anything about ${chatSubject} — ${getChatTopics(activeView)}.`}
             </p>
             {/* Primary action: the operations briefing.  Lives here (and as the
@@ -1502,10 +1502,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   {msg.text}
                 </div>
                 <div className="flex items-center justify-end gap-2 mt-1">
-                  <Tip label={t('chat.edit_message')}>
+                  <Tip label={t('aiChat.edit_message')}>
                     <button
                       onClick={() => editMessage(msg.text)}
-                      aria-label={t('chat.edit_message')}
+                      aria-label={t('aiChat.edit_message')}
                       className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                     >
                       <Pencil className="size-3" />
@@ -1552,8 +1552,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <Lightbulb className="size-3" />
                         <span>
                           {exploded.length > 1
-                            ? `${exploded.length} ${t('chat.steps')}`
-                            : t('chat.thought_process')}
+                            ? `${exploded.length} ${t('aiChat.steps')}`
+                            : t('aiChat.thought_process')}
                         </span>
                         <ChevronDown className={`transition-transform ${reasoningExpanded.has(i) ? 'rotate-180' : ''} size-3`} />
                       </button>
@@ -1564,12 +1564,12 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               meets it as a surprise on another device. */}
                           {!thoughtNoteDismissed && (
                             <div className="mb-2 flex items-start justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-2xs text-muted-foreground">
-                              <span>{t('chat.thoughts_local_note')}</span>
+                              <span>{t('aiChat.thoughts_local_note')}</span>
                               <button
                                 onClick={dismissThoughtNote}
                                 className="shrink-0 font-medium hover:text-foreground transition-colors py-0.5 -my-0.5 min-h-tap"
                               >
-                                {t('chat.got_it')}
+                                {t('aiChat.got_it')}
                               </button>
                             </div>
                           )}
@@ -1581,7 +1581,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                                     "Reasoning ⌄" / "Thinking ⌄". */}
                                 <ThinkingStep
                                   text={step.text || ''}
-                                  label={msg.modelTier || t('chat.thinking_live')}
+                                  label={msg.modelTier || t('aiChat.thinking_live')}
                                 />
                               </TimelineRow>
                             ) : (
@@ -1612,7 +1612,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             last
                           >
                             <div className="text-2xs text-muted-foreground">
-                              {t('chat.done_step')}
+                              {t('aiChat.done_step')}
                             </div>
                           </TimelineRow>
                         </div>
@@ -1662,11 +1662,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       they have visual confirmation. */}
                   {i === lastAiIdx && (
                     <>
-                      <Tip label={t('chat.feedback_good')}>
+                      <Tip label={t('aiChat.feedback_good')}>
                         <button
                           onClick={() => voteOnMessage(i, 'up')}
                           disabled={loading}
-                          aria-label={t('chat.feedback_good')}
+                          aria-label={t('aiChat.feedback_good')}
                           className={`opacity-0 group-hover:opacity-100 transition-opacity ml-auto disabled:cursor-not-allowed ${
                             feedbackByIdx[i] === 'up'
                               ? 'opacity-100 text-primary'
@@ -1679,11 +1679,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           />
                         </button>
                       </Tip>
-                      <Tip label={t('chat.feedback_bad')}>
+                      <Tip label={t('aiChat.feedback_bad')}>
                         <button
                           onClick={() => voteOnMessage(i, 'down')}
                           disabled={loading}
-                          aria-label={t('chat.feedback_bad')}
+                          aria-label={t('aiChat.feedback_bad')}
                           className={`opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed ${
                             feedbackByIdx[i] === 'down'
                               ? 'opacity-100 text-warn'
@@ -1696,11 +1696,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           />
                         </button>
                       </Tip>
-                      <Tip label={t('chat.regenerate')}>
+                      <Tip label={t('aiChat.regenerate')}>
                         <button
                           onClick={() => regenerateMessage(i)}
                           disabled={regeneratingIdx !== null || loading}
-                          aria-label={t('chat.regenerate')}
+                          aria-label={t('aiChat.regenerate')}
                           className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                         >
                           <RefreshCw
@@ -1710,10 +1710,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       </Tip>
                     </>
                   )}
-                  <Tip label={t('chat.copy_response')}>
+                  <Tip label={t('aiChat.copy_response')}>
                     <button
                       onClick={() => copyMessage(msg.text, i)}
-                      aria-label={t('chat.copy_response')}
+                      aria-label={t('aiChat.copy_response')}
                       className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
                     >
                       {copiedIdx === i
@@ -1779,7 +1779,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                               label={
                                 (currentTier !== 'auto'
                                   && tiers.find((x) => x.name === currentTier)?.label)
-                                || t('chat.thinking_live')
+                                || t('aiChat.thinking_live')
                               }
                               live={si === exploded.length - 1}
                             />
@@ -1797,7 +1797,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             </span>
                             {step.startedAt != null && (
                               <span className="shrink-0 text-2xs font-medium text-primary/70 tabular-nums">
-                                {t('chat.running')} · {stepDuration(Date.now() - step.startedAt) ?? '0s'}
+                                {t('aiChat.running')} · {stepDuration(Date.now() - step.startedAt) ?? '0s'}
                               </span>
                             )}
                           </div>
@@ -1918,7 +1918,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 >
                   <Sparkles className="animate-pulse shrink-0 size-3" aria-hidden />
                   <span className="truncate">
-                    {t('chat.running')}
+                    {t('aiChat.running')}
                     {(() => {
                       const lastLive = liveSteps[liveSteps.length - 1];
                       const stepLabel = lastLive?.type === 'tool'
@@ -1940,7 +1940,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       // label when the flash timer clears doneFlash.
                       <span className={`inline-flex items-center gap-1.5 ${toneText('ok')}`} role="status">
                         <Check className="shrink-0 size-3" aria-hidden />
-                        {t('chat.done_step')}
+                        {t('aiChat.done_step')}
                         {stepDuration(doneFlash) && (
                           <span className="tabular-nums opacity-70">{stepDuration(doneFlash)}</span>
                         )}
@@ -1948,14 +1948,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     ) : (
                       <span className="inline-flex items-center gap-1.5">
                         <Bot className="shrink-0 size-3" aria-hidden />
-                        {t('chat.awaiting_reply')}
+                        {t('aiChat.awaiting_reply')}
                       </span>
                     )}
-                    <Tip label={t('chat.suggestions')}>
+                    <Tip label={t('aiChat.suggestions')}>
                       <button
                         onClick={() => setSuggestionsOpen((v) => !v)}
                         aria-expanded={suggestionsOpen}
-                        aria-label={t('chat.suggestions')}
+                        aria-label={t('aiChat.suggestions')}
                         className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
                       >
                         <Lightbulb className="size-3" aria-hidden />
@@ -1991,7 +1991,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium"
                 >
                   <Check className="shrink-0 size-3" aria-hidden />
-                  <span>{t('chat.done_step')}</span>
+                  <span>{t('aiChat.done_step')}</span>
                   {stepDuration(doneFlash ?? undefined) && (
                     <span className="ml-auto shrink-0 tabular-nums opacity-70">
                       {stepDuration(doneFlash ?? undefined)}
@@ -2002,7 +2002,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <div className={`${stripState ? 'rounded-lg' : 'rounded-xl'} border bg-card px-3 pt-2.5 pb-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20 ${dragOver ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}>
           {dragOver && (
             <div className="mb-1.5 flex items-center gap-1.5 text-2xs font-medium text-primary" role="status">
-              <Paperclip className="size-3" aria-hidden /> {t('chat.attach_drop')}
+              <Paperclip className="size-3" aria-hidden /> {t('aiChat.attach_drop')}
             </div>
           )}
           {/* Attachment chips — the device-held file(s) riding with each
@@ -2019,7 +2019,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 >
                   <Loader2 className="shrink-0 animate-spin size-3" aria-hidden />
                   <span className="max-w-40 truncate">{name}</span>
-                  <span className="text-2xs">{t('chat.attach_preparing')}</span>
+                  <span className="text-2xs">{t('aiChat.attach_preparing')}</span>
                 </span>
               ))}
               {attachments.map((a) => (
@@ -2042,7 +2042,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       attachmentsRef.current = next;
                       setAttachments(next);
                     }}
-                    aria-label={t('chat.attach_remove')}
+                    aria-label={t('aiChat.attach_remove')}
                     className="ml-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="size-3" aria-hidden />
@@ -2077,10 +2077,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
             placeholder={attachments.length > 0
               // With a file attached, hold the hint on the next step of the
               // import flow instead of the generic ask/commands rotation.
-              ? t('chat.placeholder_attached')
+              ? t('aiChat.placeholder_attached')
               : phIdx === 0
-                ? t('chat.placeholder_ask', { subject: chatSubject })
-                : t('chat.placeholder_commands')}
+                ? t('aiChat.placeholder_ask', { subject: chatSubject })
+                : t('aiChat.placeholder_commands')}
             rows={1}
             style={{ maxHeight: scaledPx(120, 'text') }}
             className="w-full bg-transparent text-foreground text-sm resize-none focus:outline-none placeholder:text-muted-foreground/50"
@@ -2092,13 +2092,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 plus the slash commands (also reachable by typing "/",
                 per the placeholder hint). */}
             <div className="relative" ref={plusRef}>
-              <Tip label={t('chat.commands')}>
+              <Tip label={t('aiChat.commands')}>
                 <button
                   type="button"
                   onClick={() => setPlusOpen((v) => !v)}
                   aria-haspopup="menu"
                   aria-expanded={plusOpen}
-                  aria-label={t('chat.commands')}
+                  aria-label={t('aiChat.commands')}
                   className="flex size-8 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
                 >
                   <Plus
@@ -2123,14 +2123,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   role="menu"
                   className="absolute left-0 bottom-full mb-1 z-50 w-64 rounded-lg border border-border bg-card p-1 shadow-xl"
                 >
-                  <Tip label={t('chat.attach_formats')}>
+                  <Tip label={t('aiChat.attach_formats')}>
                     <button
                       role="menuitem"
                       onClick={() => { setPlusOpen(false); fileInputRef.current?.click(); }}
                       className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
                     >
                       <Paperclip className="text-primary shrink-0 size-3.5" aria-hidden />
-                      <span className="font-medium">{t('chat.attach_file')}</span>
+                      <span className="font-medium">{t('aiChat.attach_file')}</span>
                     </button>
                   </Tip>
                   {/* Files attached in OTHER chats, still on this device —
@@ -2145,7 +2145,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       <>
                         <div className="my-1 border-t border-border" role="separator" />
                         <div className="px-2.5 py-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {t('chat.attach_recent')}
+                          {t('aiChat.attach_recent')}
                         </div>
                         {recent.map((f) => (
                           <button
@@ -2154,7 +2154,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                             onClick={() => {
                               const res = addPendingAttachment(attachmentsRef.current, f.name, f.content, f.kind);
                               if ('error' in res) {
-                                flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
+                                flashAttachError(t(res.error === 'too_large' ? 'aiChat.attach_too_large' : 'aiChat.attach_limit'));
                               } else {
                                 attachmentsRef.current = res.list;
                                 setAttachments(res.list);
@@ -2182,7 +2182,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     <>
                       <div className="my-1 border-t border-border" role="separator" />
                       <div className="px-2.5 py-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {t('chat.attach_in_chat')}
+                        {t('aiChat.attach_in_chat')}
                       </div>
                       {convoFiles.map((f) => (
                         <div
@@ -2197,7 +2197,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           <span className="max-w-40 truncate">{f.name}</span>
                           <button
                             onClick={() => setConvoFiles(removeConversationAttachment(conversationId, f.name))}
-                            aria-label={t('chat.attach_remove')}
+                            aria-label={t('aiChat.attach_remove')}
                             className="ml-auto rounded text-muted-foreground hover:text-foreground transition-colors"
                           >
                             <X className="size-3" aria-hidden />
@@ -2287,21 +2287,21 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               })()}
 
               {loading ? (
-                <Tip label={t('chat.stop_generating')}>
+                <Tip label={t('aiChat.stop_generating')}>
                   <button
                     onClick={stopGeneration}
-                    aria-label={t('chat.stop_generating')}
+                    aria-label={t('aiChat.stop_generating')}
                     className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-foreground hover:bg-muted/80 transition-colors"
                   >
                     <Square className="fill-current size-3.5" />
                   </button>
                 </Tip>
               ) : (
-                <Tip label={t('chat.send')}>
+                <Tip label={t('aiChat.send')}>
                   <button
                     onClick={() => submit(input)}
                     disabled={!input.trim() || preparing.length > 0}
-                    aria-label={t('chat.send')}
+                    aria-label={t('aiChat.send')}
                     className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowUp className="size-4" />

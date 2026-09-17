@@ -443,7 +443,7 @@
     "revoke_invite_title": "¿Revocar esta invitación?",
     "revoke_invite_body": "El enlace dejará de funcionar inmediatamente. Si alguien ya lo copió, no podrá unirse."
   },
-  "chat": {
+  "aiChat": {
     "title": "Asistente IA",
     "tab_chat": "Chat",
     "switch_model": "Cambiar modelo de IA",

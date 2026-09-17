@@ -83,13 +83,13 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
     <div className="mt-2 rounded-lg border border-border bg-muted/40 p-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-foreground/80">
-          {t('chat.dislike_form.title')}
+          {t('aiChat.dislike_form.title')}
         </span>
-        <Tip label={t('chat.dislike_form.close')}>
+        <Tip label={t('aiChat.dislike_form.close')}>
           <button
             onClick={onSkip}
             className="inline-flex items-center justify-center min-w-tap text-muted-foreground hover:text-foreground py-0.5 -my-0.5 min-h-tap"
-            aria-label={t('chat.dislike_form.close')}
+            aria-label={t('aiChat.dislike_form.close')}
           >
             <X className="size-3.5" />
           </button>
@@ -107,7 +107,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
                 : 'bg-card text-foreground/80 border-border hover:border-ring'
             } min-h-tap`}
           >
-            {t(`chat.dislike_form.reason.${key}`)}
+            {t(`aiChat.dislike_form.reason.${key}`)}
           </button>
         ))}
       </div>
@@ -115,7 +115,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
       <textarea
         value={note}
         onChange={(e) => setNote(e.target.value.slice(0, 500))}
-        placeholder={t('chat.dislike_form.note_placeholder')}
+        placeholder={t('aiChat.dislike_form.note_placeholder')}
         rows={2}
         className="w-full text-xs resize-none rounded-md border border-border bg-card px-2.5 py-1.5 focus:border-ring focus:outline-none placeholder:text-muted-foreground"
       />
@@ -126,7 +126,7 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
           disabled={submitting}
           className="text-2xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 py-1 -my-1 min-h-tap"
         >
-          {t('chat.dislike_form.skip')}
+          {t('aiChat.dislike_form.skip')}
         </button>
         <button
           onClick={submit}
@@ -134,8 +134,8 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
           className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed min-h-tap"
         >
           {submitting
-            ? t('chat.dislike_form.sending')
-            : t('chat.dislike_form.send')}
+            ? t('aiChat.dislike_form.sending')
+            : t('aiChat.dislike_form.send')}
         </button>
       </div>
     </div>

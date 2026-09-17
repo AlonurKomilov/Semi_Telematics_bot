@@ -623,7 +623,7 @@
     "badge_complained": "Reported as spam",
     "badge_soft_delivery": "Delivery issues"
   },
-  "chat": {
+  "aiChat": {
     "title": "AI Assistant",
     "tab_chat": "Chat",
     "switch_model": "Switch AI model",
