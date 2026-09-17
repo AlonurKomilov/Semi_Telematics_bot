@@ -123,10 +123,19 @@ export const MOD_TOKENS: readonly string[] = [
   '--border', '--input',
   '--sidebar', '--sidebar-foreground', '--sidebar-accent',
   '--sidebar-accent-foreground', '--sidebar-border',
+  '--desk', '--desk-foreground',
   // the accent family
   '--primary', '--primary-foreground', '--primary-hover', '--primary-text',
-  // the material axis
-  '--surface-alpha', '--surface-blur', '--surface-saturate', '--surface-shadow',
+  /* the material axis — RENAMED, and this list had not followed. The
+     wash was split into a colour and two strengths and the blur into
+     one per region; until now a mod could still set `--surface-alpha`,
+     which nothing reads, and could not set any of the names that
+     replaced it. An allowlist that names tokens nobody spends is an
+     allowlist that has stopped describing the thing it guards. */
+  '--surface-wash', '--surface-wash-page', '--surface-wash-floating',
+  '--surface-blur-page', '--surface-blur-floating',
+  '--surface-flatten-contrast', '--surface-flatten-brightness',
+  '--surface-saturate', '--surface-shadow',
 ];
 
 const ALLOWED = new Set(MOD_TOKENS);

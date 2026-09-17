@@ -37,6 +37,22 @@ export interface Ground {
  * no seed of its own.
  */
 export const GROUNDS: readonly Ground[] = [
+  // DESK, and it is first because it is underneath the other two. The
+  // frame and the page are boards laid on it; this is what shows where
+  // no board has been put down and the material lets light through.
+  // Naming it for the object rather than for the token is deliberate —
+  // `--background` is the page's colour and always was, and borrowing
+  // it for the bottom plane is exactly what made the bottom plane
+  // invisible: a frame that turned see-through simply looked like the
+  // page, so nobody could tell there was a layer there at all.
+  // UNDERLAY, not "Desk", and the id keeps `desk` — the same split
+  // `sidebar`/"Frame" already uses two entries below. The word Desk is
+  // taken: `store/items/mods/desk.ts` is a shipped PRESET, whose id is
+  // a stored value and therefore frozen, and both would have appeared
+  // as chips in this one panel. One word for a whole look and for a
+  // plane, a few rows apart, is the collision this file refuses when it
+  // insists on "Cards" over "Panels".
+  { id: 'desk', label: 'Underlay', description: 'The plane the frame and the page are laid on' },
   // "Cards", not "Panels": this app already calls two OVERLAYS panels —
   // the assistant's and the one this control is sitting in — and a word
   // that means two things a few pixels apart is the collision to avoid.

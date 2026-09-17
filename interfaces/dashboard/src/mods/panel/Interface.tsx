@@ -623,7 +623,9 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
     <div className="flex flex-wrap gap-1">
       {follows && (
         <Chip value={WALLPAPER_DESK} current={current}
-          label={t('mods.wallpaper_follow_desk', 'Desk')} onClick={write} />
+          label={t('mods.wallpaper_follow_desk', 'Underlay')}
+          name={t('mods.wallpaper_follow_desk_a11y', 'Wear the underlay pattern')}
+          onClick={write} />
       )}
       {offered('wallpaper', WALLPAPERS, (w) => w.id).map((w) => (
         <Chip key={w.id} value={w.id} current={current} label={t(`mods.wallpaper_${w.id}`, w.label)}
@@ -646,7 +648,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
           the others may disagree. The reverse order would put two
           exceptions above the rule they are exceptions to. */}
       <p className="text-xs text-foreground mb-1.5">
-        {t('mods.wallpaper_desk', 'Desk')}
+        {t('mods.wallpaper_desk', 'Underlay')}
       </p>
       {chips(desk, (v) => setTheme({ wallpaperDesk: v }), false)}
       <p className="text-2xs text-muted-foreground mt-1.5">
@@ -661,7 +663,7 @@ export function WallpaperGroup({ label }: { label: LabelClass }) {
       {chips(frame, (v) => setTheme({ wallpaper: v }))}
       <p className="text-2xs text-muted-foreground mt-1.5">
         {frame === WALLPAPER_DESK && desk === 'none'
-          ? t('mods.wallpaper_frame_follows_none', 'Follows the desk, which is plain.')
+          ? t('mods.wallpaper_frame_follows_none', 'Follows the underlay, which is plain.')
           : wornFrame?.description}
       </p>
 

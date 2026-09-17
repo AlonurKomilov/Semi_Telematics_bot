@@ -144,6 +144,13 @@
        Measured before it moved, and the measurement is why 0.95 rather
        than further: at this depth the worst text-on-glass composite is
        4.64:1 against a 4.5 floor, and by 0.90 it is 4.33 and gone. */
+    /* THE DESK — the plane the frame and the page are laid on, and the
+       same value as the page until somebody seeds it. It has always
+       BEEN this colour; what it did not have was a name, which is why
+       a region turning see-through looked like the page rather than
+       like a layer underneath. Seeded through the Desk ground. */
+    --desk: oklch(0.95 0 0);
+    --desk-foreground: oklch(0.145 0 0);
     --background: oklch(0.95 0 0);
 
     --foreground: oklch(0.145 0 0);
@@ -497,6 +504,8 @@
        between white canvas and off-white chrome in light mode.
          canvas (0.10) → chrome (0.215) → card (0.275) → popover (0.32)
     */
+    --desk: oklch(0.10 0 0);
+    --desk-foreground: oklch(0.985 0 0);
     --background: oklch(0.10 0 0);
 
     --foreground: oklch(0.985 0 0);
@@ -830,6 +839,8 @@
      drift apart, so add a token to `.dark` and add it here too. */
   :root, :root.dark, :root.dark[data-theme] {
     color-scheme: light;
+    --desk:                       oklch(0.95 0 0);
+    --desk-foreground:            oklch(0.145 0 0);
     --background:                 oklch(0.95 0 0);
     --foreground:                 oklch(0.145 0 0);
     --card:                       oklch(1 0 0);
@@ -1178,7 +1189,13 @@
      which is the gap this opens. What paints here comes next; that this
      is a plane of its own, and not the frame wearing a second hat, is
      what `frame.test.ts` holds now. */
-  .desk-ground { --ground: var(--background); }
+  /* ITS OWN COLOUR NOW, not the page's borrowed. That borrowing is
+     what made the bottom plane invisible: a region turning see-through
+     landed on `--background` and simply looked like the page, so there
+     was no way to tell a layer was down there at all. Seeded through
+     the Underlay ground; until somebody seeds it the value is derived
+     from the same canvas, so nothing moves. */
+  .desk-ground { --ground: var(--desk); }
   .chrome-ground { --ground: var(--sidebar); }
   .page-ground { --ground: var(--background); }
 

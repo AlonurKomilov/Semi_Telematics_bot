@@ -174,6 +174,7 @@ const pickInk = (ground: RGB): RGB => {
  *  assert the set has not silently grown into the tones or the ramp. */
 export const DERIVED_TOKENS = [
   '--background', '--foreground',
+  '--desk', '--desk-foreground',
   '--muted-foreground-on-pattern',
   '--card', '--card-foreground', '--popover', '--popover-foreground',
   '--secondary', '--secondary-foreground', '--muted', '--muted-foreground',
@@ -267,6 +268,13 @@ const plane = (base: RGB, p: Plane): RGB => {
  * redesign — which is the answer to "why only two".
  */
 export const GROUND_PLANES = {
+  /* THE DESK carries the least of the three, and that is what it is.
+     It is not a surface anything sits ON in the sense the other two
+     are — nothing is painted with `--desk` except the plane itself, at
+     the very bottom of the window. It needs a colour, and an ink for
+     whatever ends up resting directly on it once a material lets a
+     region become see-through. */
+  desk: ['--desk', '--desk-foreground'],
   card: ['--card', '--card-foreground', '--popover', '--popover-foreground'],
   sidebar: [
     '--sidebar', '--sidebar-foreground', '--sidebar-accent',
@@ -299,6 +307,13 @@ export function deriveGround(
   // be invisible on it.
   const ink = pickInk(ground);
   const away = awayFrom(ink, ground);
+
+  if (id === 'desk') {
+    // No second plane derived off it. A card seeds a popover because a
+    // dialog has to read as raised off the card; the desk has nothing
+    // above it that is made of desk.
+    return { '--desk': hex(ground), '--desk-foreground': hex(ink) };
+  }
 
   if (id === 'card') {
     // The popover keeps the distance the ladder put between it and the
@@ -384,6 +399,15 @@ export function derivePalette(seed: ThemeSeed): Record<string, string> | null {
   return {
     '--background': hex(canvas),
     '--foreground': hex(ink),
+    /* THE DESK, and it starts as the canvas. Nothing changes until
+       somebody seeds it: the window's bottom plane has always been the
+       page's colour, so deriving it from the same seed keeps every
+       existing theme where it was. What it buys is a NAME — the plane
+       can now be given a colour of its own, and until it is, a region
+       that turns see-through lands on something that is at least
+       nameable rather than on the page by coincidence. */
+    '--desk': hex(canvas),
+    '--desk-foreground': hex(ink),
     '--card': hex(card),
     '--card-foreground': hex(ink),
     '--popover': hex(popover),

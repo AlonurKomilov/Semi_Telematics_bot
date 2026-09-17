@@ -12,6 +12,7 @@ export function Chip<T extends string>({
   value,
   current,
   label,
+  name,
   dot,
   live,
   onClick,
@@ -19,6 +20,12 @@ export function Chip<T extends string>({
   value: T;
   current: T;
   label: string;
+  /** What a screen reader hears, when the visible label is not enough
+   *  on its own. Two chips in this panel read "Desk": one picks the
+   *  desk's colour and one tells a region to wear the desk's pattern.
+   *  Among pattern names the short word is the clearer one to SEE, so
+   *  the label stays and the announcement is where they part. */
+  name?: string;
   /** A CSS colour VALUE, not a class — the colour is data here, so it
    *  cannot be a Tailwind class name (those must be statically
    *  scannable). A `--swatch-*` token where the colour is ours to
@@ -37,6 +44,7 @@ export function Chip<T extends string>({
       type="button"
       onClick={() => onClick(value)}
       aria-pressed={active}
+      aria-label={name}
       className={cn(
         'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors min-h-tap',
         active

@@ -90,7 +90,12 @@ describe('seeding a plane with the colour it already has', () => {
       for (const pack of THEME_PACKS) {
         const pal = palette(mode, pack.seed[mode]);
         for (const id of GROUND_IDS) {
-          const own = pal[id === 'card' ? '--card' : '--sidebar'];
+          // The plane's OWN colour token, taken from the family it
+          // declares rather than from a two-way branch. The branch was
+          // written when there were two grounds and quietly handed the
+          // third one the sidebar's colour to seed itself with, then
+          // compared the result against the desk.
+          const own = pal[GROUND_PLANES[id][0]];
           const out = deriveGround(id, own, mode, DEFAULT_DEPTH.ladder)!;
           for (const t of GROUND_PLANES[id]) {
             const d = distance(parseHex(pal[t])!, parseHex(out[t])!);
@@ -121,8 +126,10 @@ describe('a seeded plane carries its own ink', () => {
       for (const seed of ['#0b0f14', '#f7f7f7', '#3a4750', '#c8d3e0']) {
         for (const id of GROUND_IDS) {
           const out = deriveGround(id, seed, mode, DEFAULT_DEPTH.ladder)!;
-          const ground = id === 'card' ? out['--card'] : out['--sidebar'];
-          const ink = id === 'card' ? out['--card-foreground'] : out['--sidebar-foreground'];
+          // Same reason as above: the family names its own plane and
+          // its own ink, in that order, for every ground there is.
+          const ground = out[GROUND_PLANES[id][0]];
+          const ink = out[GROUND_PLANES[id][1]];
           expect(contrastRatio(parseHex(ink)!, parseHex(ground)!),
             `${id}/${mode} on ${seed}: ink ${ink} on ${ground}`).toBeGreaterThanOrEqual(AA_TEXT);
         }

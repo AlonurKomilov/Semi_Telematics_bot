@@ -180,8 +180,18 @@ describe('what a mod may name', () => {
     // kind of theme bug to see, because 23 of 24 look right.
     for (const t of DERIVED_TOKENS)
       expect(MOD_TOKENS, `derivePalette emits ${t} but no mod can install it`).toContain(t);
-    for (const t of ['--surface-alpha', '--surface-blur', '--surface-saturate', '--surface-shadow'])
-      expect(MOD_TOKENS).toContain(t);
+    // THE MATERIAL AXIS, BY ITS CURRENT NAMES. This list held
+    // `--surface-alpha` and `--surface-blur` for as long as the rename
+    // had been shipped — so it was asserting that a mod can set two
+    // tokens nothing reads, while the seven that replaced them could
+    // not be set at all. A guard on an allowlist has to be spelled the
+    // same way the stylesheet spends it.
+    for (const t of [
+      '--surface-wash', '--surface-wash-page', '--surface-wash-floating',
+      '--surface-blur-page', '--surface-blur-floating',
+      '--surface-flatten-contrast', '--surface-flatten-brightness',
+      '--surface-saturate', '--surface-shadow',
+    ]) expect(MOD_TOKENS, `${t} is spent by the pack but no mod can set it`).toContain(t);
   });
 });
 
