@@ -150,13 +150,22 @@ function composite(mode: 'light' | 'dark', surface: 'card' | 'popover',
 /**
  * The grounds a translucent surface can actually sit on.
  *
- * Only the IN-FLOW ones, and that is a fact about the pack rather than
- * a simplification: everything positioned out of flow — every popover,
- * dialog, menu, sheet, sticky header and the frame itself — is forced
- * back to an opaque fill by the escape hatch further down `glass.css`.
- * So there is never page CONTENT behind a translucent surface, only the
- * page's own ground; which is what makes clarity affordable here and
+ * Only the IN-FLOW ones, and that used to be a fact about the pack
+ * rather than a simplification: everything positioned out of flow —
+ * every popover, dialog, menu, sheet, sticky header and the frame
+ * itself — was flattened by the escape hatch further down `glass.css`,
+ * so there was never page CONTENT behind a translucent surface, only
+ * the page's own ground. That is what makes clarity affordable here and
  * would not be in a product that frosted its dialogs.
+ *
+ * WHILE THE OWNER IS LOOKING AT CLEAR MENUS IT IS NOT TRUE, and this
+ * says so rather than keeping a sentence that has stopped holding. The
+ * floating set is not modelled here either way — its backdrop is
+ * arbitrary content, which no palette bounds and no sweep can stand in
+ * for — so nothing measured below moves. What moved is the REASON the
+ * omission is safe, and during the evaluation it is not. The exemption
+ * that permits it, and the cost it carries, are named in
+ * `material.test.ts`.
  *
  * Third entry: that ground WEARING A WALLPAPER. A pattern is not free
  * to do anything — `PATTERN_STOPS` is the strongest stop any pack may

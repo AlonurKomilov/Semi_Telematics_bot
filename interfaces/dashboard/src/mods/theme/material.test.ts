@@ -240,22 +240,69 @@ describe('the occlusion escape hatch', () => {
    * interface, which is a conflict a reader sees even where no test
    * could.
    */
-  const occludes = (sel: string) => {
+  /**
+   * IT READS THE NUMBERS, not the words.
+   *
+   * This used to ask whether the RULE mentioned `contrast` and
+   * `brightness`, and that is not the same question. The mechanism and
+   * the occlusion were separated on purpose — one chain for every
+   * surface, the flattening carried entirely by three tokens — and the
+   * first time those tokens were set to their identities the old check
+   * sailed straight through, green, on exactly the state it exists to
+   * forbid. A guard that measures the presence of a lever rather than
+   * where the lever is set is not measuring anything.
+   */
+  const occlusion = (sel: string) => {
     const rules = [...CODE.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
       .filter(([, s]) => new RegExp(`\\.surface\\${sel}(?![\\w-])`).test(s));
-    return rules.some(([, , body]) =>
-      /backdrop-filter:\s*none/.test(body)
-      || (/backdrop-filter:[^;]*contrast\(/.test(body)
-          && /backdrop-filter:[^;]*brightness\(/.test(body)));
+    if (rules.some(([, , body]) => /backdrop-filter:\s*none/.test(body))) return 'solid';
+    const num = (block: string, tok: string) =>
+      Number(new RegExp(`${tok}:\\s*([\\d.]+)`).exec(block)?.[1]);
+    let light = '';
+    for (const m of CODE.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+      if (m[1].trim().replace(/\s+/g, ' ') === ':root[data-material="glass"]') light += m[2];
+    const contrast = num(light, '--surface-occlude-contrast');
+    const alpha = num(light, '--surface-occlude-alpha');
+    // Detail survives above roughly half contrast; below it the words
+    // behind a menu are gone whatever the ground. A high fill occludes
+    // on its own, filter or no filter.
+    return (contrast <= 0.5 || alpha >= 0.6) ? 'flattened' : 'clear';
   };
 
+  /**
+   * CLEAR MENUS ARE THE OWNER'S DECISION, and it is recorded here
+   * rather than hidden in a token.
+   *
+   * He asked to see a menu as the same clear pane as a card, having
+   * rejected the frosted middle, and means to propose a different way
+   * of telling the two apart once he has looked. So this is a real
+   * exemption with a real cost, not a relaxed rule: a menu floats over
+   * content nobody chose, and with no occlusion the page shows through
+   * it and both sets of words compete. The persona menu once rendered
+   * the sidebar through itself at alpha 0.72, where the text behind
+   * keeps 28% of its contrast — that is the state this returns to.
+   *
+   * REMOVING THIS LINE IS WHAT PUTS THE FLOOR BACK. The values that go
+   * with it are in `glass.css`, on the tokens.
+   */
+  const OWNER_IS_EVALUATING_CLEAR_MENUS = true;
+
   it('and a popover takes it without having to ask', () => {
+    const state = occlusion('.surface-popover');
+    if (OWNER_IS_EVALUATING_CLEAR_MENUS) {
+      // The exemption is itself guarded: it may excuse the state the
+      // owner asked for and nothing else, so a DIFFERENT failure still
+      // fails rather than hiding behind his decision.
+      expect(state, 'the exemption is covering something the owner did not ask for')
+        .toBe('clear');
+      return;
+    }
     expect(
-      occludes('.surface-popover'),
+      state,
       'a popover passes its backdrop through again. Every menu, select, context '
         + 'menu, dialog, sheet and banner floats over content nobody chose, so it '
         + 'must occlude — and no call site should have to remember that.',
-    ).toBe(true);
+    ).not.toBe('clear');
   });
 
   it('and it occludes with no blur, like the rest of the material', () => {
@@ -283,12 +330,21 @@ describe('the occlusion escape hatch', () => {
    */
   it('and a surface positioned out of flow occludes, whatever it is called', () => {
     for (const pos of ['absolute', 'fixed', 'sticky']) {
+      const state = occlusion(`.${pos}`);
+      // Same exemption, same reason, and the same refusal to cover
+      // anything else: these three selectors and `.surface-popover` are
+      // one rule, so they can only ever be in one state together.
+      if (OWNER_IS_EVALUATING_CLEAR_MENUS) {
+        expect(state, `\`.surface.${pos}\` is not in the state the owner asked for`)
+          .toBe('clear');
+        continue;
+      }
       expect(
-        occludes(`.${pos}`),
+        state,
         `a \`.surface.${pos}\` passes its backdrop through again. It floats over content nobody `
           + 'chose, so it must occlude — and the class that says so is the one the '
           + 'author already wrote for layout.',
-      ).toBe(true);
+      ).not.toBe('clear');
     }
   });
 
