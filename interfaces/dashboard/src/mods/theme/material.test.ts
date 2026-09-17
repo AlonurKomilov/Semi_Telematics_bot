@@ -173,8 +173,17 @@ describe('what the solid path costs', () => {
     // the top — declares them first. A default read from there would be
     // glass's, and this test would be asserting the wrong material.
     const ENGINE = engineCss().replace(/\/\*[\s\S]*?\*\//g, '');
+    // THE WASH'S NEUTRAL CHANGED WITH THE CONCEPT, not to make a test
+    // pass. This read `--surface-alpha: 1` — "the surface paints all of
+    // its own colour" — back when one number meant both how much and of
+    // what. Split into a colour and a strength, solid's answer is that
+    // it lays NO wash at all: it paints its own colour opaquely through
+    // the base rung, which never reads either token. Same pixels, a
+    // statement that can now be read.
     for (const [name, want] of [
-      ['--surface-alpha', '1'], ['--surface-blur', '0px'],
+      ['--surface-wash', 'transparent'], ['--surface-wash-page', '0'],
+      ['--surface-wash-floating', '0'],
+      ['--surface-blur-page', '0px'], ['--surface-blur-floating', '0px'],
       ['--surface-saturate', '1'], ['--surface-shadow', 'none'],
     ] as const) {
       const m = new RegExp(`${name}:\\s*([^;]+);`).exec(ENGINE);
@@ -261,8 +270,8 @@ describe('the occlusion escape hatch', () => {
     let light = '';
     for (const m of CODE.matchAll(/([^{}]+)\{([^{}]*)\}/g))
       if (m[1].trim().replace(/\s+/g, ' ') === ':root[data-material="glass"]') light += m[2];
-    const contrast = num(light, '--surface-occlude-contrast');
-    const alpha = num(light, '--surface-occlude-alpha');
+    const contrast = num(light, '--surface-flatten-contrast');
+    const alpha = num(light, '--surface-wash-floating');
     // Detail survives above roughly half contrast; below it the words
     // behind a menu are gone whatever the ground. A high fill occludes
     // on its own, filter or no filter.
@@ -270,30 +279,36 @@ describe('the occlusion escape hatch', () => {
   };
 
   /**
-   * CLEAR MENUS ARE THE OWNER'S DECISION, and it is recorded here
-   * rather than hidden in a token.
+   * A MENU SCATTERS WHAT IT COVERS. IT DOES NOT HIDE IT.
    *
-   * He asked to see a menu as the same clear pane as a card, having
-   * rejected the frosted middle, and means to propose a different way
-   * of telling the two apart once he has looked. So this is a real
-   * exemption with a real cost, not a relaxed rule: a menu floats over
-   * content nobody chose, and with no occlusion the page shows through
-   * it and both sets of words compete. The persona menu once rendered
-   * the sidebar through itself at alpha 0.72, where the text behind
-   * keeps 28% of its contrast — that is the state this returns to.
+   * The owner settled this after looking at three proposals and
+   * rejecting two. A floating surface gets 4px of blur — the number
+   * measured off the command palette's own overlay, which is the
+   * frosting he recognised as frosting — and no wash, no flattening.
+   * Blur scatters without painting, so a menu takes the tone of
+   * whatever is under it and adds nothing of its own. That is the look
+   * he was asking for across four separate attempts to describe it.
    *
-   * REMOVING THIS LINE IS WHAT PUTS THE FLOOR BACK. The values that go
-   * with it are in `glass.css`, on the tokens.
+   * IT IS NOT OCCLUSION AND THIS SAYS SO. Blur moves the words behind
+   * a menu around; it does not remove them, and at 4px they survive as
+   * grey shapes that compete with the menu's own. The persona menu
+   * once rendered the sidebar through itself at alpha 0.72, where the
+   * text behind keeps 28% of its contrast — this is milder than that
+   * and the same kind of thing.
+   *
+   * So the floor is waived, explicitly, by one line. Putting it back
+   * is deleting that line; the values that go with it are on the
+   * tokens in `glass.css`, under their own names now.
    */
-  const OWNER_IS_EVALUATING_CLEAR_MENUS = true;
+  const OWNER_CHOSE_BLUR_ALONE = true;
 
   it('and a popover takes it without having to ask', () => {
     const state = occlusion('.surface-popover');
-    if (OWNER_IS_EVALUATING_CLEAR_MENUS) {
+    if (OWNER_CHOSE_BLUR_ALONE) {
       // The exemption is itself guarded: it may excuse the state the
       // owner asked for and nothing else, so a DIFFERENT failure still
       // fails rather than hiding behind his decision.
-      expect(state, 'the exemption is covering something the owner did not ask for')
+      expect(state, 'the waiver is covering something the owner did not choose')
         .toBe('clear');
       return;
     }
@@ -305,14 +320,33 @@ describe('the occlusion escape hatch', () => {
     ).not.toBe('clear');
   });
 
-  it('and it occludes with no blur, like the rest of the material', () => {
-    // The point of flattening rather than blurring: the whole material
-    // is at blur 0, and a menu that reached for blur would be the one
-    // surface in the app made of something else.
-    const rule = /:root\[data-material="glass"\][^{}]*\.surface\.surface-popover[^{}]*\{([^{}]*)\}/
+  it('and each region reads its OWN blur, never the other\'s', () => {
+    // This used to say a floating surface may not blur at all, because
+    // the whole material was at 0 and a menu reaching for blur would be
+    // the one surface made of something else. The owner settled it the
+    // other way: a menu scatters what it covers by 4px — the number
+    // measured off the command palette — and a card still does not,
+    // because a card covers only the page's own ground.
+    //
+    // So the rule is no longer "no blur"; it is that the two regions
+    // are SEPARATE. A page surface reading the floating blur would
+    // frost all 178 cards at once, and a floating surface reading the
+    // page's would silently go clear the day a card's blur changed.
+    // Neither failure looks like a typo at the call site.
+    const floating = /:root\[data-material="glass"\][^{}]*\.surface\.surface-popover[^{}]*\{([^{}]*)\}/
       .exec(CODE)?.[1] ?? '';
-    expect(rule, 'the floating rule is gone').not.toBe('');
-    expect(rule, 'a floating surface reached for blur').not.toMatch(/blur\(/);
+    const page = /:root\[data-material="glass"\]\s*\.surface\s*\{([^{}]*)\}/.exec(CODE)?.[1] ?? '';
+    expect(floating, 'the floating rule is gone').not.toBe('');
+    expect(page, 'the page rule is gone').not.toBe('');
+
+    expect(floating, 'a floating surface blurs by the page\'s number')
+      .not.toMatch(/--surface-blur-page/);
+    expect(floating, 'a floating surface no longer scatters at all')
+      .toMatch(/blur\(var\(--surface-blur-floating\)\)/);
+    expect(page, 'a page surface blurs by the floating number — that is every card at once')
+      .not.toMatch(/--surface-blur-floating/);
+    expect(page, 'a page surface no longer reads a blur')
+      .toMatch(/blur\(var\(--surface-blur-page\)\)/);
   });
 
   /**
@@ -334,7 +368,7 @@ describe('the occlusion escape hatch', () => {
       // Same exemption, same reason, and the same refusal to cover
       // anything else: these three selectors and `.surface-popover` are
       // one rule, so they can only ever be in one state together.
-      if (OWNER_IS_EVALUATING_CLEAR_MENUS) {
+      if (OWNER_CHOSE_BLUR_ALONE) {
         expect(state, `\`.surface.${pos}\` is not in the state the owner asked for`)
           .toBe('clear');
         continue;
@@ -657,7 +691,7 @@ describe('the material and the room', () => {
   const DARK = '.dark[data-material="glass"]';
 
   it("the pane's own properties are declared once", () => {
-    for (const tok of ['--surface-alpha', '--surface-saturate', '--surface-blur']) {
+    for (const tok of ['--surface-wash-page', '--surface-saturate', '--surface-blur-page']) {
       expect(block(LIGHT), `${tok} is not declared at all`).toMatch(new RegExp(`${tok}:`));
       expect(
         block(DARK),
@@ -708,7 +742,7 @@ describe('a clear pane is still a pane', () => {
   };
   const LIGHT = ':root[data-material="glass"]';
   const DARK = '.dark[data-material="glass"]';
-  const alpha = Number(/--surface-alpha:\s*([\d.]+)/.exec(body(LIGHT))?.[1]);
+  const alpha = Number(/--surface-wash-page:\s*([\d.]+)/.exec(body(LIGHT))?.[1]);
 
   it('paints no colour of its own', () => {
     // The owner's decision, recorded with its reason rather than left
@@ -743,5 +777,73 @@ describe('a clear pane is still a pane', () => {
     const card = readFileSync(join(SRC, 'components/ui/card.tsx'), 'utf8');
     expect(card, 'a clear card lost the border that was drawing its boundary')
       .toMatch(/cardVariants = cva\(\s*"[^"]*\bborder border-border\b/);
+  });
+});
+
+/**
+ * THE WASH IS A COLOUR AND A STRENGTH, AND IT STAYS TWO THINGS.
+ *
+ * This is here because of how long it took to find. The owner could
+ * see a surface "going white" and say so plainly; neither of us could
+ * point at the line that made it white, for hours, across several
+ * sessions. The reason was not that the code was complicated. It was
+ * that there was no WORD for what it did: one token named a strength,
+ * the colour it applied came from the palette by inheritance, and so a
+ * single declaration LIGHTENED in light mode and DARKENED in dark
+ * while no line anywhere stated a direction.
+ *
+ * Splitting them fixes the finding, not the pixels. `--surface-wash`
+ * says what colour and can be read in one glance; `--surface-wash-page`
+ * and `--surface-wash-floating` say how much, per region. What these
+ * guards hold is that the pair does not quietly become one thing again.
+ */
+describe('the wash is a colour and a strength', () => {
+  const decl = (tok: string) =>
+    new RegExp(`${tok}:\\s*([^;]+);`).exec(CODE)?.[1].trim();
+
+  it('states its colour outright, never borrowing one from the palette', () => {
+    const colour = decl('--surface-wash');
+    expect(colour, 'the pack declares no wash colour').toBeTruthy();
+    // A BORROWED COLOUR HAS NO DIRECTION. `var(--popover)` is white in
+    // one mode and near-black in the other, so the same line lightens
+    // and darkens depending on a token declared in a different file —
+    // which is precisely the shape that cost those hours. A literal can
+    // be read. A pack that genuinely wants per-mode says it twice, in
+    // two blocks, where both are visible.
+    expect(colour, 'the wash borrows its colour, so its DIRECTION is not stated anywhere')
+      .not.toMatch(/var\(/);
+  });
+
+  it('and nothing paints a surface from anything else', () => {
+    // The other half: a rule that reached for `--surface-base` or a
+    // palette token directly would put the wash back inside the code
+    // with no name on it, and the next person looking for "the thing
+    // that makes it white" would search for a word that matches
+    // nothing again.
+    const fills = [...CODE.matchAll(/\.surface[^{}]*\{([^{}]*)\}/g)]
+      .map((m) => m[1])
+      .filter((body) => /background-color:\s*color-mix/.test(body));
+    expect(fills.length, 'no surface lays a wash at all — this measures nothing')
+      .toBeGreaterThan(1);
+    for (const body of fills)
+      expect(body, 'a surface mixes its fill from something that is not the wash')
+        .toMatch(/color-mix\([^;]*var\(--surface-wash\)/);
+  });
+
+  it('and every region-split token has both of its halves', () => {
+    // The vocabulary enforces itself: `-floating` means "what a surface
+    // over unchosen content does instead", so it is only a difference
+    // if there is a `-page` to differ from. One grep for `-floating`
+    // then finds that whole difference as a list, which is the thing
+    // that was missing.
+    const halves = (suffix: string) => new Set(
+      [...CODE.matchAll(new RegExp(`--surface-([a-z-]+?)-${suffix}\\b`, 'g'))].map((m) => m[1]),
+    );
+    const page = halves('page');
+    const floating = halves('floating');
+    expect([...page].sort(), 'a split token is missing one of its two halves')
+      .toEqual([...floating].sort());
+    expect(page.size, 'nothing is split by region — the suffix means nothing')
+      .toBeGreaterThan(1);
   });
 });

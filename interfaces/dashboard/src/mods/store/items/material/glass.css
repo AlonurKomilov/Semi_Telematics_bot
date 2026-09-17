@@ -40,7 +40,16 @@
        than itself. Optics says the same: transmission and index are
        constants of the material; what a reflection looks like depends
        on the light and on what is behind. */
-    --surface-alpha: 0;
+    --surface-wash-page: 0;
+    /* THE WASH'S COLOUR, stated once for both regions and for both
+       modes. Unused while both strengths are 0, and here anyway: a
+       strength with no colour beside it is exactly the shape that hid
+       the direction before. Black, because a pane of glass DARKENS what
+       it covers — it gathers no white of its own. The command palette
+       has always washed this way (`rgb(0 0 0 / 10%)`); the material was
+       the one thing in the app lightening instead, by taking its colour
+       from `--popover` and so flipping direction with the mode. */
+    --surface-wash: rgb(0 0 0);
     /* 3px, one value for both modes, and the number was CHOSEN BY
        MEASUREMENT rather than by eye — which for this particular knob
        took building something to measure with.
@@ -79,7 +88,7 @@
        still earns its compositing layer here — the ground's colour
        comes through richer, which is the half of this material that
        was never about blur. */
-    --surface-blur: 0px;
+    --surface-blur-page: 0px;
     /* Also one value, for the same reason: how much a pane deepens the
        colour passing through it is the pane's, not the room's. Glass
        without a saturation boost reads as fog. */
@@ -112,7 +121,7 @@
        not ask an element to be positioned any more than it may
        position one. */
     /* HOW MUCH OF THE GROUND A PLANE INSIDE A SURFACE LETS THROUGH.
-       Sibling of `--surface-alpha`, and the reason it exists is the
+       Sibling of `--surface-wash-page`, and the reason it exists is the
        thing the alpha alone could not fix: a card went translucent and
        the `bg-muted` box inside it did not, so one card carried two
        materials — glass at the edges, a solid patch in the middle. It
@@ -170,9 +179,16 @@
        TO PUT IT BACK: 0.62, 0.04, 1.8 here and 0.14 / 0.34 in the dark
        block. Nothing else moves; the chain above is the same either
        way, which is the point of having made it one chain. */
-    --surface-occlude-alpha: 0;
-    --surface-occlude-contrast: 1;
-    --surface-occlude-brightness: 1;
+    --surface-wash-floating: 0;
+    --surface-flatten-contrast: 1;
+    --surface-flatten-brightness: 1;
+    /* THE ONE THING A FLOATING SURFACE DOES MORE OF. Four pixels — the
+       number measured off the command palette's own overlay, which is
+       the frosting the owner recognised as frosting after rejecting
+       two of mine. Blur scatters without painting, which is why it is
+       the whole treatment here and the wash above is zero: it takes the
+       tone of whatever is under it and adds nothing. */
+    --surface-blur-floating: 4px;
     --glass-sheen: 1;
     /* THE RIM IS TWO COLOURS, and they are not the same one at two
        strengths. The first version used white for both modes and was
@@ -204,7 +220,7 @@
         rgb(0 0 0 / calc(0.18 * var(--light-strength, 1)));
   }
   .dark[data-material="glass"] {
-    /* No `--surface-alpha` here any more — see the note above it. */
+    /* No `--surface-wash-page` here any more — see the note above it. */
     /* No blur override here any more. It carried one while the
        reasoning was "dark has more contrast headroom, so dark can
        afford to be clearer" — and blur does not spend contrast, so that
@@ -220,8 +236,8 @@
     /* Down rather than up — see the note on the light values. */
     /* Clear here too, while the owner looks at it — see the note on
        the light values, which carries the way back. */
-    --surface-occlude-contrast: 1;
-    --surface-occlude-brightness: 1;
+    --surface-flatten-contrast: 1;
+    --surface-flatten-brightness: 1;
     --glass-sheen: 0.45;
     --glass-rim-top: rgb(255 255 255 / calc(0.55 * var(--light-strength, 1)));
     --glass-rim-foot: rgb(0 0 0 / calc(0.45 * var(--light-strength, 1)));
@@ -245,7 +261,7 @@
   :root[data-material="glass"] .surface {
     background-color: color-mix(
       in oklab,
-      var(--surface-base, var(--card)) calc(var(--surface-alpha) * 100%),
+      var(--surface-wash) calc(var(--surface-wash-page) * 100%),
       transparent
     );
     /* THE BODY. Two layers, painted over the fill above.
@@ -282,9 +298,9 @@
        all: `backdrop-filter: none` replaces the whole value, lens
        included, which is why offering one to every surface is safe. */
     -webkit-backdrop-filter:
-      var(--surface-lens, ) blur(var(--surface-blur)) saturate(var(--surface-saturate));
+      var(--surface-lens, ) blur(var(--surface-blur-page)) saturate(var(--surface-saturate));
     backdrop-filter:
-      var(--surface-lens, ) blur(var(--surface-blur)) saturate(var(--surface-saturate));
+      var(--surface-lens, ) blur(var(--surface-blur-page)) saturate(var(--surface-saturate));
     /* Only here, never on `.surface` itself. This rule is unlayered and
        so outranks a utility — putting the shadow on the base class would
        beat the `shadow-lg` that dialogs, sheets and menus already carry
@@ -401,7 +417,7 @@
   :root[data-material="glass"] .surface.sticky {
     background-color: color-mix(
       in oklab,
-      var(--surface-base, var(--popover)) calc(var(--surface-occlude-alpha) * 100%),
+      var(--surface-wash) calc(var(--surface-wash-floating) * 100%),
       transparent
     );
     /* THE SAME CHAIN THE PAGE'S SURFACES GET, with two more links on
@@ -413,11 +429,11 @@
        card, and the only thing that separates the two is what the pack
        says. Which is where a material decision belongs. */
     -webkit-backdrop-filter:
-      var(--surface-lens, ) saturate(var(--surface-saturate))
-      contrast(var(--surface-occlude-contrast)) brightness(var(--surface-occlude-brightness));
+      var(--surface-lens, ) blur(var(--surface-blur-floating)) saturate(var(--surface-saturate))
+      contrast(var(--surface-flatten-contrast)) brightness(var(--surface-flatten-brightness));
     backdrop-filter:
-      var(--surface-lens, ) saturate(var(--surface-saturate))
-      contrast(var(--surface-occlude-contrast)) brightness(var(--surface-occlude-brightness));
+      var(--surface-lens, ) blur(var(--surface-blur-floating)) saturate(var(--surface-saturate))
+      contrast(var(--surface-flatten-contrast)) brightness(var(--surface-flatten-brightness));
   }
 
   /* TWO STAY FULLY SOLID, for reasons that are not the one above.

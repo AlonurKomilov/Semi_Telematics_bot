@@ -13,7 +13,7 @@
  * file rather than a detail of it. They used to be typed here as a
  * COPY of `glass.css`, which meant the one guard standing between a
  * clarity change and unreadable body text was measuring a number the
- * change did not touch. Lowering `--surface-alpha` to anything at all
+ * change did not touch. Lowering `--surface-wash-page` to anything at all
  * left this suite green. A guard that holds its own copy of the value
  * it guards is not a guard.
  *
@@ -121,8 +121,8 @@ const modeTokens = (sel: string) => ({
 });
 
 const T = {
-  light: { ...modeTokens(LIGHT_SEL), alpha: declFor(LIGHT, '--surface-alpha'), sheen: declFor(LIGHT, '--glass-sheen') },
-  dark: { ...modeTokens(DARK_SEL), alpha: declFor(DARK, '--surface-alpha'), sheen: declFor(DARK, '--glass-sheen') },
+  light: { ...modeTokens(LIGHT_SEL), alpha: declFor(LIGHT, '--surface-wash-page'), sheen: declFor(LIGHT, '--glass-sheen') },
+  dark: { ...modeTokens(DARK_SEL), alpha: declFor(DARK, '--surface-wash-page'), sheen: declFor(DARK, '--glass-sheen') },
 } as const;
 
 const grey = (L: number): RGB => oklchToSrgb(L, 0, 0).rgb;

@@ -441,8 +441,30 @@
        Shadows had no token before this. Every `shadow-*` in the app is
        Tailwind's stock black, identical in light and dark, and no mod
        could ever reach it. */
-    --surface-alpha: 1;
-    --surface-blur: 0px;
+    /* WHAT A SURFACE DOES TO WHAT IS BEHIND IT — five things, named
+       apart, because for a long time they were not. A `-floating`
+       suffix means "and this is what a surface OVER CONTENT NOBODY
+       CHOSE does instead", so one grep for `-floating` finds the whole
+       of that difference in one list.
+         lens     bends it at the rim      (`--surface-lens`, engine)
+         blur     scatters it              (`--surface-blur-*`)
+         wash     lays a colour over it    (`--surface-wash*`)
+         flatten  destroys its detail      (`--surface-flatten-*`)
+         saturate deepens its colour       (`--surface-saturate`)
+       THE WASH IS A COLOUR AND A STRENGTH, and separating those two is
+       the point of the name. It used to be a strength alone, over a
+       colour borrowed from the palette — which meant one declaration
+       LIGHTENED in light mode and DARKENED in dark, and no line in the
+       file said so. The owner spent hours describing a surface that
+       "goes white" while neither of us could point at the code that
+       made it white, because the word for it did not exist. */
+    --surface-wash: transparent;
+    --surface-wash-page: 0;
+    --surface-wash-floating: 0;
+    --surface-blur-page: 0px;
+    --surface-blur-floating: 0px;
+    --surface-flatten-contrast: 1;
+    --surface-flatten-brightness: 1;
     --surface-saturate: 1;
     --surface-shadow: none;
 
