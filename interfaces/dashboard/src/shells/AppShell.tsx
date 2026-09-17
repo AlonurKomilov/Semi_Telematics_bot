@@ -38,7 +38,6 @@ import {
 } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
-import { ChatLauncher } from '../features/chat/ChatLauncher';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
 import { AlertsLauncher } from '../features/alerts/AlertsLauncher';
 import { useAssistantDock, useDockedContentClass } from '../features/ai/AssistantContext';
@@ -239,7 +238,6 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
               </button>
               <LanguageSelector />
               <AlertsLauncher />
-              <ChatLauncher />
               <AssistantLauncher />
               {canMods && <ModPanel />}
               <AvatarMenu />
