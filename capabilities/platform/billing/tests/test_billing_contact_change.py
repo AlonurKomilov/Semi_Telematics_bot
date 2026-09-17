@@ -198,7 +198,7 @@ async def api(pg_db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_the_page_learns_who_may_edit_from_the_rule_that_guards_the_door(api):
-    """The Edit control is drawn from the summary's ``can_edit_contact``,
+    """The Edit control is drawn from the summary's ``contact_editable``,
     which the server computes with the same predicate that refuses the
     change routes — so the button and the door can never disagree, and
     the page holds no role literal of its own."""
@@ -206,7 +206,7 @@ async def test_the_page_learns_who_may_edit_from_the_rule_that_guards_the_door(a
     for hdr, expected in ((api["owner_hdr"], True), (api["admin_hdr"], False)):
         r = await c.get("/api/billing/summary", headers=hdr)
         assert r.status_code == 200, r.text
-        assert r.json()["can_edit_contact"] is expected
+        assert r.json()["contact_editable"] is expected
     r = await c.post("/api/billing/email/change", headers=api["admin_hdr"], json={"email": NEW})
     assert r.status_code == 403, "the door says what the page said"
 

@@ -44,7 +44,7 @@ The create form initially selects **All messages** and **All members can send**,
 
 `service.py` and `access.py` must not import FastAPI or `system/`. Transport auth adapts existing verified identity and account enforcement into a framework-free actor. Any quarantine check stays in the API composition/enforcement layer, avoiding an upward capability → system import. Chat calls Notifications; Notifications accepts source callbacks without importing Chat. No empty feature-contribution registry is required for v1.
 
-Chat is a customer service with its own communication data. It is neither the existing AI assistant conversation store nor `adapters/storage/chats.py` (authorized Telegram chats). The service-channel definition in `docs/SERVICES.md` now distinguishes feature aggregators from communication services.
+Chat is a customer service with its own communication data. It is neither the existing AI assistant conversation store nor `adapters/storage/telegram_chats.py` (authorized Telegram chats). The service-channel definition in `docs/SERVICES.md` now distinguishes feature aggregators from communication services.
 
 ## 3. Group access matrix
 
@@ -271,7 +271,7 @@ peer grant loss leaves the remaining participant's authorized history intact.
   temporary permission loss, effective tier/plan masks, role-change races,
   Unicode normalization and private metadata omission from audit.
 - TypeScript `tsc --noEmit` passed; changed-file ESLint has zero errors and
-  one pre-existing unused-disable warning in `types/index.ts`.
+  one pre-existing unused-disable warning in `interfaces/dashboard/src/types/index.ts`.
 - Frontend matrix/icon run: **39 passed, one existing ELD config-grid failure**
   (`verbGrid.test.ts:65` expects a list missing `can_view_eld`). Reproduced
   the identical failure from clean `HEAD` files in a temporary directory.

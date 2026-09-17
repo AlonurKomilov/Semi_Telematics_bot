@@ -108,7 +108,7 @@ async def billing_summary(
     summary["account_name"] = account.name if account else ""
     summary["user_count"] = await _count_users(account_id, platform_db)
     summary["company_count"] = await _count_companies(account_id, platform_db)
-    summary["can_edit_contact"] = owner_may_edit_contact(user)
+    summary["contact_editable"] = owner_may_edit_contact(user)
     return summary
 
 
@@ -461,8 +461,10 @@ def owner_may_edit_contact(user: dict) -> bool:
     able to READ the bills without being able to redirect where they
     are sent — that redirect is the first move of an account takeover.
     One predicate for the door and for the page: the summary carries
-    this answer as ``can_edit_contact`` so the Edit control is drawn
-    from the same rule that refuses the request.
+    this answer as ``contact_editable`` so the Edit control is drawn
+    from the same rule that refuses the request.  The name stays out of
+    the ``can_*`` namespace on purpose — that namespace belongs to the
+    permission flags, and billing does not read those.
     """
     return user.get("role") == "owner"
 

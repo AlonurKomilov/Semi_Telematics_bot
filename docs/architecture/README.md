@@ -31,6 +31,9 @@ This folder keeps only what belongs to NO package:
 | AI copilot write-actions | `capabilities/ai/docs/ai-copilot-write-actions.md` |
 | AI import assistant | `capabilities/ai/docs/ai-import-assistant.md` |
 | Alert-DM migration (record) | `capabilities/alerting/docs/alert-dm-migration.md` |
+| Chat (the service) | `capabilities/chat/docs/ARCHITECTURE.md` |
+| Chat (the HTTP surface) | `capabilities/chat/docs/API.md` |
+| Chat (the live channel) | `capabilities/chat/docs/REALTIME.md` |
 
 Records of past worlds live under `archive/` folders (tracked, and the
 dead-reference guard exempts them — a completed rollout's references

@@ -86,7 +86,7 @@ interface BillingSummary {
   past_due_since: string | null;
   billing_email: string | null;
   /** The server's own answer — the same rule that gates the change routes. */
-  can_edit_contact?: boolean;
+  contact_editable?: boolean;
   trial_ends_at: string | null;
   current_period_start: string | null;
   current_period_end: string | null;
@@ -1194,7 +1194,7 @@ export default function Billing() {
       {summary && (
         <SummaryCard
           summary={summary}
-          canEditContact={!!summary.can_edit_contact}
+          canEditContact={!!summary.contact_editable}
           onContactChanged={load}
         />
       )}
