@@ -1,4 +1,12 @@
-"""Authorized chats CRUD mixin."""
+"""Authorized TELEGRAM chats — the bot's chat ids, not the Chat service.
+
+Named for what it holds since the Chat service arrived: this is the
+registry of Telegram groups and DMs the bot may speak in
+(``authorized_chats``), keyed by Telegram's chat id.  It was ``chats.py``
+/ ``ChatsMixin`` — one letter from ``chat.py`` / ``ChatMixin``, the
+customer-facing Chat service's store, and two mixins on one class whose
+names differ by an ``s`` is a trap for whoever reads the MRO next.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +15,7 @@ from typing import Optional
 from .models import AuthorizedChat
 
 
-class ChatsMixin:
+class TelegramChatsMixin:
 
     async def add_authorized_chat(
         self, account_id: int, chat_id: int, chat_title: str, added_by: int,

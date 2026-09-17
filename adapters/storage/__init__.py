@@ -46,7 +46,7 @@ from .accounts import AccountsMixin
 from .companies import CompaniesMixin
 from .users import UsersMixin
 from .invites import InvitesMixin
-from .chats import ChatsMixin
+from .telegram_chats import TelegramChatsMixin
 from .forum_routing import ForumRoutingMixin
 from .account_persona_groups import AccountPersonaGroupsMixin
 from .bot_instances import BotInstancesMixin
@@ -137,7 +137,7 @@ class Database(
     AccountIntegrationsMixin,
     UsersMixin,
     InvitesMixin,
-    ChatsMixin,
+    TelegramChatsMixin,
     ForumRoutingMixin,
     AccountPersonaGroupsMixin,
     BotInstancesMixin,

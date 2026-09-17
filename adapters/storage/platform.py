@@ -9,7 +9,7 @@ from .core import _DatabaseCore
 from .accounts import AccountsMixin
 from .users import UsersMixin
 from .invites import InvitesMixin
-from .chats import ChatsMixin
+from .telegram_chats import TelegramChatsMixin
 from .knowledge import KnowledgeBaseMixin
 from .permissions import PermissionsMixin
 from .driver_vehicles import DriverVehiclesMixin
@@ -34,7 +34,7 @@ class PlatformDB(
     AccountsMixin,
     UsersMixin,
     InvitesMixin,
-    ChatsMixin,
+    TelegramChatsMixin,
     KnowledgeBaseMixin,
     PermissionsMixin,
     DriverVehiclesMixin,
