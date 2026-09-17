@@ -314,6 +314,11 @@ async def get_my_driver(
         "profile":     _profile_to_dict(profile),
         "assignments": [_assignment_to_dict(a) for a in assignments],
         "documents":   [_document_to_dict(d) for d in documents],
+        # Which source supplied each reconcilable field — the trucks'
+        # Source card has answered this for months; the driver drawer
+        # (and a driver reading their own record) can now answer it for
+        # a licence number.
+        "field_provenance": await platform_db.get_driver_field_provenance(caller_id),
     }
 
 
@@ -337,6 +342,11 @@ async def get_driver(
         "profile":     _profile_to_dict(profile),
         "assignments": [_assignment_to_dict(a) for a in assignments],
         "documents":   [_document_to_dict(d) for d in documents],
+        # Which source supplied each reconcilable field — the trucks'
+        # Source card has answered this for months; the driver drawer
+        # (and a driver reading their own record) can now answer it for
+        # a licence number.
+        "field_provenance": await platform_db.get_driver_field_provenance(user_id),
     }
 
 

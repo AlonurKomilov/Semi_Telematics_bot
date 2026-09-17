@@ -1308,6 +1308,9 @@ export interface DriverDetail {
   profile: DriverProfile;
   assignments: DriverVehicleAssignment[];
   documents: DriverDocument[];
+  /** Per-field provenance — which integration supplied the name, phone
+   *  or licence, or `manual` where an operator typed (and pinned) it. */
+  field_provenance?: Record<string, string>;
 }
 
 export interface SamsaraDriver {

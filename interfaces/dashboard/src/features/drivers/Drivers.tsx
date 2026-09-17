@@ -21,6 +21,7 @@ import { toneClasses, toneText } from '../../lib/status';
 const DriverHoursTab = lazy(() => import('../eld/DriverHoursTab'));
 import DataGrid from '../../components/datagrid';
 import ProviderLinkSections from './ProviderLinkSections';
+import DriverSource from './DriverSource';
 import Section from './Section';
 import OnboardingQueue from './OnboardingQueue';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -549,7 +550,7 @@ function DriverDrawer({
           </Suspense>
         )}
         {tab === 'integrations' && (
-          <IntegrationsTab profile={p} onSaved={onSaved} onError={onError} />
+          <IntegrationsTab profile={p} onSaved={onSaved} onError={onError} fieldProvenance={detail?.field_provenance} />
         )}
       </div>
     </>
@@ -561,11 +562,14 @@ function DriverDrawer({
  *  actions hit the driver-roster admin endpoints (gated can_manage_drivers).
  *  Samsara + Datatruck save IMMEDIATELY (not part of the profile form). */
 function IntegrationsTab({
-  profile, onSaved, onError,
+  profile, onSaved, onError, fieldProvenance,
 }: {
   profile: DriverProfile;
   onSaved: (m: string) => void;
   onError: (m: string) => void;
+  /** Per-field provenance from the detail payload — rendered as the
+   *  Source card beneath the links that produce it. */
+  fieldProvenance?: Record<string, string> | null;
 }) {
   const qc = useQueryClient();
   const userId = profile.user_id;
@@ -678,6 +682,9 @@ function IntegrationsTab({
         onSaved={onSaved}
         onError={onError}
       />
+
+      {/* Beneath the links, because the links are what produce it. */}
+      <DriverSource provenance={fieldProvenance} />
     </div>
   );
 }

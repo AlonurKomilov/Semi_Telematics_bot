@@ -609,3 +609,35 @@ class TestRequestReupload:
                 headers=_h(ctx["tok_drv1"]),
             )
             assert r.status_code == 404
+
+
+class TestFieldProvenance:
+    """The drawer can say where a licence number came from."""
+
+    async def test_an_operator_edit_shows_as_pinned_manual(self, app_and_db):
+        ctx = app_and_db
+        await ctx["db"].update_driver_profile(
+            ctx["drv1"].id, cdl_number="DL-PROV-001", cdl_state="CA",
+        )
+        async with AsyncClient(transport=ASGITransport(app=ctx["app"]), base_url="http://t") as c:
+            r = await c.get(f"/api/drivers/{ctx['drv1'].id}", headers=_h(ctx["tok_admin"]))
+            assert r.status_code == 200, r.text
+            prov = r.json()["field_provenance"]
+            assert prov["cdl_number"] == "manual"
+            assert prov["cdl_state"] == "manual"
+
+    async def test_an_untouched_roster_states_nothing(self, app_and_db):
+        """No sync, no edit — no provenance to claim."""
+        ctx = app_and_db
+        async with AsyncClient(transport=ASGITransport(app=ctx["app"]), base_url="http://t") as c:
+            r = await c.get(f"/api/drivers/{ctx['drv1'].id}", headers=_h(ctx["tok_admin"]))
+            assert r.status_code == 200, r.text
+            assert r.json()["field_provenance"] == {}
+
+    async def test_a_driver_reading_their_own_record_gets_the_same_answer(self, app_and_db):
+        ctx = app_and_db
+        await ctx["db"].update_driver_profile(ctx["drv1"].id, phone="+15550100")
+        async with AsyncClient(transport=ASGITransport(app=ctx["app"]), base_url="http://t") as c:
+            r = await c.get("/api/drivers/me", headers=_h(ctx["tok_drv1"]))
+            assert r.status_code == 200, r.text
+            assert r.json()["field_provenance"]["phone"] == "manual"

@@ -396,6 +396,28 @@ class DriverProfileMixin(_MixinBase):
             driver_notes=_maybe_decrypt(row[15]),
         )
 
+    async def get_driver_field_provenance(self, user_id: int) -> dict[str, str]:
+        """``{field: source}`` for the reconcilable driver fields — which
+        integration supplied the name, the phone, the licence, or
+        ``manual`` where an operator typed (and thereby pinned) it.
+
+        The vehicle page has said this for trucks for months; drivers
+        had the same map in the database and nothing on screen read it.
+        For a licence number on a DOT record, "where did this come
+        from" is a compliance question, not a curiosity.  Empty dict
+        when the row has none (a roster nobody has synced or edited yet).
+        """
+        cur = await self._db.execute(
+            "SELECT driver_field_provenance FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return {}
+        raw = row[0] if not isinstance(row, dict) else row.get("driver_field_provenance")
+        prov = _parse_driver_provenance(raw)
+        return {str(k): str(v) for k, v in prov.items() if v}
+
     async def update_driver_profile(
         self, user_id: int, **fields,
     ) -> bool:
