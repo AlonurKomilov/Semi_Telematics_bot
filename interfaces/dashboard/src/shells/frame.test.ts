@@ -79,6 +79,33 @@ describe('the sides of the frame are one object', () => {
       .toMatch(envelope);
   });
 
+  it('and the gutters are one width, not three', () => {
+    // A frame that is one object has one thickness. Three numbers a
+    // reader can drift apart is the same failure as three class lists —
+    // and this one is invisible until somebody notices the bottom edge
+    // is thinner than the right.
+    //
+    // WHY 32 AND NOT 8: the number belongs to the material, not to
+    // taste. A bevel bends within a band measured from the edge, and
+    // the pack's band is 30px, so a side thinner than that is displaced
+    // end to end — distortion, not a rim. At 8px these were 3.75×
+    // inside the band and no per-edge trick changed it, which is why
+    // the frame could take `saturate` and nothing else. The page pays
+    // 24px of its width and height for the room.
+    // The GUTTERS specifically, which are the sides that carry no
+    // content: `aria-hidden` is how they say so, and it is the only
+    // thing that separates them in source from the header, whose `h-12`
+    // is a different fact about a side that holds controls.
+    const steps = [...read('shells/AppShell.tsx')
+      .matchAll(/<div\s+aria-hidden\s+className=\{?[`"]([^`"]*)[`"]/g)]
+      .map((m) => /\b[wh]-(\d+)\b/.exec(m[1])?.[1])
+      .filter((n): n is string => n !== undefined);
+    expect(steps.length, 'no gutter declares a size — this measures nothing')
+      .toBeGreaterThanOrEqual(3);
+    expect(new Set(steps).size, `the gutters disagree about how thick the frame is: ${steps.join(', ')}`)
+      .toBe(1);
+  });
+
   it('and no side is padding any more', () => {
     // The shape of the original bug, pinned so it cannot come back as
     // a "simplification": the envelope wore the gutters as padding.

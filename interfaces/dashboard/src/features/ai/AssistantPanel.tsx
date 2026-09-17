@@ -166,7 +166,7 @@ export default function AssistantPanel() {
             else if (e.key === 'ArrowRight') { e.preventDefault(); setPanelWidth(panelWidth - 16); }
           }}
           style={{ touchAction: 'none' }}
-          className={`absolute -left-2 inset-y-0 z-10 w-2 cursor-col-resize items-center justify-center group focus:outline-none ${
+          className={`absolute -left-8 inset-y-0 z-10 w-8 cursor-col-resize items-center justify-center group focus:outline-none ${
             panelExpanded ? 'hidden' : 'hidden sm:flex'
           }`}
         >

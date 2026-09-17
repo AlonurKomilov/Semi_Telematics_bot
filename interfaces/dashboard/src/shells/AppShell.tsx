@@ -38,6 +38,7 @@ import {
 } from '../mods';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
+import { ChatLauncher } from '../features/chat/ChatLauncher';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
 import { AlertsLauncher } from '../features/alerts/AlertsLauncher';
 import { useAssistantDock, useDockedContentClass } from '../features/ai/AssistantContext';
@@ -238,6 +239,7 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
               </button>
               <LanguageSelector />
               <AlertsLauncher />
+              <ChatLauncher />
               <AssistantLauncher />
               {canMods && <ModPanel />}
               <AvatarMenu />
@@ -336,10 +338,18 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
                 guard in `frame.test.ts` is what keeps that true rather
                 than this comment. `aria-hidden`: they carry no content
                 and a screen reader announcing empty groups around every
-                page is noise. */}
+                page is noise.
+                32px, and the number is the LENS's, not a taste. A bevel
+                bends within a band measured from the edge, and the
+                pack's band is 30px — so a side thinner than that is
+                displaced end to end, which is distortion rather than a
+                rim. At 8px these three were 3.75× inside the band and
+                no per-edge trick changed it. At 32px a band of half the
+                side fits, which is the width a refracting frame needs
+                before it can have one. The page pays 24px for it. */}
             <div
               aria-hidden
-              className={`w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane ${dockedContentClass}`}
+              className={`w-8 shrink-0 bg-sidebar surface surface-sidebar chrome-pane ${dockedContentClass}`}
             />
             {/* THE SUB-PAGE, in the row rather than over it. It renders
                 nothing unless it is open, allowed and off the /ai
@@ -350,13 +360,13 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             {dock.docked && (
               <div
                 aria-hidden
-                className="w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+                className="w-8 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
               />
             )}
           </div>
           <div
             aria-hidden
-            className="h-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+            className="h-8 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
           />
         </div>
       </div>
