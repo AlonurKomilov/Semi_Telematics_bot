@@ -6,6 +6,17 @@ export let activeTab: { id?: number; url?: string } | null = null;
 export function setActiveTab(t: { id?: number; url?: string } | null) { activeTab = t; }
 
 const sessionStore = new Map<string, unknown>();
+
+/** What `chrome.runtime.getManifest()` answers.  `key` is the channel
+ *  marker: the store package has none, the sideload one carries it. */
+const DEFAULT_MANIFEST: { version: string; key?: string } = { version: '0.5.19.0' };
+let manifest: { version: string; key?: string } = { ...DEFAULT_MANIFEST };
+export function setManifest(m: { version: string; key?: string }) { manifest = m; }
+
+/** What `chrome.runtime.requestUpdateCheck()` answers — or throws, which
+ *  is what an unpacked extension really does. */
+let updateCheck: { status: string } | Error = { status: 'no_update' };
+export function setUpdateCheck(r: { status: string } | Error) { updateCheck = r; }
 (globalThis as unknown as { chrome: unknown }).chrome = {
   storage: {
     local: {
@@ -25,7 +36,21 @@ const sessionStore = new Map<string, unknown>();
     update: async (id: number, p: unknown) => { tabCalls.update.push([id, p]); },
     create: async (p: unknown) => { tabCalls.create.push(p); },
   },
-  runtime: { onInstalled: { addListener: () => {} }, onMessageExternal: { addListener: () => {} } },
+  runtime: {
+    onInstalled: { addListener: () => {} },
+    onMessageExternal: { addListener: () => {} },
+    id: 'test-extension-id',
+    getManifest: () => manifest,
+    requestUpdateCheck: async () => {
+      if (updateCheck instanceof Error) throw updateCheck;
+      return updateCheck;
+    },
+  },
   sidePanel: { setPanelBehavior: async () => {} },
 };
-beforeEach(() => { store.clear(); sessionStore.clear(); tabCalls.update.length = 0; tabCalls.create.length = 0; activeTab = null; });
+beforeEach(() => {
+  store.clear(); sessionStore.clear();
+  tabCalls.update.length = 0; tabCalls.create.length = 0; activeTab = null;
+  manifest = { ...DEFAULT_MANIFEST };
+  updateCheck = { status: 'no_update' };
+});

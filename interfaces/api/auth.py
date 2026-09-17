@@ -259,6 +259,18 @@ EXTENSION_ROUTES: frozenset[str] = frozenset({
     # the account owes, and that flag is deliberately not in the scope.
     "/extension/inventory-config", "/extension/inventory-focus",
     "/extension/inventory-catalogue",
+    # WHICH VERSION IS CURRENT — so the panel can tell a reader it is
+    # behind.  It carries no account data: the build's version string and
+    # the package id, both identical for every install and the id already
+    # public in the Web Store URL.
+    #
+    # The panel needs it because the two channels fail differently.  A
+    # store install updates itself and needs no notice to stay correct; a
+    # sideloaded one NEVER updates itself, and the sideload channel is
+    # kept alive deliberately, as the way a fix ships without waiting on
+    # a review.  Without this route that reader has no signal at all and
+    # runs an old panel until somebody tells them in person.
+    "/extension/info",
     "/auth/refresh", "/auth/logout",
 })
 

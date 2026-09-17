@@ -4,6 +4,7 @@ import { apiFetch, apiJSON, clearToken, getToken, refreshIfNeeded, refreshNow, U
 import { FEATURES } from './registry';
 import Connect from './Connect';
 import Settings from './Settings';
+import UpdateNotice from './UpdateNotice';
 import UserMenu, { type Me } from './UserMenu';
 import FeatureMenu from './FeatureMenu';
 import { ACTIVE_FEATURE_KEY } from '../features/maps-overlay/bridge';
@@ -220,6 +221,11 @@ export default function App() {
           )}
         <UserMenu me={me} onSettings={() => setView('settings')} onDisconnect={() => void disconnect()} />
       </header>
+      {/* Between the header and the feature on purpose: it is news, not
+          an interruption, and it must not come out of the feature's
+          height — a map that shrinks when a notice appears is a layout
+          that moves under the reader's cursor. */}
+      <UpdateNotice />
       {/* Settings and a feature's config are ordinary documents and
           scroll; a feature owns its own height and must not. */}
       <main style={{ flex: 1, minHeight: 0,

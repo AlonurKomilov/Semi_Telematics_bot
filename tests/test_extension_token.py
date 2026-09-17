@@ -868,7 +868,12 @@ async def test_a_scoped_token_is_refused_outside_its_routes_with_403(pg_db, monk
     scoped = create_jwt(1, account.id, "owner", user_id=member.id, jti="ext-1",
                         aud=EXTENSION_AUDIENCE, scope=EXTENSION_SCOPE)
 
-    for path in ("/api/user/me", "/api/v1/user/me", "/api/extension/info",
+    for path in ("/api/user/me", "/api/v1/user/me",
+                 # DOWNLOAD stays shut while INFO opened (below).  Asking
+                 # which version is current is a question; being handed
+                 # the package is a different thing entirely, and the
+                 # panel has no use for it — it cannot install itself, so
+                 # it links a person to the page that can.
                  "/api/extension/download", "/api/vehicles",
                  "/api/extension/connect",
                  # The custom-layer WRITES.  The list endpoint below is
@@ -884,6 +889,15 @@ async def test_a_scoped_token_is_refused_outside_its_routes_with_403(pg_db, monk
 
     for path in ("/api/map/vehicles", "/api/v1/map/vehicles", "/api/map/vehicles/live",
                  "/api/v1/map/vehicles/live/", "/api/extension/me",
+                 # WHICH VERSION IS CURRENT.  Opened deliberately: it
+                 # carries the build's version and the package id, both
+                 # the same for every install and the id already public
+                 # in the Web Store URL.  The panel needs it because a
+                 # SIDELOADED copy never updates itself and has no other
+                 # signal that it is behind — and that channel is kept
+                 # alive on purpose, as the way a fix ships without
+                 # waiting on a store review.
+                 "/api/extension/info",
                  # The map, brought level with the dashboard's.  Each of
                  # these rides can_view_live_map, which the scope has
                  # carried since v1.
