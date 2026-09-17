@@ -103,16 +103,27 @@ describe('what the solid path costs', () => {
     const glassSurface = /:root\[data-material="glass"\]\s+\.surface\s*\{([\s\S]*?)\n {2}\}/
       .exec(CODE)?.[1] ?? '';
     expect(glassSurface, 'the glass .surface rule is gone').not.toBe('');
-    // TWO insets, and the count is the claim: an edge is a lit TOP and
-    // a shaded FOOT, and one without the other is a line rather than a
-    // thickness. A single `inset` passed while the highlight had been
-    // deleted — a mutation found that.
+    // FOUR insets now, one per side, and the count is still the claim.
+    // It was two — a lit top and a shaded foot, because one without the
+    // other is a line rather than a thickness, and a single `inset`
+    // passed once while the highlight had been deleted.
+    //
+    // The sides joined them because flat glass gives the eye nothing to
+    // separate one pane from the next, and the lens cannot do it: at 32
+    // map columns a 30px band on a 1000px pane is ONE sample, so a
+    // large pane's bevel has no gradient to show. A 1px rim is crisp
+    // whatever the map can resolve. Each is multiplied by whether that
+    // side is an EDGE, so a seam still draws nothing.
     const shadow = /box-shadow:([\s\S]*?);/.exec(glassSurface)?.[1] ?? '';
     expect(
       (shadow.match(/\binset\b/g) ?? []).length,
-      'glass lost half its edge. A lit top without a shaded foot is a line, not a '
-        + 'thickness — and a translucent rectangle with neither is frosted plastic.',
-    ).toBe(2);
+      'glass lost part of its edge. A pane is lit on top, shaded at the foot and '
+        + 'bounded on both sides — drop one and the eye has one fewer line to tell '
+        + 'this pane from the one beside it.',
+    ).toBe(4);
+    for (const side of ['top', 'bottom', 'left', 'right'])
+      expect(CODE, `the ${side} rim draws whether or not that side is an edge`)
+        .toMatch(new RegExp(`--surface-edge-${side}`));
     expect(glassSurface, 'glass lost its sheen — the body no longer catches light')
       .toMatch(/background-image:[\s\S]*linear-gradient/);
     // Told, not sampled. CSS cannot look at what is behind a surface;

@@ -170,3 +170,44 @@ export function readEdges(doc: Document, view: Viewport): EdgeReading {
 
   return { of: (el) => (spans.has(el) ? spans.get(el) : undefined) };
 }
+
+/**
+ * The four custom properties a surface carries its own answer in.
+ *
+ * `1` where that side is an edge, `0` where it is not — a number
+ * because CSS can MULTIPLY it. A rim's alpha becomes
+ * `calc(0.10 * var(--surface-edge-top, 1))`, which is zero on a seam
+ * without anything having to know what a seam is.
+ *
+ * The fallback is 1 everywhere, and it matters: a surface that has not
+ * been measured yet, or is rendered where nothing measures, draws every
+ * side — which is what it did before any of this existed. Absence of an
+ * answer must never read as "no edges".
+ */
+export const EDGE_VARS = {
+  top: '--surface-edge-top',
+  right: '--surface-edge-right',
+  bottom: '--surface-edge-bottom',
+  left: '--surface-edge-left',
+} as const;
+
+/**
+ * Write one surface's answer onto it, for anything that draws at a
+ * boundary to spend.
+ *
+ * A SIDE IS ON OR OFF HERE, though the reading underneath it is finer
+ * than that: a side with any open stretch draws. That is a real
+ * simplification and it is the right one for this consumer — an inset
+ * shadow runs the whole length of a side and cannot be interrupted, so
+ * a rim is all-or-nothing whatever the measurement says. The rail's
+ * right side is open for 94% of its length and draws for 100; the 6%
+ * that overlaps the header is the error, and it is a hairline behind a
+ * pane that is already there. A consumer that CAN follow a partial side
+ * should read the spans instead of these.
+ */
+export function publishEdges(el: HTMLElement, spans: OpenSpan[] | undefined): void {
+  for (const [side, prop] of Object.entries(EDGE_VARS)) {
+    if (spans === undefined) { el.style.removeProperty(prop); continue; }
+    el.style.setProperty(prop, spans.some((s) => s.side === side) ? '1' : '0');
+  }
+}

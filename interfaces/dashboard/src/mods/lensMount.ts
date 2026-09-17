@@ -25,7 +25,7 @@
  * map column, and nobody can see it.
  */
 import { bevelMap, type Bevel, type LensMap } from './lens';
-import { readEdges, SURFACES, type OpenSpan } from './edges';
+import { readEdges, publishEdges, SURFACES, type OpenSpan } from './edges';
 
 /**
  * How coarsely sizes are rounded before they become a filter.
@@ -218,8 +218,11 @@ export interface LensInstall {
  * between one layout and a hundred.
  */
 export function installLens({ doc, view, bevel, encode }: LensInstall): () => void {
-  const clear = () => doc.querySelectorAll(SURFACES)
-    .forEach((el) => (el as HTMLElement).style.removeProperty(LENS_VAR));
+  const clear = () => doc.querySelectorAll(SURFACES).forEach((n) => {
+    const el = n as HTMLElement;
+    el.style.removeProperty(LENS_VAR);
+    publishEdges(el, undefined);
+  });
 
   // No bevel, or an environment without the observers (server render,
   // or a test that has not stubbed them): leave nothing behind.
@@ -248,7 +251,11 @@ export function installLens({ doc, view, bevel, encode }: LensInstall): () => vo
       const h = box ? box.blockSize : e.contentRect.height;
       work.push({ el, w, h, r: radiusOf(el, view), open: edges.of(el) });
     }
-    // …then write every one of them.
+    // …then write every one of them. The EDGES go on first and go on
+    // whatever the material is: they are a fact about the layout, not
+    // about glass, and a rim drawn in any material should be able to
+    // spend them. The lens is one consumer of the same reading.
+    for (const { el, open } of work) publishEdges(el, open);
     for (const { el, w, h, r, open } of work) applyLens(el, w, h, r, bevel, doc, draw, open);
   });
 

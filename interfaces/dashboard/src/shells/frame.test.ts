@@ -157,14 +157,19 @@ describe('a material may not switch the wallpaper off', () => {
     expect(css).toMatch(/\[data-material="glass"\][^{]*\.surface\.chrome-pane/);
   });
 
-  it('and casts no shadow onto the side next to it', () => {
-    // The owner found this one by using the product: "the joins between
-    // the sides still have lines and shadows, and only under glass".
-    // A drop shadow is paint OUTSIDE the element's box and the sides of
-    // the frame are edge-to-edge, so every side was casting onto its
-    // neighbour and each seam of one continuous plate read as a
-    // boundary between two objects. Under a wallpaper it fell across
-    // the pattern, which has no seam at all.
+  it('and casts nothing OUTSIDE itself onto the side next to it', () => {
+    // The owner found the original by using the product: "the joins
+    // between the sides still have lines and shadows, and only under
+    // glass". A drop shadow is paint OUTSIDE the element's box, and the
+    // sides of the frame are edge-to-edge — so every side was casting
+    // onto its neighbour, and each seam of one continuous plate read as
+    // a boundary between two objects.
+    //
+    // AN INSET IS A DIFFERENT THING and the frame has four of them now.
+    // It never leaves the box, so it cannot land on a neighbour, and
+    // each one is multiplied by whether that side is an edge — zero on
+    // a seam. That is what gives the frame the one line it should have,
+    // against the page, without the three it should not.
     document.head.innerHTML = '';
     document.body.innerHTML = '';
     const style = document.createElement('style');
@@ -178,14 +183,20 @@ describe('a material may not switch the wallpaper off', () => {
       document.body.appendChild(el);
       return getComputedStyle(el).boxShadow;
     };
-    expect(shadowOf('surface chrome-pane'),
-      'a side of the frame casts a shadow, and the only thing next to it is another side')
-      .toBe('none');
-    // The control. Glass did not stop having shadows — a CARD is a pane
-    // sitting on the ground and still throws one, which is the whole
-    // difference between the two.
-    expect(shadowOf('surface'), 'no surface has a shadow at all — this is measuring nothing')
-      .not.toBe('none');
+
+    const frame = shadowOf('surface chrome-pane');
+    expect(frame, 'the frame lost the rim that separates it from the page').toContain('inset');
+    // Every segment is an inset. One that is not is paint landing on
+    // the side next door.
+    for (const part of frame.split(/,(?![^()]*\))/))
+      expect(part.trim(), `the frame casts "${part.trim()}" outside itself`).toMatch(/^inset\b/);
+
+    // The control. Glass did not stop having drop shadows — a CARD is a
+    // pane sitting on the ground and still throws one, which is the
+    // whole difference between the two.
+    const card = shadowOf('surface');
+    expect(card.split(/,(?![^()]*\))/).some((p) => !p.trim().startsWith('inset')),
+      'no surface casts a drop shadow at all — this is measuring nothing').toBe(true);
   });
 
   it('glass still lets a frame pattern through', () => {

@@ -16,7 +16,9 @@
  * here used one boolean per side and came out exactly backwards.
  */
 import { describe, it, expect } from 'vitest';
-import { spansFor, readEdges, SEAM, SURFACES, type OpenSpan } from './edges';
+import {
+  spansFor, readEdges, publishEdges, EDGE_VARS, SEAM, SURFACES, type OpenSpan,
+} from './edges';
 
 const VIEW = { innerWidth: 1400, innerHeight: 900 };
 const box = (left: number, top: number, w: number, h: number): DOMRect => ({
@@ -112,5 +114,66 @@ describe('one reading, shared', () => {
     // Two spellings of "what has an edge" is how a second axis starts
     // answering a slightly different question from the first.
     expect(SURFACES).toBe('.surface');
+  });
+});
+
+describe('a surface carries its own answer', () => {
+  const el = () => {
+    document.body.innerHTML = '<div class="surface"></div>';
+    return document.querySelector<HTMLElement>('.surface')!;
+  };
+  const flags = (e: HTMLElement) => Object.fromEntries(
+    Object.entries(EDGE_VARS).map(([side, prop]) => [side, e.style.getPropertyValue(prop)]));
+
+  it('marks an open side 1 and a seam 0', () => {
+    // A NUMBER, not a boolean, and that is the whole design: CSS cannot
+    // branch, but it can multiply. A rim's alpha is
+    // `calc(0.10 * var(--surface-edge-left, 1))`, so a seam zeroes it
+    // without any rule knowing what a seam is.
+    const e = el();
+    publishEdges(e, [{ side: 'left', from: 0, to: 1 }, { side: 'top', from: 0, to: 0.5 }]);
+    expect(flags(e)).toEqual({ left: '1', top: '1', right: '0', bottom: '0' });
+  });
+
+  it('and a side draws whole when any stretch of it is open', () => {
+    // The honest simplification, stated where it can be checked. An
+    // inset shadow runs a whole side and cannot be interrupted, so the
+    // rail — open for 94% of its right side and covered by the header
+    // for the top 6% — draws for 100%. The error is a hairline behind a
+    // pane that is already there. A consumer that CAN follow a partial
+    // side reads the spans instead.
+    const e = el();
+    publishEdges(e, [{ side: 'right', from: 0.06, to: 1 }]);
+    expect(flags(e).right).toBe('1');
+  });
+
+  it('and an enclosed pane is marked on no side at all', () => {
+    const e = el();
+    publishEdges(e, []);
+    expect(flags(e)).toEqual({ top: '0', right: '0', bottom: '0', left: '0' });
+  });
+
+  it('and an unmeasured pane says nothing, so the fallback draws it', () => {
+    // The distinction `readEdges` keeps, carried through to the CSS.
+    // `undefined` is "could not ask" — jsdom, a pane not laid out yet,
+    // the first frame. Writing zeroes there would silently strip the
+    // rim off every surface in the app; REMOVING the property lets
+    // `var(--surface-edge-top, 1)` fall back to drawing, which is what
+    // a surface did before any of this existed.
+    const e = el();
+    publishEdges(e, [{ side: 'top', from: 0, to: 1 }]);
+    publishEdges(e, undefined);
+    expect(flags(e)).toEqual({ top: '', right: '', bottom: '', left: '' });
+  });
+
+  it('and names the four properties the material spends', () => {
+    // Pinned because the writer and glass.css are the two halves of one
+    // contract and neither imports the other. A rename on this side is
+    // silent: the rim keeps multiplying by a fallback of 1 and every
+    // seam draws again.
+    expect(EDGE_VARS).toEqual({
+      top: '--surface-edge-top', right: '--surface-edge-right',
+      bottom: '--surface-edge-bottom', left: '--surface-edge-left',
+    });
   });
 });

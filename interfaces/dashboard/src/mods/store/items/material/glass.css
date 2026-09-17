@@ -201,8 +201,25 @@
        top; dark does the opposite, because there the pane is lighter
        than the ground and the top edge is the only thing separating it
        from the pane behind. */
-    --glass-rim-top: rgb(255 255 255 / calc(0.10 * var(--light-strength, 1)));
-    --glass-rim-foot: rgb(0 0 0 / calc(0.12 * var(--light-strength, 1)));
+    /* EACH RIM IS MULTIPLIED BY WHETHER THAT SIDE IS AN EDGE.
+       `--surface-edge-*` is written per element by `mods/edges.ts`: 1
+       where the glass ends, 0 where another pane is flush against it or
+       the window is. So a rim costs nothing to suppress — it goes to
+       alpha 0 on a seam without any rule here knowing what a seam is.
+       The fallback is 1: a surface nobody has measured draws every
+       side, which is what every surface did before this existed.
+       A SIDE RIM AS WELL, and it is what the owner asked for. Flat
+       glass gives the eye nothing to separate one pane from the next,
+       and the old solid style did that job with a coloured border. The
+       lens cannot: at 32 map columns a 30px band on a 1000px pane is
+       ONE sample, so a large pane's bevel has no gradient to show. A
+       1px rim is crisp by construction and needs no resolution at all.
+       Darker rather than lighter here: a vertical edge catches little
+       of a light that falls from above, and reads as a thin shade. */
+    --glass-rim-top: rgb(255 255 255 / calc(0.10 * var(--light-strength, 1) * var(--surface-edge-top, 1)));
+    --glass-rim-foot: rgb(0 0 0 / calc(0.12 * var(--light-strength, 1) * var(--surface-edge-bottom, 1)));
+    --glass-rim-left: rgb(0 0 0 / calc(0.08 * var(--light-strength, 1) * var(--surface-edge-left, 1)));
+    --glass-rim-right: rgb(0 0 0 / calc(0.08 * var(--light-strength, 1) * var(--surface-edge-right, 1)));
     /* The light's terms, not literals. This rule out-specifies the
        `.surface` rung in index.css — deliberately, so it can beat the
        `shadow-lg` a dialog carries — which meant that CHOOSING GLASS
@@ -239,8 +256,12 @@
     --surface-flatten-contrast: 1;
     --surface-flatten-brightness: 1;
     --glass-sheen: 0.45;
-    --glass-rim-top: rgb(255 255 255 / calc(0.55 * var(--light-strength, 1)));
-    --glass-rim-foot: rgb(0 0 0 / calc(0.45 * var(--light-strength, 1)));
+    --glass-rim-top: rgb(255 255 255 / calc(0.55 * var(--light-strength, 1) * var(--surface-edge-top, 1)));
+    --glass-rim-foot: rgb(0 0 0 / calc(0.45 * var(--light-strength, 1) * var(--surface-edge-bottom, 1)));
+    /* Light on a dark ground, for the reason the rim already flips:
+       a hairline is only visible against something it differs from. */
+    --glass-rim-left: rgb(255 255 255 / calc(0.22 * var(--light-strength, 1) * var(--surface-edge-left, 1)));
+    --glass-rim-right: rgb(255 255 255 / calc(0.22 * var(--light-strength, 1) * var(--surface-edge-right, 1)));
     --surface-shadow:
       0 calc(1px * var(--light-lift, 1)) calc(2px * var(--light-spread, 1))
         rgb(0 0 0 / calc(0.40 * var(--light-strength, 1))),
@@ -313,6 +334,8 @@
     box-shadow:
       inset 0 1px 0 var(--glass-rim-top),
       inset 0 -1px 0 var(--glass-rim-foot),
+      inset 1px 0 0 var(--glass-rim-left),
+      inset -1px 0 0 var(--glass-rim-right),
       var(--surface-shadow);
   }
 
@@ -511,7 +534,19 @@
      pattern showed a seam where the pane behind it has none. */
   :root[data-material="glass"] .surface.chrome-pane {
     background-image: none;
-    box-shadow: none;
+    /* A RIM, WHERE IT HAS AN EDGE — and no drop shadow, which is a
+       different thing and stays gone. A drop shadow is paint OUTSIDE
+       the box, and the sides of the frame are edge-to-edge, so each was
+       casting onto its neighbour and every seam of one plate read as a
+       boundary. An INSET never leaves the box, and the edge flags zero
+       it on a seam anyway — so the frame can have the line that
+       separates it from the page without drawing three that separate it
+       from itself. */
+    box-shadow:
+      inset 0 1px 0 var(--glass-rim-top),
+      inset 0 -1px 0 var(--glass-rim-foot),
+      inset 1px 0 0 var(--glass-rim-left),
+      inset -1px 0 0 var(--glass-rim-right);
   }
 
   /* AND IT STILL STEPS ASIDE FOR A WALLPAPER — which the rule above was
