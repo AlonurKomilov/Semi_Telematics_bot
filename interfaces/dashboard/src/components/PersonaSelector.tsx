@@ -1,5 +1,6 @@
 import { Tip } from './tooltip';
-import { useState, useRef, useEffect } from 'react';
+import { Dropdown } from './ui/context-menu';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Eye } from '../lib/icons';
 import { useRoleView } from '../context/RoleViewContext';
@@ -42,24 +43,13 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
     ? ` · ${previewAsManager ? activeViewTier.senior : activeViewTier.base}` : '';
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Click-outside / Esc to close.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  // Click-outside and Escape were two `document` listeners here. They
+  // belong to the primitive now — along with the thing they could not
+  // give: this panel is PORTALLED. It was an `absolute` box inside the
+  // topbar, which is what kept the topbar from ever becoming glass (an
+  // ancestor's backdrop-filter makes a descendant's own a no-op), and
+  // what let an `overflow-hidden` two levels up erase the tier flyout
+  // entirely.
 
   // Non-switchable user (Fleet / Safety / Dispatcher / Driver): static
   // pill with no interactivity.  Shows the user what role they're in
@@ -117,68 +107,60 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
     ? `Previewing dashboard as ${viewLabel} — click to switch back. Changes what you see, not what's stored.`
     : `Dashboard view: ${viewLabel}. Picking a different role re-skins the UI; data and permissions remain yours.`;
 
-  return (
-    <div ref={ref} className="relative">
-      {compact ? (
-        // Collapsed-rail trigger.  Same dropdown; the panel overhangs the
-        // rail into the content area (no overflow clip on the sidebar).
-        // Circular geometry matches the non-switchable badge above (and
-        // AvatarMenu's identity dot) so collapsed/expanded read as the
-        // same control at two densities, not two different UIs.  Idle,
-        // this is an Eye ("click to preview a role") — but mid-preview it
-        // swaps to the previewed role's initial, since an unchanging Eye
-        // glyph can't tell you WHICH role you're currently seeing, the
-        // one thing the expanded label always shows.
-        <Tip label={triggerTitle}>
-          <button
-            type="button"
-            onClick={() => setOpen(o => !o)}
-            className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
-              isPreviewing
-                ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
-                : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
-            } min-h-tap min-w-tap`}
-            aria-haspopup="listbox"
-            aria-expanded={open}
-            aria-label="View dashboard as…"
-          >
-            {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye className="size-4" />}
-          </button>
-        </Tip>
-      ) : (
-        <Tip label={triggerTitle}>
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className={`inline-flex h-7 items-center gap-1 px-2 text-2xs rounded-md border transition ${
-            isPreviewing
-              ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
-              : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
-          } min-h-tap`}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-        >
-          {isPreviewing && <Eye className="opacity-80 size-3" />}
-          <span>{viewLabel}{tierSuffix}</span>
-          <ChevronDown className="opacity-60 size-3" />
-        </button>
-        </Tip>
-      )}
+  /* Collapsed-rail trigger.  Circular geometry matches the
+     non-switchable badge above (and AvatarMenu's identity dot) so
+     collapsed/expanded read as the same control at two densities, not
+     two different UIs.  Idle, this is an Eye ("click to preview a
+     role") — but mid-preview it swaps to the previewed role's initial,
+     since an unchanging Eye glyph can't tell you WHICH role you are
+     currently seeing, the one thing the expanded label always shows.
+     NEITHER trigger carries `onClick` or `aria-expanded` any more: the
+     primitive owns both, and a second toggle would open the panel and
+     close it again in one click. */
+  const trigger = compact ? (
+    <button
+      type="button"
+      className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
+        isPreviewing
+          ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
+          : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
+      } min-h-tap min-w-tap`}
+      aria-haspopup="listbox"
+      aria-label="View dashboard as…"
+    >
+      {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye className="size-4" />}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className={`inline-flex h-7 items-center gap-1 px-2 text-2xs rounded-md border transition ${
+        isPreviewing
+          ? 'bg-primary/10 text-foreground border-primary hover:bg-primary/15'
+          : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
+      } min-h-tap`}
+      aria-haspopup="listbox"
+    >
+      {isPreviewing && <Eye className="opacity-80 size-3" />}
+      <span>{viewLabel}{tierSuffix}</span>
+      <ChevronDown className="opacity-60 size-3" />
+    </button>
+  );
 
-      {open && (
-        <Card
-          padding="none"
-          /* `overflow-visible`, and it is load-bearing: `padding="none"`
-             brings `overflow-hidden`, and the Manager/Employee flyout on
-             a role row sits at `left-full` — OUTSIDE this box. Clipped,
-             it is not dimmed or cut off, it is completely absent, which
-             is why the row still showed its `›` and nothing happened.
-             Safe here because neither corner is painted by a child: the
-             top row has no background, and the footer already carries
-             `rounded-b-lg` to match the arc itself. */
-          className="absolute left-0 mt-1 w-64 shadow-xl text-sm z-50 overflow-visible"
-          render={<ul />} role="listbox"
-        >
+  return (
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      tip={triggerTitle}
+      align="start"
+      className="w-64 text-sm"
+      trigger={trigger}
+    >
+      {/* NO `overflow-hidden` on the popup, and it is load-bearing: the
+          Manager/Employee flyout on a role row sits at `left-full` —
+          OUTSIDE this box. Clipped, it is not dimmed or cut off, it is
+          completely absent, which is why the row once showed its `›`
+          and nothing happened. */}
+      <ul role="listbox">
           <li className="px-3 py-1.5 text-2xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
@@ -251,8 +233,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           <li className="rounded-b-lg px-3 py-1.5 text-2xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
             Changes the dashboard UI only — data and permissions stay yours.
           </li>
-        </Card>
-      )}
-    </div>
+      </ul>
+    </Dropdown>
   );
 }
