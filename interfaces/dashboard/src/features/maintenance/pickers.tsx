@@ -20,6 +20,11 @@ export interface VehicleSummary {
    *  Work Order form).  Null when the vehicle doesn't report them. */
   odometer_miles?: number | null;
   engine_hours?: number | null;
+  /** Each reading's OWN clock and the tolerance it is judged by — so a
+   *  form that prefills from the pick can say how old the number is. */
+  odometer_time?: string | null;
+  engine_hours_time?: string | null;
+  sla_min?: number;
 }
 
 const STATUS_DOT: Record<string, string> = {

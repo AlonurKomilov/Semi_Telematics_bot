@@ -144,3 +144,37 @@ def _is_numeric(node) -> bool:
     if isinstance(node, ast.UnaryOp):
         return _is_numeric(node.operand)
     return False
+
+
+class TestAgeWords:
+    """The bot's words match the dashboard's ``formatAgoShort`` exactly,
+    threshold for threshold — a Telegram line and a screen must never
+    disagree about the same reading."""
+
+    NOW = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+
+    def _ts(self, minutes_ago: float) -> str:
+        from datetime import timedelta
+        return (self.NOW - timedelta(minutes=minutes_ago)).isoformat()
+
+    @pytest.mark.parametrize("minutes_ago,label", [
+        (0.5, "30s ago"), (5, "5m ago"), (90, "1h ago"),
+        (3 * 24 * 60, "3d ago"), (60 * 24 * 60, "May 15"),
+    ])
+    def test_thresholds_mirror_the_dashboard(self, minutes_ago, label):
+        from capabilities.data_lifecycle.staleness import age_label
+        assert age_label(self._ts(minutes_ago), now=self.NOW) == label
+
+    def test_previous_year_carries_the_year(self):
+        from capabilities.data_lifecycle.staleness import age_label
+        assert age_label("2025-06-26T20:03:22Z", now=self.NOW) == "Jun 26, 2025"
+
+    def test_unknown_age_is_no_words(self):
+        from capabilities.data_lifecycle.staleness import age_label, age_suffix
+        assert age_label(None, now=self.NOW) == ""
+        assert age_suffix(None, 15, now=self.NOW) == ""
+
+    def test_the_suffix_is_quiet_while_fresh_and_speaks_past_the_sla(self):
+        from capabilities.data_lifecycle.staleness import age_suffix
+        assert age_suffix(self._ts(10), 15, now=self.NOW) == ""
+        assert age_suffix(self._ts(40), 15, now=self.NOW) == " · 40m ago"

@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from interfaces.api.deps import require_permission, get_user_company_codes, validate_company_access, member_unit_scope, holds, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
 from interfaces.api.deps import require_any_or_wide  # noqa: E402
 from capabilities.activity_trail import record_simple
+from capabilities.data_lifecycle.staleness import sla_minutes
 from infra.services import get_client
 from adapters.telematics.errors import NoTelematicsClientError
 from features.vehicles.warehouse.service import (
@@ -29,6 +30,32 @@ from capabilities.reporting.transformers import (
     simplify_health as _simplify_health,
     simplify_efficiency as _simplify_efficiency,
 )
+
+def _stamp_sla(rows: list[dict], dataset_key: str) -> list[dict]:
+    """Put the dataset's declared tolerance on every row.  The grid's
+    columns render ROWS — they never see the envelope — so the number
+    the freshness cue fires on has to travel with the value it dates."""
+    sla = sla_minutes(dataset_key)
+    for r in rows:
+        r["sla_min"] = sla
+    return rows
+
+
+async def _health_as_of(account_id: int) -> str | None:
+    """Newest ``source_ts`` on the health table, or None on a cold or
+    unreadable store — the caption then says nothing rather than a
+    guess."""
+    from features.vehicles.warehouse import readers as _wh
+    try:
+        tenant = await _wh.get_tenant_db(account_id)
+        if tenant is None:
+            return None
+        fresh = await tenant.get_feed_freshness(
+            account_id, [("vehicle_health_live", "source_ts")])
+        return (fresh.get("vehicle_health_live") or {}).get("last_at") or None
+    except Exception:
+        return None
+
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -67,7 +94,7 @@ async def report_faults(
     faulted = filter_by_allowed_companies(faulted or [], allowed)
     faulted = await filter_by_assigned_trucks(faulted, user)
     return {
-        "vehicles": [_simplify_fault(v) for v in faulted],
+        "vehicles": _stamp_sla([_simplify_fault(v) for v in faulted], "vehicles.faults"),
         "total_vehicles": total or len(faulted),
         "faulted_count": len(faulted),
     }
@@ -103,7 +130,7 @@ async def report_fuel_levels(
     )
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
-    items = [_simplify_fuel(v) for v in vehicles]
+    items = _stamp_sla([_simplify_fuel(v) for v in vehicles], "vehicles.state")
     # Summary
     with_fuel = [i for i in items if i["fuel_pct"] is not None]
     avg_fuel = (
@@ -144,12 +171,17 @@ async def report_health(
     vehicles = await _svc_vehicle_health(user["account_id"], company=company)
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
-    items = [_simplify_health(v) for v in vehicles]
+    items = _stamp_sla([_simplify_health(v) for v in vehicles], "vehicles.health")
     alert_count = sum(len(i["alerts"]) for i in items)
     return {
         "vehicles": items,
         "count": len(items),
         "alert_count": alert_count,
+        # Health rows are the vendor's own JSON and carry no stamp of
+        # their own, so the table's newest source_ts is the honest age
+        # of the whole report — one caption, not a per-row dot.
+        "as_of": await _health_as_of(user["account_id"]),
+        "sla_min": sla_minutes("vehicles.health"),
     }
 
 

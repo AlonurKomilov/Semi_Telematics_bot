@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { formatAgoShort } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
 import { ArrowLeft, ArrowRight, FlaskConical, Fuel, TriangleAlert } from '../../lib/icons';
 import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../api/client';
@@ -19,7 +21,7 @@ import type L from 'leaflet';
 import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
 import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
 import PoiIcon from './poi/PoiIcon';
-import { Tip } from '../../components/tooltip';
+import { Freshness, Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { toast } from '../../lib/toast';
 import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
@@ -202,6 +204,7 @@ function makeIcon(
 }
 
 export default function LiveMap() {
+  const tz = useTimezone();
   const { mapRef, leafletMap, isReady, mapType, showLabels, setMapType, setShowLabels, provider, setProvider } = useLeafletMap();
   // Whose tiles sit under everything: the server's decision per account,
   // applied to the base layer only — every overlay below is engine-blind.
@@ -927,6 +930,19 @@ export default function LiveMap() {
               <span>{selected.engine_state || 'Off'}</span>
               <span className="text-muted-foreground">Company</span>
               <span className="truncate">{selected.company || '—'}</span>
+              {/* The snapshot is seconds old; THIS truck's fix can be
+                  days old (a dead gateway inside a live map).  The
+                  fix's own clock at its own tolerance says which. */}
+              {selected.updated_at && (
+                <>
+                  <span className="text-muted-foreground">Last fix</span>
+                  <span>
+                    <Freshness ts={selected.updated_at} sla={selected.sla_min}>
+                      {formatAgoShort(selected.updated_at, { timeZone: tz })}
+                    </Freshness>
+                  </span>
+                </>
+              )}
             </div>
 
             {/* Fuel & DEF level bars */}

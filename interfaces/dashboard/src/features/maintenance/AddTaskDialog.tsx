@@ -16,6 +16,7 @@
 // half-typed task no longer reappears on the next open.
 
 import { useEffect, useState } from 'react';
+import { Freshness } from '../../components/tooltip';
 import { ClipboardList } from '../../lib/icons';
 import { toast } from '../../lib/toast';
 
@@ -99,6 +100,9 @@ export default function AddTaskDialog({
   const [fDueEngineHours, setFDueEngineHours] = useState('');
   const [fOdometer, setFOdometer] = useState<number | null>(null);
   const [fEngineHours, setFEngineHours] = useState<number | null>(null);
+  // The readings' own clocks + tolerance — a 21-day-old odometer
+  // prefilled here is exactly the case the cue exists for.
+  const [fReadingTs, setFReadingTs] = useState<{ odo: string | null; hrs: string | null; sla?: number }>({ odo: null, hrs: null });
   const [fOdometerLoading, setFOdometerLoading] = useState(false);
   // Multi-vehicle bulk-create mode — when on, the single VehiclePicker
   // is replaced by a chip-list multi-select and the submit hits the
@@ -160,10 +164,14 @@ export default function AddTaskDialog({
       const data = await apiJSON<{
         odometer_miles: number | null;
         engine_hours: number | null;
+        time?: string | null;
+        engine_hours_time?: string | null;
+        sla_min?: number;
       }>('/maintenance/odometer/' + encodeURIComponent(name.trim()));
       setFOdometer(data.odometer_miles ?? null);
       setFEngineHours(data.engine_hours ?? null);
-    } catch { setFOdometer(null); setFEngineHours(null); }
+      setFReadingTs({ odo: data.time ?? null, hrs: data.engine_hours_time ?? null, sla: data.sla_min });
+    } catch { setFOdometer(null); setFEngineHours(null); setFReadingTs({ odo: null, hrs: null }); }
     finally { setFOdometerLoading(false); }
   };
   const handleAdd = async (e: React.FormEvent) => {
@@ -513,7 +521,11 @@ export default function AddTaskDialog({
                     {fOdometerLoading
                       ? 'fetching…'
                       : fOdometer != null
-                        ? `${Math.round(fOdometer).toLocaleString()} mi`
+                        ? (
+                          <Freshness ts={fReadingTs.odo} sla={fReadingTs.sla}>
+                            {`${Math.round(fOdometer).toLocaleString()} mi`}
+                          </Freshness>
+                        )
                         : '—'}
                   </span>
                   <span className="text-primary">
@@ -534,7 +546,12 @@ export default function AddTaskDialog({
               <label className="block">
                 {fEngineHours != null ? (
                   <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
-                    <span>Current: {Math.round(fEngineHours).toLocaleString()} h</span>
+                    <span>
+                      Current:{' '}
+                      <Freshness ts={fReadingTs.hrs} sla={fReadingTs.sla}>
+                        {`${Math.round(fEngineHours).toLocaleString()} h`}
+                      </Freshness>
+                    </span>
                     <span className="text-primary">
                       Due:{' '}
                       {fDueEngineHours

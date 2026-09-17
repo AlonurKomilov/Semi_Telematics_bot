@@ -4,7 +4,7 @@ import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../lib/toast';
-import { InfoTip, Tip } from '../../components/tooltip';
+import { Freshness, InfoTip, Tip } from '../../components/tooltip';
 import {
   FileText, Save, ArrowLeft, Trash2, Plus, Paperclip,
   Receipt, X, Link as LinkIcon, Image as ImageIcon, Loader2,
@@ -310,7 +310,7 @@ export default function WorkOrderForm() {
   // The picked vehicle's CURRENT reading — so a date with NO history can
   // fall back to it instead of getting stuck on a previous date's value.
   const [pickedCurrent, setPickedCurrent] =
-    useState<{ odometer: number | null; hours: number | null } | null>(null);
+    useState<{ odometer: number | null; hours: number | null; odometer_time?: string | null; sla_min?: number } | null>(null);
   // Monotonic request id — newest as-of fetch wins (see fetchAsOf).
   const asOfSeq = useRef(0);
 
@@ -440,6 +440,8 @@ export default function WorkOrderForm() {
     const current = {
       odometer: v.odometer_miles ?? null,
       hours: v.engine_hours ?? null,
+      odometer_time: v.odometer_time ?? null,
+      sla_min: v.sla_min,
     };
     setPickedCurrent(current);
     // For a back-dated WO, refine odometer/hours to that date's reading.
@@ -1359,12 +1361,22 @@ export default function WorkOrderForm() {
               placeholder={t('work_orders_page.ph_odometer')}
               className={`w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring${aiCls('odometer_at_service')}`}
             />
-            {asOfNote && (
+            {asOfNote ? (
               <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
                 {asOfLoading && <Loader2 className="animate-spin size-3" />}
                 {asOfNote}
               </p>
-            )}
+            ) : pickedCurrent?.odometer_time && wo.odometer_at_service != null ? (
+              // Prefilled from the picked truck's CURRENT reading (the
+              // as-of path above owns its own note).  The number's own
+              // clock, at its own tolerance — an old odometer must not
+              // land in a work order looking like today's.
+              <p className="mt-1 text-2xs text-muted-foreground">
+                <Freshness ts={pickedCurrent.odometer_time} sla={pickedCurrent.sla_min}>
+                  Current reading
+                </Freshness>
+              </p>
+            ) : null}
           </Field>
           <Field label={t('work_orders_page.field_engine_hours')}>
             <input

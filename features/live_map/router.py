@@ -26,6 +26,12 @@ from features.live_map.service import (
     classify_vehicle_status, get_vehicles_for_map, live_snapshot,
 )
 
+from capabilities.data_lifecycle.staleness import sla_minutes as _sla_minutes
+
+#: Resolved once — the registry is in-process and the number is a
+#: declaration, not a measurement.
+_STATE_SLA = _sla_minutes("vehicles.state")
+
 router = APIRouter(prefix="/map", tags=["map"])
 
 
@@ -112,6 +118,10 @@ async def map_vehicles(
                 "fault_count": fault_count,
                 "heading": loc.get("heading"),
                 "updated_at": loc.get("time", ""),
+                # A snapshot is at most seconds old by construction; a
+                # single truck's FIX inside it can be days old (dead
+                # gateway).  The fix's own tolerance lets the panel say so.
+                "sla_min": _STATE_SLA,
             },
         })
     return {
@@ -354,6 +364,7 @@ async def map_vehicles_live(
             "speed_mph": speed,
             "heading": loc.get("heading"),
             "updated_at": loc.get("time", ""),
+            "sla_min": _STATE_SLA,
         }
 
     # Width, asked of the width layer.  This used to read

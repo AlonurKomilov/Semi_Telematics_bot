@@ -15,6 +15,7 @@ from typing import Optional
 from interfaces.api.deps import deny, get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, get_user_vehicle_assignments, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies, member_unit_scope, holds, effective_perms
 from adapters.storage.maintenance import CLOSED_TASK_STATUSES
 from capabilities.activity_trail import new_group_id
+from capabilities.data_lifecycle.staleness import sla_minutes
 from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
 from features.maintenance.service import apply_live_readings, spawn_recurring_if_completed
 
@@ -1190,6 +1191,12 @@ async def get_vehicle_odometer(
         "engine_hours": match.get("engine_hours"),
         "engine_hours_time": match.get("engine_hours_time"),
         "company": match.get("company_code", ""),
+        # The reading's own tolerance — vehicle state's declared SLA —
+        # so the form that PREFILLS this odometer can say how old it is
+        # at the age the reader and the watchdog already use.  A
+        # 21-day-old odometer landing silently in a work order is the
+        # exact "stale is worse than empty" case.
+        "sla_min": sla_minutes("vehicles.state"),
     }
 
 

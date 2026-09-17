@@ -1,6 +1,7 @@
 """Vehicle detail and picker formatters."""
 
 from infra.context import get_company_display
+from capabilities.data_lifecycle.staleness import age_suffix, sla_minutes
 from capabilities.formatting.helpers import (
     _t, _fmt_time, _light_badges, _short_location,
     _fuel_bar, _split_message,
@@ -45,7 +46,10 @@ def format_vehicle_detail(v: dict, show_company: bool = False,
         f"  Plate  {v.get('license_plate') or '—'}",
         "",
         f"  📍  {_short_location(loc)}",
-        f"  {_fuel_bar(fuel_pct)}",
+        # A text surface cannot carry the dashboard's warn dot, so it
+        # carries the age — only once the reading is past the tolerance
+        # its own dataset declares, and in the same words the screen uses.
+        f"  {_fuel_bar(fuel_pct)}{age_suffix(fuel.get('time'), sla_minutes('vehicles.state'))}",
     ]
 
     if show_faults:

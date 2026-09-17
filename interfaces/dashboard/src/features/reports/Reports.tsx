@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Freshness } from '../../components/tooltip';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Download, Sparkles, FileText } from '../../lib/icons';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -20,6 +21,8 @@ import type {
   HealthReportResponse,
   EfficiencyReportResponse,
   AnyColumn,
+  FaultVehicle,
+  FuelVehicle,
 } from '../../types';
 import { REPORTS } from '../../data/reports';
 import { statusTone } from '../../lib/status';
@@ -79,7 +82,12 @@ function FuelBadge({ pct }: { pct: number | null }) {
 const faultCols = (tz: string): AnyColumn[] => [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
   { key: 'company', label: 'Company', sortable: true },
-  { key: 'dtc_count', label: 'DTCs', sortable: true },
+  { key: 'dtc_count', label: 'DTCs', sortable: true,
+    render: (v, row) => (
+      <Freshness ts={(row as FaultVehicle).fault_time || null} sla={(row as FaultVehicle).sla_min}>
+        {String(v ?? '—')}
+      </Freshness>
+    ) },
   { key: 'severity', label: 'Severity', render: (v) => <SeverityBadge severity={v as string} /> },
   { key: 'fault_time', label: 'Last Seen', render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—' },
 ];
@@ -87,8 +95,20 @@ const faultCols = (tz: string): AnyColumn[] => [
 const fuelCols = (tz: string): AnyColumn[] => [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
   { key: 'company', label: 'Company', sortable: true },
-  { key: 'fuel_pct', label: 'Fuel', sortable: true, render: (v) => <FuelBadge pct={v as number | null} /> },
-  { key: 'def_pct', label: 'DEF', sortable: true, render: (v) => <FuelBadge pct={v as number | null} /> },
+  // Each level carries its OWN clock (fuel can be days staler than DEF
+  // on one truck) — the cue sits on the value; "Updated" keeps the date.
+  { key: 'fuel_pct', label: 'Fuel', sortable: true,
+    render: (v, row) => (
+      <Freshness ts={(row as FuelVehicle).fuel_time || null} sla={(row as FuelVehicle).sla_min}>
+        <FuelBadge pct={v as number | null} />
+      </Freshness>
+    ) },
+  { key: 'def_pct', label: 'DEF', sortable: true,
+    render: (v, row) => (
+      <Freshness ts={(row as FuelVehicle).def_time || null} sla={(row as FuelVehicle).sla_min}>
+        <FuelBadge pct={v as number | null} />
+      </Freshness>
+    ) },
   { key: 'fuel_time', label: 'Updated', render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—' },
 ];
 
@@ -167,6 +187,7 @@ export default function Reports() {
   const navigate = useNavigate();
   const [data, setData] = useState<Record<string, unknown>[]>([]);
   const [summary, setSummary] = useState<string>('');
+  const [healthAsOf, setHealthAsOf] = useState<{ ts: string | null; sla?: number }>({ ts: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [days, setDays] = useState(30);
@@ -195,6 +216,7 @@ export default function Reports() {
         } else if (tab === 'health') {
           const h = d as HealthReportResponse;
           setSummary(`${h.count} vehicles · ${h.alert_count} active alerts`);
+          setHealthAsOf({ ts: h.as_of ?? null, sla: h.sla_min });
         } else {
           const e = d as EfficiencyReportResponse;
           setSummary(`${e.count} vehicles · ${e.days}-day period`);
@@ -303,6 +325,14 @@ export default function Reports() {
           description="Try a different tab or widen the date range — reports populate as soon as the underlying telematics data arrives."
         />
       ) : (
+        <>
+        {tab === 'health' && healthAsOf.ts && (
+          // Health rows carry no clock of their own, so the report says
+          // its age once, for all of them, at the health feed's tolerance.
+          <p className="mb-2 text-2xs text-muted-foreground">
+            <Freshness ts={healthAsOf.ts} sla={healthAsOf.sla}>Readings as of the newest health sample</Freshness>
+          </p>
+        )}
         <DataGrid
           // Per-tab tableId — each report tab (faults / fuel / health /
           // efficiency) has a different column set, so sharing one id
@@ -312,6 +342,7 @@ export default function Reports() {
           data={data}
           searchKey="vehicle_name"
         />
+        </>
       )}
     </div>
   );

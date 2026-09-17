@@ -20,6 +20,7 @@
 // that touch them.
 
 import { useState, useEffect } from 'react';
+import { Freshness } from '../../components/tooltip';
 import {
   Bell, BellOff, Check, CheckSquare, FileText, Image as ImageIcon, Paperclip,
   RefreshCw, Upload, X, History, Trash2,
@@ -128,6 +129,7 @@ export default function TaskDetailSheet({
   const [eVendor, setEVendor] = useState('');
   const [eOdometer, setEOdometer] = useState<number | null>(null);
   const [eEngineHours, setEEngineHours] = useState<number | null>(null);
+  const [eReadingTs, setEReadingTs] = useState<{ odo: string | null; hrs: string | null; sla?: number }>({ odo: null, hrs: null });
 
   // Open the Edit sidebar with a task.  Note the absolute → period
   // conversion: the backend stores absolute due-mileage / due-hours /
@@ -296,6 +298,9 @@ export default function TaskDetailSheet({
       void apiJSON<{
         odometer_miles: number | null;
         engine_hours: number | null;
+        time?: string | null;
+        engine_hours_time?: string | null;
+        sla_min?: number;
       }>(
         '/maintenance/odometer/' + encodeURIComponent(task.vehicle_name),
       ).then((d) => {
@@ -307,6 +312,7 @@ export default function TaskDetailSheet({
         if (cancelled) return;
         const odo = d.odometer_miles ?? null;
         setEOdometer(odo);
+        setEReadingTs({ odo: d.time ?? null, hrs: d.engine_hours_time ?? null, sla: d.sla_min });
         if (odo != null) setEDueMiles(remainingFrom(task.due_miles, odo));
         // Prefer the live engine-hours reading over the task's stored
         // snapshot when the warehouse has a fresher value.  Falls back
@@ -740,7 +746,14 @@ export default function TaskDetailSheet({
                   <label className="block">
                     <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
                       <span>
-                        Current: {eOdometer != null ? `${Math.round(eOdometer).toLocaleString()} mi` : '—'}
+                        Current:{' '}
+                        {eOdometer != null
+                          ? (
+                            <Freshness ts={eReadingTs.odo} sla={eReadingTs.sla}>
+                              {`${Math.round(eOdometer).toLocaleString()} mi`}
+                            </Freshness>
+                          )
+                          : '—'}
                       </span>
                       <span className="text-primary">
                         Due:{' '}
@@ -760,7 +773,12 @@ export default function TaskDetailSheet({
                   <label className="block">
                     {eEngineHours != null ? (
                       <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground mb-1">
-                        <span>Current: {Math.round(eEngineHours).toLocaleString()} h</span>
+                        <span>
+                          Current:{' '}
+                          <Freshness ts={eReadingTs.hrs} sla={eReadingTs.sla}>
+                            {`${Math.round(eEngineHours).toLocaleString()} h`}
+                          </Freshness>
+                        </span>
                         <span className="text-primary">
                           Due:{' '}
                           {eDueEngineHours

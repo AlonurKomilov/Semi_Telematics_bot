@@ -19,6 +19,7 @@ import asyncio
 import json
 import time
 
+from capabilities.data_lifecycle.staleness import sla_minutes
 import pytest
 
 import features.live_map.service as svc
@@ -217,9 +218,13 @@ async def _ptg_only(user):
 async def test_positions_are_shaped_from_the_snapshot(monkeypatch, router_on_snapshot):
     monkeypatch.setattr(loc, "get_user_company_codes", _unrestricted)
     out = await loc.map_vehicles_live(company=None, user=_USER)
+    # Every fix carries its own tolerance — the vehicle-state dataset's
+    # declared number, read from the registry rather than typed here,
+    # so this test cannot pin a second copy of it.
+    sla = sla_minutes("vehicles.state")
     assert out["positions"] == {
-        "1": {"lat": 41.0, "lng": -87.0, "speed_mph": 55.0, "heading": 90, "updated_at": "t1"},
-        "2": {"lat": 42.0, "lng": -88.0, "speed_mph": 0.0, "heading": None, "updated_at": "t2"},
+        "1": {"lat": 41.0, "lng": -87.0, "speed_mph": 55.0, "heading": 90, "updated_at": "t1", "sla_min": sla},
+        "2": {"lat": 42.0, "lng": -88.0, "speed_mph": 0.0, "heading": None, "updated_at": "t2", "sla_min": sla},
     }
 
 

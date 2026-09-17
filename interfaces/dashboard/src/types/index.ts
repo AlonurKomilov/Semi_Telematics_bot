@@ -516,6 +516,8 @@ export interface MapVehicleProperties {
   /** The registry row's own id — what a provider-link lookup is keyed
    *  by, unlike `id`, which is the provider's own vehicle id. */
   registry_id?: number | null;
+  /** The fix's own tolerance in minutes — vehicle state's declared SLA. */
+  sla_min?: number;
 }
 
 export interface MapVehicleFeature {
@@ -1051,6 +1053,8 @@ export interface FaultVehicle {
   lights: Record<string, boolean>;
   severity: string;
   fault_time: string;
+  /** Declared tolerance of the fault snapshot, in minutes. */
+  sla_min?: number;
 }
 
 export interface FaultReportResponse {
@@ -1066,6 +1070,8 @@ export interface FuelVehicle {
   def_pct: number | null;
   fuel_time: string;
   def_time: string;
+  /** Declared tolerance of the readings on this row, in minutes. */
+  sla_min?: number;
 }
 
 export interface FuelReportResponse {
@@ -1091,12 +1097,17 @@ export interface HealthVehicle {
   rpm: number | null;
   engine_on: boolean | null;
   alerts: string[];
+  sla_min?: number;
 }
 
 export interface HealthReportResponse {
   vehicles: HealthVehicle[];
   count: number;
   alert_count: number;
+  /** Newest reading on the health table — the honest age of the whole
+   *  report, since its rows carry no stamp of their own. */
+  as_of?: string | null;
+  sla_min?: number;
 }
 
 export interface EfficiencyVehicle {

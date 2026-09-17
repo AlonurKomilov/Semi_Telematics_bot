@@ -113,6 +113,50 @@ def sla_minutes(dataset_key: str) -> float:
     return float(ds.freshness_sla_min)
 
 
+def age_label(source_ts: Any, *, now: datetime | None = None) -> str:
+    """"21d ago" — the same words the dashboard's ``formatAgoShort`` puts
+    next to a value, for surfaces that render TEXT rather than a dot: a
+    Telegram message cannot carry a warn dot, so it carries the age.
+
+    Thresholds mirror the frontend exactly (seconds, minutes, hours,
+    days under 30, then a calendar date — past a month WHEN reads
+    better than how-long-ago), so a bot line and a screen never
+    disagree about the same reading.  Unknown age is ``""``: a suffix
+    that says nothing is honest; "0s ago" for a NULL is not.
+    """
+    parsed = _parse(source_ts)
+    if parsed is None:
+        return ""
+    current = now or datetime.now(timezone.utc)
+    sec = max(0, int((current - parsed).total_seconds()))
+    if sec < 60:
+        return f"{sec}s ago"
+    minutes = sec // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h ago"
+    days = hours // 24
+    if days < 30:
+        return f"{days}d ago"
+    if parsed.year == current.year:
+        return f"{parsed:%b} {parsed.day}"
+    return f"{parsed:%b} {parsed.day}, {parsed.year}"
+
+
+def age_suffix(source_ts: Any, sla_minutes_: float, *, now: datetime | None = None) -> str:
+    """`` · 21d ago`` when the reading is past its dataset's tolerance,
+    ``""`` when it is not — the text form of the freshness dot's rule:
+    quiet while fresh, one small honest suffix once the number would
+    mislead.  Unknown age counts as stale (Contract 2) but carries no
+    words, since there is no age to state."""
+    if not is_stale(source_ts, sla_minutes_, now=now):
+        return ""
+    label = age_label(source_ts, now=now)
+    return f" · {label}" if label else ""
+
+
 def freshest(*timestamps: Any) -> str | None:
     """The newest of several provider timestamps, for writers composing
     ``source_ts`` from multiple markers (location time, odometer time,
