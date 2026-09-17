@@ -18,9 +18,30 @@ _poi_cache: TTLCache = TTLCache(maxsize=500, ttl=_POI_CACHE_TTL)
 
 _MAX_BBOX_AREA = 5000.0  # roughly North America (CONUS is ~2450 sq deg).
 
-# USA-only POI restriction — clip viewport to US regions before querying.
-# Per product requirement, POIs in Mexico/Canada/Caribbean are not displayed
-# even when the visible viewport extends beyond the US border.
+# THE CLIP IS TO THESE RECTANGLES, NOT TO A BORDER — and the difference
+# is load-bearing, so do not "tighten" it without reading this.
+#
+# This comment used to say "per product requirement, POIs in Mexico,
+# Canada and the Caribbean are not displayed".  That has never been what
+# the code does: the CONUS rectangle runs 24.4N to 49.5N, which takes in
+# northern Mexico at one end and southern Ontario and Quebec whole at the
+# other, and the Alaska box reaches into British Columbia and the Yukon.
+# Points there have always been served.
+#
+# As of 2026-09-17 that is the DECISION rather than the side-effect.  The
+# owner's instruction, given after a pass had deleted 866 Petro-Canada
+# stations to tidy the layer: a real diesel stop is filtered by the user,
+# never removed by us — someone hauling north needs exactly the points
+# that pass was throwing away.  Fuel Stations admits Petro-Canada by
+# measurement now (features/live_map/poi/layers.py), points carry their
+# region (`addr:*` in overpass.SERVICE_TAGS), and the map's brand chips
+# let a driver who only runs the lower 48 switch them off.
+#
+# So these rectangles bound COST — how much of the planet we ask a
+# volunteer mirror for — and no longer claim to bound a country.
+# Narrowing them to the real border would silently delete every
+# cross-border stop the layer now deliberately holds.  If that is ever
+# wanted it is an owner's call, made in the open, not a tidy-up.
 _USA_REGIONS: tuple[tuple[float, float, float, float], ...] = (
     (24.396308, -125.000000, 49.500000,  -66.500000),  # CONUS
     (51.000000, -179.500000, 71.500000, -129.000000),  # Alaska

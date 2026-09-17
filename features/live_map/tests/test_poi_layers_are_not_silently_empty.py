@@ -385,77 +385,164 @@ def _admits(pats: list[str], brand: str) -> bool:
     return any(re.match(p, brand, re.IGNORECASE) for p in pats)
 
 
-#: Every `Petro…` brand value the imported layers actually held on
-#: 2026-09-14, read off the table rather than imagined.
+#: EVERY brand value OSM actually holds for these chains, measured
+#: 2026-09-17 in one Overpass query over North America:
+#: brand → (fuel:diesel=yes, fuel:diesel=no, points in total).
 #:
-#: THE LIST IS THE POINT.  The first version of this guard checked
-#: "Petro-Canada" and "Petro-T" — the two spellings that had come to
-#: mind — and passed a pattern that still admitted Petro Canada (no
-#: hyphen), Petro Seven and Petro Bras.  A guard built from imagination
-#: tests imagination.  Anything new that appears in the data belongs
-#: here, on whichever side it falls.
-REAL_PETRO_BRANDS = {
-    # American, and the reason the entry exists at all.
-    "Petro": True,
-    "Petro Stopping Center": True,
-    "Petro Stopping Centers": True,
-    # Everything else that shares those five letters and does not share
-    # the company.  Counts are what they were in the fuel layer.
-    "Petro-Canada": False,    # 664
-    "Petro Canada": False,    # 2 — the one the first fix let through
-    "Petro-T": False,         # 36, Quebec
-    "Petro Seven": False,     # 5
-    "Petroplus": False,       # 2
-    "PetroUS": False,         # 1
-    "Petro Bras": False,      # 1
+#: READ OFF THE SOURCE, NOT REMEMBERED.  The guard this replaced asserted
+#: that "Pilot Travel Center", "Flying J Travel Center" and "Love's
+#: Travel Stop" were admitted.  None of those three strings exists in
+#: OSM — the brand values are "Pilot", "Flying J" and "Love's" — so the
+#: test was checking a vocabulary nobody uses, and passed the day the
+#: pattern stopped matching anything real.  This table is the whole
+#: vocabulary instead, and both directions are asserted from it.
+MEASURED_BRANDS: dict[str, tuple[int, int, int]] = {
+    "Petro-Canada": (147, 26, 866),  "Love's":        (30, 0, 261),
+    "Kwik Trip":     (25,  0, 241),  "Pilot":         (19, 0, 157),
+    "Maverik":       (17,  0, 119),  "Flying J":      (14, 0,  82),
+    "Kwik Fill":     (11,  0,  72),  "Kwik Shop":      (1, 0,  51),
+    "Petro":          (8,  1,  44),  "Petro-T":        (2, 0,  41),
+    "Kwik Star":      (2,  0,  38),  "TA":            (10, 0,  34),
+    "Sapp Bros.":     (1,  0,  13),  "Road Ranger":    (1, 0,   8),
+    "Petro Seven":    (0,  0,   7),  "Petro Canada":   (0, 0,   3),
+    "Petroplus":      (0,  0,   2),  "Kwik Stop":      (0, 0,   2),
+    "Kwik-Trip":      (0,  0,   2),  "Petro Bras":     (1, 0,   1),
+    "Kwik Serv":      (0,  0,   1),  "PetroUS":        (1, 0,   1),
+    "PETROSINA":      (0,  0,   1),  "Petro Mart":     (0, 0,   1),
+    "Petro South":    (0,  0,   1),  "Kwik Sak":       (0, 0,   1),
+    "AmBest":         (1,  0,   1),  "Sapp Bros":      (1, 0,   1),
+    "TA Express":     (1,  0,   1),  "PetroSun":       (0, 0,   1),
+    "Love's Alternative Energy": (0, 0, 1),
+    "Petro-Pass":     (1,  0,   1),  "Petro-Card 24":  (1, 0,   1),
+    "Petro-Pass Card Lock": (0, 0, 1),
+}
+
+#: Ground 1 — the business IS the qualification, so no sample applies.
+TRUCK_STOP_CHAINS = frozenset({
+    "Pilot", "Flying J", "Love's", "TA", "TA Express", "Petro",
+    "Sapp Bros", "Sapp Bros.", "Road Ranger", "AmBest", "Bosselman",
+    "Speedco",
+})
+
+#: Ground 2 — a retail chain earns its name-inference by measurement.
+DIESEL_INFERENCE_FLOOR = 0.80
+#: …on a real sample.  WITHOUT THIS, `Petro Bras` scores 100% on one
+#: tagged point and walks onto a US truck map, which is the exact leak
+#: this file was opened for.
+MIN_TAGGED_SAMPLE = 10
+
+#: Ground 3 — spellings of a company admitted under ground 1 or 2.
+#: A STATED FACT ABOUT OWNERSHIP, not a measurement: Kwik Trip trades as
+#: Kwik Star in Iowa, and OSM carries `Kwik-Trip` and `Petro Canada` as
+#: punctuation variants.  Written down so it can be argued with.
+SAME_COMPANY_VARIANTS = {
+    "Kwik-Trip": "Kwik Trip", "Kwik Star": "Kwik Trip",
+    "Petro Canada": "Petro-Canada",
 }
 
 
+def _earns_its_name(brand: str) -> bool:
+    """The admission rule, stated once so the test cannot drift from it."""
+    if brand in TRUCK_STOP_CHAINS:
+        return True
+    if brand in SAME_COMPANY_VARIANTS:
+        return _earns_its_name(SAME_COMPANY_VARIANTS[brand])
+    yes, no, _total = MEASURED_BRANDS.get(brand, (0, 0, 0))
+    tagged = yes + no
+    return tagged >= MIN_TAGGED_SAMPLE and yes / tagged >= DIESEL_INFERENCE_FLOOR
+
+
 def test_the_brand_allowlists_admit_the_chains_they_name():
-    """The fix must not cost us the brands it was aimed at."""
+    """The brand values OSM really carries for the chains we mean."""
     by_layer = _brand_patterns_by_layer()
     assert by_layer, "no brand allowlist found — the query shape moved"
     for layer, pats in by_layer.items():
-        for good in ("Pilot Travel Center", "Flying J Travel Center",
-                     "Love's Travel Stop"):
+        for good in ("Pilot", "Flying J", "Love's", "TA"):
             assert _admits(pats, good), f"{layer} no longer admits {good!r}"
 
 
-def test_every_layer_sorts_every_petro_the_data_holds():
-    """One test over the measured values, both directions at once — so a
-    pattern cannot pass by being generous in the half nobody listed.
+def test_the_fuel_allowlist_is_exactly_what_the_rule_admits():
+    """Both directions over the whole measured vocabulary.
 
-    Asked of the LAYER's whole union: `Petro` rides its own clause now,
-    so no single pattern answers for all of them.
+    Every brand OSM holds for these chains is judged by the rule and
+    compared with the pattern, so the list cannot drift from its evidence
+    in either direction: a chain quietly dropped goes red, and a brand
+    that sneaks in on a sample of one goes red too.
     """
+    pats = _brand_patterns_by_layer()["fuel_station"]
+    wrong = []
+    for brand, (yes, no, total) in sorted(MEASURED_BRANDS.items()):
+        want, got = _earns_its_name(brand), _admits(pats, brand)
+        if want != got:
+            tagged = yes + no
+            share = f"{yes}/{tagged}" if tagged else "no tagged points"
+            wrong.append(
+                f"{brand!r} ({total} points, {share}): rule says "
+                f"{'admit' if want else 'refuse'}, pattern "
+                f"{'admits' if got else 'refuses'}")
+    assert not wrong, (
+        "the fuel allowlist and its rule disagree:\n  " + "\n  ".join(wrong))
+
+
+def test_a_sample_of_one_is_not_evidence():
+    """The floor needs a sample or it is not a floor.
+
+    `Petro Bras` and `PetroUS` each carry one tagged point and it says
+    diesel — 100%, on a sample that means nothing.  Both are other
+    companies; both would ride a bare percentage onto the map.
+    """
+    pats = _brand_patterns_by_layer()["fuel_station"]
+    for brand in ("Petro Bras", "PetroUS", "Petro-Pass", "Petro-Card 24"):
+        yes, no, _ = MEASURED_BRANDS[brand]
+        assert yes / max(yes + no, 1) >= DIESEL_INFERENCE_FLOOR, (
+            f"{brand} was chosen for this test because it scores 100% — "
+            "if that changed, pick another one")
+        assert yes + no < MIN_TAGGED_SAMPLE
+        assert not _admits(pats, brand), (
+            f"fuel_station admits {brand!r} on {yes + no} tagged point(s) — "
+            "a percentage without a sample is how a Brazilian and a "
+            "cardlock brand reach a US truck map")
+
+
+def test_no_layer_admits_a_petro_that_is_a_different_company():
+    """The leak this section exists for, and it still bites.
+
+    A bare `Petro` prefix once swept 539 PETRO-CANADA stations into Fuel
+    Stations and 662 into DEF, where DEF held 1,318 points in total.
+    Petro-Canada is now admitted TO FUEL on purpose and by measurement —
+    these are the ones that are simply other companies.
+    """
+    others = ("Petro Seven", "Petroplus", "Petro Bras", "PetroUS",
+              "PETROSINA", "Petro Mart", "Petro South", "PetroSun")
     for layer, pats in _brand_patterns_by_layer().items():
-        # The truck_stop clause has no Petro twin on purpose (that tag is
-        # one node in the US extract) — so only ask layers that reach
-        # fuel stations at all, which is every layer that has a Petro
-        # clause or should have one.
-        for brand, ours in REAL_PETRO_BRANDS.items():
-            got = _admits(pats, brand)
-            if ours and not got:
-                raise AssertionError(
-                    f"{layer} refuses {brand!r} — that is the American "
-                    "chain the entry exists for")
-            if not ours and got:
-                raise AssertionError(
-                    f"{layer} matches {brand!r} — a prefix is not a brand, "
-                    "and this class of leak put 1,201 foreign stations on "
-                    "a US truck map")
+        for brand in others:
+            assert not _admits(pats, brand), (
+                f"{layer} matches {brand!r} — a prefix is not a brand, and "
+                "this class of leak put 1,201 foreign stations on a US "
+                "truck map")
+        # "Petro" and nothing longer: `Petro Stopping Center` was in this
+        # assertion until the vocabulary was measured, and OSM has never
+        # carried that string — only the bare brand, on 44 nodes.
+        assert _admits(pats, "Petro"), (
+            f"{layer} refuses 'Petro' — the American chain the entry "
+            "exists for")
 
 
 def test_no_pattern_hides_a_dollar_in_the_middle():
     """A `$` is an anchor at the END of a POSIX ERE and undefined
-    elsewhere — and these patterns are evaluated by a THIRD PARTY, not
-    by the `re` module this file tests them with.
+    elsewhere — and these patterns are executed by a THIRD PARTY, not by
+    the `re` module this file checks them with.
 
     One of them carried `Petro($| )` inside an alternation for a day.  It
     behaved in Python; what Overpass would have made of it was never
-    established, and a brand clause that silently matches nothing would
-    have emptied a layer on the next weekly import.  The construct was
-    replaced with a clause anchored `^…$`, and this keeps it replaced.
+    established, and a brand clause that silently matches nothing empties
+    a layer on the next weekly import — the quietest way this codebase
+    has yet found to lose 5,000 points.
+
+    GENERIC ON PURPOSE.  This guard was briefly lost when the fuel
+    allowlist was rebuilt around its measurement: today's clause is fine,
+    so nothing was red, so nothing said anything.  A guard that only
+    covers the mistake already made is not a guard.
     """
     for layer, pats in _brand_patterns_by_layer().items():
         for pat in pats:
@@ -466,22 +553,24 @@ def test_no_pattern_hides_a_dollar_in_the_middle():
                 "its own `^…$` clause instead.")
 
 
-def test_a_mixed_chain_is_not_on_the_fuel_allowlist():
-    """A brand is evidence only where EVERY site qualifies.
+def test_the_diesel_measurement_does_not_carry_to_adblue():
+    """The deliberate asymmetry, and why it is deliberate.
 
-    Kwik Trip and Kwik Star are a convenience chain — some sites have
-    truck lanes, most do not — and measured on the layer only 11% and 7%
-    of their points carried any diesel or hgv tag, against a 36-81% band
-    for the chains that are truck stops by definition.  A name that says
-    nothing about the pumps is not evidence, and dropping it costs
-    nothing: a tagged Kwik Trip still arrives through the tag clauses.
+    Petro-Canada is on the FUEL allowlist because it was measured: 147 of
+    its 173 tagged stations sell diesel, and the owner's rule is that a
+    real place gets filtered by the user, never deleted by us.
+
+    That measurement is about DIESEL.  It says nothing about AdBlue, and
+    DEF is already a chain inference standing on 21 confirmed points out
+    of 1,318 — widening it on evidence gathered for a different tag is
+    how an inference quietly becomes a fabrication.
     """
-    from features.live_map.poi.layers import POI_OVERPASS_QUERIES
-    joined = " ".join(POI_OVERPASS_QUERIES["fuel_station"])
-    for mixed in ("Kwik Trip", "Kwik Star"):
-        assert mixed not in joined, (
-            f"{mixed} is back on the fuel allowlist — it claims truck "
-            "diesel for sites that have never said they have any")
+    by_layer = _brand_patterns_by_layer()
+    assert _admits(by_layer["fuel_station"], "Petro-Canada"), (
+        "fuel_station refuses Petro-Canada — measured 147/173 diesel")
+    assert not _admits(by_layer["def_station"], "Petro-Canada"), (
+        "def_station admits Petro-Canada — the diesel measurement does not "
+        "carry to AdBlue, and DEF has 21 confirmed points to its name")
 
 
 # ── a layer's name is a promise ────────────────────────────────────────

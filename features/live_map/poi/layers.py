@@ -54,64 +54,104 @@ def point_to_feature(point: dict) -> dict:
 
 POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     # ── Fuel Stations (diesel-capable) ────────────────────────────────────────
-    # A BRAND IS EVIDENCE ONLY FOR A CHAIN WHERE EVERY SITE QUALIFIES.
+    # WHAT THE BRAND CLAUSE IS FOR: OSM tags diesel sparsely, so the tag
+    # clauses miss most stations that sell it.  A brand recovers them —
+    # but only for a chain where "untagged" is safe to read as "yes".
     #
-    # Measured on this layer 2026-09-14, by share of a brand's points
-    # that carry `fuel:diesel`, `hgv` or `fuel:HGV_diesel`:
+    # THAT IS A MEASURABLE QUESTION AND IT HAD BEEN MEASURED WRONG.  The
+    # previous list was picked by the share of a brand's points carrying
+    # `fuel:diesel` AT ALL (TA 81% … Kwik Trip 11%), and the low ones were
+    # dropped.  But that fraction measures how diligently OSM TAGS a
+    # chain, not whether the chain sells diesel — an untagged station is
+    # not a station without a pump.  The denominator that answers the
+    # real question is the points where the tag is PRESENT: of those, how
+    # many say yes?
     #
-    #     TA 81%   Petro 51%   Flying J 47%   Sapp Bros 46%
-    #     Pilot 37%   Road Ranger 37%   Love's 36%
-    #     ...        Kwik Trip 11%      Kwik Star 7%
+    # Measured 2026-09-17 — one Overpass query over North America,
+    # `fuel:diesel` yes vs no per brand, untagged excluded:
     #
-    # Those shares measure TAGGING, not capability — OSM is sparse, which
-    # is why the allowlist exists at all.  But the band is 36-81% for
-    # chains that are truck stops by definition, and Kwik Trip/Kwik Star
-    # sit three to five times below its floor.  They are a convenience
-    # chain: some sites have truck lanes, most do not, so the NAME says
-    # nothing about the pumps.  Both are gone from the list.
+    #     Love's        30/30  100%     Kwik Trip     25/25  100%
+    #     Pilot         19/19  100%     Kwik Star       2/2  100%
+    #     Flying J      14/14  100%     Maverik       17/17  100%
+    #     TA            10/10  100%     Petro-T         2/2  100%
+    #     Petro           8/9    89%    Petro-Canada 147/173  85%
     #
-    # It costs nothing: a Kwik Trip that OSM says has diesel still
-    # arrives through the tag clauses above.  What stops is claiming it
-    # for the 212 that say nothing either way.
-    # Tag-based filtering misses ~70% of diesel-capable stations in the US, so
-    # we supplement with a brand allowlist for major chains. Brand allowlist
-    # uses `node` only (not `nwr`) — the area variant times out on CONUS bbox.
+    # A PERCENTAGE ALONE IS NOT ENOUGH, and this data says why: `Petro
+    # Bras` scores 100% — on one tagged point.  So a name is evidence on
+    # one of two grounds, and the clause below is the two lists joined:
     #
-    # The brand allowlist names `Petro` EXACTLY, plus its real suffixes —
-    # not as a prefix.  A bare `Petro` in a prefix-anchored alternation
-    # matched PETRO-CANADA, a different company in a different country,
-    # and brought 539 of its stations into this layer and 662 into DEF.
-    # The bbox cannot catch them either: "clipped to the USA" is a
-    # RECTANGLE, and the CONUS box reaches from 24.4N (northern Mexico)
-    # to 49.5N, taking in southern Ontario and Quebec whole.
+    #   1. TRUCK-STOP CHAINS, where the business IS the qualification and
+    #      no sample is needed: Pilot, Flying J, Love's, TA, TA Express,
+    #      Petro, Sapp Bros, Road Ranger, AmBest, Bosselman, Speedco.
+    #   2. RETAIL CHAINS THAT MEASURED, ≥80% of ≥10 tagged points:
+    #      Kwik Trip 25/25, Maverik 17/17, Kwik Fill 11/11,
+    #      Petro-Canada 147/173.  Plus the spellings of those same
+    #      companies — `Kwik-Trip`, `Kwik Star` (Kwik Trip's name in
+    #      Iowa), `Petro Canada` — which is a STATED fact about who owns
+    #      what, not a measurement, and is written here so it can be
+    #      argued with.
     #
-    # The first fix guarded only the hyphen and still let three through —
-    # measured on the layer itself: Petro Canada (the spelling WITHOUT a
-    # hyphen), Petro Seven, Petro Bras.  A guard written from IMAGINED
-    # spellings tests imagination; the one in
-    # test_poi_layers_are_not_silently_empty.py now iterates the values
-    # the table actually holds.  Naming the two real American forms is
-    # what closes it: a suffix cannot be enumerated, but a brand can.
+    # The 2026-09-14 removal of Kwik Trip and Kwik Star is reverted: it
+    # was taste wearing a measurement's clothes.
     #
-    # AND PETRO GETS ITS OWN CLAUSE rather than an entry in the
-    # alternation, because the second fix needed a `$` and a `$` in the
-    # MIDDLE of a pattern is not portable: POSIX ERE defines it as an
-    # anchor only at the end, and what an engine does with it elsewhere
-    # is that engine's business.  This one is sent to a THIRD PARTY and
-    # verified here with Python's `re`, which is not the same engine —
-    # so the construct was replaced rather than tested harder.  A
-    # separate clause anchored `^…$` is unambiguous everywhere, and the
-    # cost is one more filter in a union that already has several.
+    # DELIBERATELY NOT ADMITTED, each costing real points: `Petro-T` (41,
+    # a Quebec chain, 2 tagged) and `Kwik Shop` (51, a different company
+    # from Kwik Trip, 1 tagged) fail the sample floor; `Petro Seven`,
+    # `Petroplus`, `Petro Bras`, `PetroUS`, `PETROSINA`, `Petro Mart`,
+    # `Petro South`, `PetroSun`, `Kwik Stop`, `Kwik Serv`, `Kwik Sak` are
+    # other companies entirely; `Love's Alternative Energy` is Love's
+    # hydrogen and CNG arm, which is the one Love's site that does NOT
+    # imply a diesel pump.
     #
-    # (The `truck_stop` brand clause below has no Petro twin on purpose:
-    # `amenity=truck_stop` is one node in the whole US extract, so a
-    # fourth clause could match nothing and would only cost the mirror.)
+    # GONE BECAUSE THEY DO NOT EXIST, not because they were dropped: the
+    # old prefix clause also carried `TravelCenters` and `Pilot Flying J`.
+    # The 2026-09-17 sweep asked North America for every `amenity=fuel`
+    # node whose brand STARTS WITH Pilot, Flying J, Love, TA,
+    # TravelCenter, Petro, Sapp, Road Ranger, Bosselman, AmBest, Speedco,
+    # Kwik or Maverik — 2,058 nodes, 34 distinct brand values — and
+    # neither string was among them.  OSM spells these `Pilot`, `Flying
+    # J` and `TA`.  They are recorded here because an entry that vanishes
+    # without a reason is indistinguishable from one deleted by accident,
+    # which is the failure this whole block exists to prevent.  None of this deletes anything: every one of
+    # them still arrives through the tag clauses the moment OSM says it
+    # sells diesel.  What stops is us saying it on their behalf.
+    #
+    # PETRO-CANADA IS BACK ON PURPOSE and it is the case that shows why
+    # the rule is the rule: a real chain selling real diesel, deleted
+    # because its points looked untidy next to American ones.  The
+    # owner's instruction is that a real place is FILTERED BY THE USER,
+    # never deleted by us — someone hauling north needs exactly this.
+    #
+    # What it is not is evenly covered.  The CONUS box (24.4N-49.5N,
+    # -125 to -66.5) takes in southern Ontario and Quebec whole, so this
+    # layer's Canadian reach is the RECTANGLE'S BLEED rather than a
+    # decision: present near the border, absent in Calgary.  Partial
+    # coverage is the one genuinely dishonest option, so the points now
+    # carry their region (`addr:state`/`addr:country` in SERVICE_TAGS)
+    # and the filter can say what is covered.  Covering Canada properly
+    # is a separate call with an import cost attached; clipping to the
+    # border would delete ~700 real stations, which is the thing we have
+    # stopped doing.
+    #
+    # ANCHORED AT BOTH ENDS, every spelling named — what a prefix anchor
+    # could not do: a bare `Petro` prefix once swept in PETRO-CANADA,
+    # Petro Seven and Petro Bras by accident, 539 points of it.  And it
+    # is ONE alternation rather than a `^X( …)?$` clause beside it,
+    # because `$` is portable only at a pattern's END (POSIX ERE) and
+    # this string is executed by a third-party engine, not by ours.
+    #
+    # Brand allowlist uses `node` only (not `nwr`) — the area variant
+    # times out on the CONUS bbox.  The `truck_stop` clause has no brand
+    # twin: `amenity=truck_stop` is one node in the whole US extract, so
+    # a fourth clause could match nothing and would only cost the mirror.
     "fuel_station": [
         'node["amenity"="fuel"]["fuel:diesel"="yes"]',
         'node["amenity"="fuel"]["hgv"="yes"]',
         'nwr["amenity"="truck_stop"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Pilot Flying J|Love.s|TA|TravelCenters|Sapp Bros|Road Ranger|Bosselman|Ambest)",i]',
-        'node["amenity"="fuel"]["brand"~"^Petro( (Stopping|Travel).*)?$",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Love.s|TA|'
+        'TA Express|Petro|Sapp Bros.?|Road Ranger|AmBest|Bosselman|'
+        'Speedco|Kwik Trip|Kwik-Trip|Kwik Star|Kwik Fill|Maverik|'
+        'Petro-Canada|Petro Canada)$",i]',
     ],
     # ── DEF / AdBlue Stations ─────────────────────────────────────────────────
     # fuel:adblue=yes has ~15-25% coverage; brand allowlist catches the rest.

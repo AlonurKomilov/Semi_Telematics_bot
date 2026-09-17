@@ -145,6 +145,13 @@ SERVICE_TAGS = (
     "fuel:diesel", "fuel:adblue", "fuel:HGV_diesel",
     "hgv", "truck", "shower", "toilets",
     "capacity", "fee",
+    # WHERE a point is, in its own words.  Kept because a layer whose
+    # bbox is a RECTANGLE cannot answer "is this one in my country?" —
+    # the CONUS box reaches into Ontario and Quebec, so Fuel Stations
+    # legitimately holds Canadian chains (see layers.py) and the filter
+    # needs something to filter ON.  OSM fills these sparsely; a point
+    # without them is normal and must stay drawable.
+    "addr:state", "addr:province", "addr:country", "addr:city",
 )
 
 
