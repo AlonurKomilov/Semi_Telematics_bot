@@ -286,7 +286,7 @@ export default function Permissions() {
       setConfirmOpen(false);
       setSuccess(`Saved ${totalPending} change${totalPending === 1 ? '' : 's'}.`);
       await qc.invalidateQueries({ queryKey: ['perms-roles'] });
-      refreshPermissions();
+      await refreshPermissions();
       try { await refreshUser(); } catch { /* best-effort */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');

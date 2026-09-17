@@ -18,6 +18,8 @@ import { cardVariants } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
+import { useAuth } from '../../context/AuthContext';
+import { ownPermissionRow } from '../../context/roleViewTarget';
 import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
 import type { TickRow, VerbBand, VerbFamily } from './verbGrid';
 import { bandAnchor, bandRows, bandSummary, familyMatches, viewRows } from './matrixView';
@@ -72,18 +74,19 @@ export interface RoleLensApi {
 
 export function RoleLens({ api }: { api: RoleLensApi }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const { setRoleView, canSwitchView } = useSafeRoleSwitch();
   // Last role opened, per device — an owner returning to the page almost
   // always continues on the role they were editing.
   const { value: lastRole, setValue: setLastRole } = usePreference('permissions.role');
   const [role, setRoleState] = useState<string>(() =>
     (lastRole && api.roles.includes(lastRole) ? lastRole : (api.roles[2] ?? api.roles[0])));
-  const setRole = (r: string) => { setRoleState(r); setLastRole(r); };
-  // Open on the BASE tier: that's where most people on the role sit, so
-  // the first tick lands on the row the owner meant.  The delta sentence
-  // below reports the senior tier either way — no information is lost by
-  // not starting there.
-  const [tier, setTier] = useState(0);
+  const ownKey = user ? ownPermissionRow(user) : '';
+  const initialTier = (r: string) => r === user?.role
+    ? Math.max(0, api.tierCols(r).findIndex(c => c.key === ownKey)) : 0;
+  const setRole = (r: string) => { setRoleState(r); setLastRole(r); setTier(initialTier(r)); };
+  // When editing one's own role, start on the tier assigned in Team Management.
+  const [tier, setTier] = useState(() => initialTier(role));
   const isDriver = role === DRIVER_KEY;
   const cols = api.tierCols(role);
   const col = cols[Math.min(tier, cols.length - 1)];
@@ -93,16 +96,21 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // and the per-cell highlight.
   const rowDelta = (f: PermFlag): boolean =>
     cols.length > 1 && api.granted(cols[0].key, f) !== api.granted(cols[1].key, f);
+  const seniorAdds = (f: PermFlag): boolean => rowDelta(f) && api.granted(cols[1].key, f);
   const deltaNames: string[] = [];
+  const baseOnlyNames: string[] = [];
+  const recordDelta = (f: PermFlag, label: string) => {
+    if (rowDelta(f)) (seniorAdds(f) ? deltaNames : baseOnlyNames).push(label);
+  };
   for (const b of GRID.bands) for (const fam of b.families) {
-    if (rowDelta(fam.parent)) deltaNames.push(fam.parent.label);
-    if (fam.manage && rowDelta(fam.manage)) deltaNames.push(`Manage (${fam.parent.label})`);
+    recordDelta(fam.parent, fam.parent.label);
+    if (fam.manage) recordDelta(fam.manage, `Manage (${fam.parent.label})`);
     for (const c of fam.children) {
-      if (rowDelta(c.row)) deltaNames.push(`${c.row.label} (${fam.parent.label})`);
-      if (c.manage && rowDelta(c.manage)) deltaNames.push(`Manage (${c.row.label})`);
+      recordDelta(c.row, `${c.row.label} (${fam.parent.label})`);
+      if (c.manage) recordDelta(c.manage, `Manage (${c.row.label})`);
     }
   }
-  for (const cap of GRID.crossFeature) if (rowDelta(cap)) deltaNames.push(cap.label);
+  for (const cap of GRID.crossFeature) recordDelta(cap, cap.label);
 
   // The account's department switches, echoed where they land: a band
   // whose department is off shows it on its header and its rows go
@@ -205,7 +213,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     dense = false,
   ): ReactElement => {
     if (!f) return emptyCell;
-    const delta = seniorView && rowDelta(f);
+    const delta = seniorView && seniorAdds(f);
     return (
       <div className={`text-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`}>
         <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft, closed, dense)}{extra}</span>
@@ -301,7 +309,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   const famRow = (fam: VerbFamily, closed = false) => {
     // The chip names what the tier adds, so it belongs to the row whose
     // OWN flag differs — never to a parent whose child's flag differs.
-    const ownDelta = seniorView && rowDelta(fam.parent);
+    const ownDelta = seniorView && seniorAdds(fam.parent);
     const id = rowId(fam.parent);
     const kidsId = `perm-fam-${id}`;
     const hasKids = fam.children.length > 0;
@@ -384,7 +392,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           // alone: every tick stays exactly in its column.
           <div className="ml-6 mb-1.5 rounded-r-md border-l-2 border-border bg-muted/30">
             {fam.children.map((c) => {
-              const cDelta = seniorView && rowDelta(c.row);
+              const cDelta = seniorView && seniorAdds(c.row);
               return (
             <div key={rowId(c.row)} className={childRowCls()}>
               <div className="min-w-0 pl-3">
@@ -467,8 +475,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         {canSwitchView && !isDriver && (
           <button
             type="button"
-            onClick={() => setRoleView(role)}
-            aria-label={`Preview the dashboard as ${api.roleLabel(role)}`}
+            onClick={() => setRoleView(role, col.key)}
+            aria-label={`Preview the dashboard as ${api.roleLabel(role)}${cols.length > 1 ? ` — ${col.label}` : ''}`}
             className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-md border border-border text-foreground hover:bg-muted min-h-tap"
           >
             <Eye className="size-3.5" aria-hidden /> Preview dashboard
@@ -497,7 +505,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                     : 'text-muted-foreground'
                 } min-h-tap`}
               >
-                {c.label}
+                {c.label}{role === user?.role && c.key === ownKey ? ' · You' : ''}
               </button>
             ))}
           </div>
@@ -522,6 +530,14 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               </Tip>
             )}
           </Badge>
+          {baseOnlyNames.length > 0 && (
+            <Badge tone="neutral" className="items-baseline min-w-0">
+              <span className="font-semibold shrink-0">{cols[0].label} only {baseOnlyNames.length}:</span>
+              <Tip label={baseOnlyNames.join(' · ')}>
+                <span className="truncate min-w-0">{baseOnlyNames.join(' · ')}</span>
+              </Tip>
+            </Badge>
+          )}
         </div>
       )}
       </div>
@@ -827,8 +843,8 @@ function CheckMark() {
 }
 
 // The view switcher's REAL contract (the one PersonaSelector uses):
-// canSwitch gates who may preview; switchView(role) does it.
-function useSafeRoleSwitch(): { canSwitchView: boolean; setRoleView: (r: string) => void } {
+// canSwitch gates who may preview; switchView(role, permissionKey) selects the exact stored permission row.
+function useSafeRoleSwitch(): { canSwitchView: boolean; setRoleView: (r: string, permissionKey?: string) => void } {
   const { canSwitch, switchView } = useRoleView();
   return { canSwitchView: canSwitch, setRoleView: switchView };
 }

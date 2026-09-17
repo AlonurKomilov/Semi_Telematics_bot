@@ -67,6 +67,9 @@ const ROLE_KEYS = [
 const ALLOWLIST = new Set([
   'src/hooks/useShellConfig.ts',
   'src/context/RoleViewContext.tsx',
+  // The context's target resolution — which permission row an owner or a
+  // manager previews as — lives in its own file now; same machinery.
+  'src/context/roleViewTarget.ts',
   'src/components/Sidebar.tsx',
   'src/features/settings/Invites.tsx',
   'src/features/settings/WorkHours.tsx',

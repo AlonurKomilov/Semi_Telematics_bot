@@ -3,6 +3,8 @@ import { useAuth } from './AuthContext';
 import { apiJSON, setActiveViewForApi } from '../api/client';
 import type { Permissions } from '../types';
 import { usePreference } from '../preferences';
+import { ROLE_TIER_LABELS, isPermissionRow, ownPermissionRow, permissionRow, tierLabel } from './roleViewTarget';
+import { readPreviewNavigation, previewNavigationUrl, clearPreviewNavigation } from './roleViewNavigation';
 
 const VIEW_LABELS: Record<string, string> = {
   owner: 'Owner',
@@ -119,62 +121,33 @@ function getSubdomainRole(): string | null {
   }
 }
 
-// Mirror of capabilities/permissions/roles.TIER_GRANTS — labels for the
-// tier switcher UI, plus SEED grants kept only as a legacy fallback: the
-// manager-tier PREVIEW reads the tier's stored row from
-// /admin/permissions/roles (``{role}__manager`` key — owner-editable, the
-// matrix is the source of truth); the grants here apply only if that key is
-// absent (older backend).  A REAL senior's permissions come from /user/me,
-// so drift here never affects a live user's access.  Keep labels in sync.
-interface RoleTierMirror { senior: string; base: string; grants: string[] }
-const ROLE_TIERS: Record<string, RoleTierMirror> = {
-  recruiter:  { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_carrier_directory', 'can_manage_config_role'] },
-  admin:      { senior: 'Full admin', base: 'Standard admin',
-                grants: ['can_manage_integrations', 'can_manage_storage', 'can_manage_permissions',
-                         'can_manage_account', 'can_manage_work_hours'] },
-  fleet:      { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_work_hours', 'can_view_risk_reports', 'can_manage_config_role'] },
-  safety:     { senior: 'Manager', base: 'Employee', grants: ['can_manage_config_all', 'can_invite', 'can_manage_config_role'] },
-  dispatcher: { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_hours', 'can_manage_poi_layers', 'can_invite', 'can_manage_config_role'] },
-  hr:         { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_hours', 'can_manage_applications', 'can_manage_config_role'] },
-  accounting: { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_orders', 'can_manage_maintenance', 'can_manage_config_role'] },
-};
-const roleSupportsManager = (role: string) => role in ROLE_TIERS;
-
 interface RoleViewContextValue {
   activeView: string;
   viewLabel: string;
   homeRoute: string;
   canSwitch: boolean;
-  availableViews: { key: string; label: string; supportsManager: boolean; tier?: { senior: string; base: string } }[];
-  switchView: (role: string) => void;
+  availableViews: { key: string; label: string; supportsTier: boolean; tier?: { senior: string; base: string } }[];
+  switchView: (role: string, permissionKey?: string) => void;
+  activePermissionKey: string;
+  ownViewLabel: string;
+  viewPermsError: boolean;
   viewHas: (flag: string) => boolean;
   viewHasAny: (...flags: string[]) => boolean;
   /** False only while a PREVIEW's permission sets are still in flight.
    * ``viewHas``/``viewHasAny`` answer "no" to everything in that window
-   * (by design — see ``baseViewPerms``), which is indistinguishable from
+   * (by design — see ``viewPerms``), which is indistinguishable from
    * a real denial.  Anything that DENIES on a false answer — route
    * guards above all — must wait for this before deciding.  Merely
    * hiding a nav item can ignore it: hidden-then-shown is a cosmetic
    * flash, where redirect-then-nothing loses the URL. */
   viewPermsReady: boolean;
-  /** True when the current view differs from the user's real role
-   * (Owner/Admin previewing as Fleet/Safety/etc).  Used by the layout
-   * to render a "Previewing as X" banner. */
+  /** True for an explicit permission-row preview, including one's own
+   * role at another tier. Never changes the authenticated identity. */
   isPreviewing: boolean;
   /** All role permission sets from the server (for Owner/Admin). */
   rolePermSets: Record<string, Partial<Permissions>>;
   /** Reload permission sets from server (e.g. after editing). */
-  refreshPermissions: () => void;
-  /** True when the active preview role has a manager tier (e.g. Recruiter),
-   * so the switcher can offer a Manager/Employee toggle. */
-  activeViewSupportsManager: boolean;
-  /** Senior/base tier labels for the active view (null when it has no tier)
-   * — e.g. Manager/Employee, or Full admin/Standard admin for Admin. */
-  activeViewTier: { senior: string; base: string } | null;
-  /** While previewing a manager-capable role: view it as the MANAGER tier
-   * (default true — Owners should see everything) or the plain employee. */
-  previewAsManager: boolean;
-  setPreviewAsManager: (v: boolean) => void;
+  refreshPermissions: () => Promise<void>;
   /** The ACTIVE VIEW's unit width — Team Management's answer, the
    * way ``viewHas`` is Permissions'.  Self view: the member's own
    * resolved width from ``/me``.  Preview: the previewed ROLE's width
@@ -205,15 +178,13 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   const realRole = user?.role;
   const canSwitch = realRole ? SWITCHABLE_ROLES.includes(realRole) : false;
 
-  // Preview tier for a manager-capable role: MANAGER (default — an Owner should
-  // see the full experience) or plain employee.  Persisted, so re-picking the
-  // role keeps the operator's last choice.
-  // Device-scoped preference: a preview tier must not follow the operator
-  // to a machine where they expect their own view.  Default (true — an
-  // Owner should see the full experience) + the legacy '1'/'0' migration
-  // live in the preferences registry.
-  const { value: previewAsManager, setValue: setPreviewAsManager } =
+  // Keep the legacy manager preference as the default for an unqualified
+  // department selection. An explicit preview persists its exact row key.
+  const { value: storedPreviewAsManager } =
     usePreference('roleView.previewAsManager');
+  const { value: storedPermissionKey, setValue: setPermissionKey } = usePreference('roleView.permissionKey');
+  const [arrivalPreview, setArrivalPreview] = useState(() =>
+    typeof window === 'undefined' ? null : readPreviewNavigation(window.location.href, PREVIEWABLE_ROLES));
 
   // The user's explicit "preview as X" choice — the ONLY thing that
   // needs imperative state, because it persists across renders until
@@ -228,11 +199,25 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   // because PREVIEWABLE_ROLES lives in this module.
   const { value: storedChoice, setValue: setStoredChoice } =
     usePreference('roleView.activeView');
-  const savedChoice = storedChoice || null;
+  const savedChoice = (canSwitch && arrivalPreview ? arrivalPreview.role : storedChoice) || null;
   const setSavedChoice = useCallback(
     (role: string | null) => setStoredChoice(role ?? ''),
     [setStoredChoice],
   );
+
+  // Preferences are origin-local. Carry the explicit role AND tier to the
+  // destination subdomain, persist through the existing preferences service,
+  // then remove the one-use hint. Non-switchable members ignore it entirely.
+  useEffect(() => {
+    if (!arrivalPreview || !realRole) return;
+    if (canSwitch) {
+      setSavedChoice(arrivalPreview.role);
+      setPermissionKey(arrivalPreview.permissionKey);
+    }
+    setArrivalPreview(null);
+    window.history.replaceState(window.history.state, '', clearPreviewNavigation(window.location.href));
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+  }, [arrivalPreview, realRole, canSwitch, setSavedChoice, setPermissionKey]);
 
   // activeView is fully derived — recomputed in every render from
   // (realRole, canSwitch, savedChoice, current hostname).  No
@@ -272,12 +257,7 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   }, [activeView]);
 
   const [rolePermSets, setRolePermSets] = useState<Record<string, Partial<Permissions>>>({});
-  // Tracks whether the role-perms fetch has SETTLED (success or failure).
-  // While pending, previews stay empty (skeleton — no full-nav flash);
-  // once settled, a missing role set falls back to the previewer's own
-  // permissions.  Without the fallback a standard admin (no
-  // can_manage_permissions → the fetch 403s) would preview a permanently
-  // blank sidebar — including the automatic subdomain preview.
+  // Preview permissions remain unknown until the server returns their exact row.
   const [rolePermsSettled, setRolePermsSettled] = useState(false);
 
   // Fetch all role permission sets from backend (Owner/Admin only)
@@ -289,8 +269,8 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
       );
       setRolePermSets(data.current);
     } catch {
-      // Not authorized (stock admin) or transient failure — previews fall
-      // back to the user's own permissions once `rolePermsSettled` flips.
+      // A failed refresh must not preserve stale preview grants.
+      setRolePermSets({});
     } finally {
       setRolePermsSettled(true);
     }
@@ -320,81 +300,48 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     fetchRoleWidths();
   }, [fetchRoleWidths]);
 
-  const switchView = useCallback((role: string) => {
+  // Match /user/me's focus refresh so grants and Team Management widths
+  // edited in another tab also update this preview.
+  useEffect(() => {
     if (!canSwitch) return;
-    // Defensive: only allow PREVIEWABLE roles, even though the
-    // PersonaSelector UI already filters to those.  Without this,
-    // any code path that ever calls ``switchView('driver')`` (test
-    // code, console exploration, future bug) would save 'driver' to
-    // localStorage and re-introduce the stuck-in-Driver-view bug.
-    if (!PREVIEWABLE_ROLES.includes(role)) return;
+    const refresh = () => { void fetchRolePerms(); void fetchRoleWidths(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [canSwitch, fetchRolePerms, fetchRoleWidths]);
 
-    // Persona switching IS navigation.  When the target role lives on
-    // a different host (Owner on dash. picking Fleet → fleet.4truck.us),
-    // we navigate the browser so the URL bar reflects the active
-    // persona — bookmarkable, shareable, and consistent with the
-    // subdomain-auto-detect logic at mount time.  Same-host switches
-    // (Owner ↔ Admin both live on dash.) stay as a local state update
-    // so React Query caches and in-flight data don't get torn down for
-    // a cosmetic shell-swap.
-    //
-    // The current pathname + query is preserved so a user on
-    // dash.4truck.us/vehicles who picks "Fleet" lands on
-    // fleet.4truck.us/vehicles, not Fleet's default home.  If the
-    // page isn't accessible under the new persona's permissions the
-    // standard permission-denied UI handles that.
+  const requestedKey = canSwitch && arrivalPreview ? arrivalPreview.permissionKey : storedPermissionKey;
+  const explicitKey = isPermissionRow(activeView, requestedKey) ? requestedKey : '';
+  const isSelfView = !canSwitch || (activeView === realRole && !explicitKey);
+  const ownKey = ownPermissionRow(user ?? {});
+  const activePermissionKey = isSelfView ? ownKey : explicitKey || permissionRow(activeView, !!storedPreviewAsManager);
+
+  const switchView = useCallback((role: string, permissionKey?: string) => {
+    if (!canSwitch || !PREVIEWABLE_ROLES.includes(role)) return;
+    if (permissionKey !== undefined && !isPermissionRow(role, permissionKey)) return;
+    // Choosing one's own role without a row means "my dashboard". An
+    // explicit row is always a preview, even when the role names match.
+    const targetKey = permissionKey ?? (role === realRole ? '' : permissionRow(role, !!storedPreviewAsManager));
     const targetHost = ROLE_HOST[role];
     if (typeof window !== 'undefined' && targetHost) {
       const currentHost = window.location.hostname.toLowerCase();
-      if (currentHost !== targetHost && currentHost.endsWith(APEX_DOMAIN)) {
-        const pathAndQuery = window.location.pathname + window.location.search;
-        window.location.href = `https://${targetHost}${pathAndQuery}`;
+      if (currentHost !== targetHost && (currentHost === APEX_DOMAIN || currentHost.endsWith(`.${APEX_DOMAIN}`))) {
+        window.location.href = previewNavigationUrl(window.location.href, targetHost, role, targetKey);
         return;
       }
     }
-
+    setPermissionKey(targetKey);
     setSavedChoice(role);
-  }, [canSwitch, setSavedChoice]);
+  }, [canSwitch, realRole, storedPreviewAsManager, setPermissionKey, setSavedChoice]);
 
-  // For the active view, use server-fetched permission sets if available.
-  const activeViewSupportsManager = canSwitch && roleSupportsManager(activeView);
-  const isSelfView = activeView === realRole;
-  // Self view = the user's OWN resolved permissions (/user/me — already
-  // includes their real tier).  A PREVIEW uses the fetched role sets ONLY:
-  // while /admin/permissions/roles is still loading, perms stay EMPTY
-  // (minimal nav skeleton) instead of falling back to the previewing
-  // Owner's own full set — that fallback painted EVERY feature for a
-  // flash frame on refresh before snapping to the role's real nav.
-  const baseViewPerms: Partial<Permissions> = (!canSwitch || isSelfView)
-    ? (user?.permissions ?? {})
-    : (rolePermSets[activeView]
-        ?? (rolePermsSettled ? (user?.permissions ?? {}) : {}));
-  // Previewing a manager-capable role AS its manager tier → use the tier's
-  // OWN STORED permission row (``{role}__manager`` from the same endpoint;
-  // tiers are independently owner-editable, so the matrix — not the
-  // hardcoded seed mirror — is the source of truth).  The mirror overlay
-  // survives only as a fallback for an older backend that doesn't return
-  // tier rows yet.  Never applied to the self view: a real user's tier is
-  // already resolved into their own permissions.
-  const viewPerms: Partial<Permissions> = (activeViewSupportsManager && previewAsManager && !isSelfView)
-    ? (rolePermSets[`${activeView}__manager`]
-        ?? (Object.keys(baseViewPerms).length
-          ? {
-              ...baseViewPerms,
-              ...(Object.fromEntries((ROLE_TIERS[activeView]?.grants ?? []).map((f) => [f, true])) as Partial<Permissions>),
-            }
-          : {}))
-    : baseViewPerms;
-
+  // /user/me owns real access (the resolved role/tier and account masks).
+  // A preview reads exactly the selected row from Permissions; never seed
+  // extra manager grants or substitute the viewer's permissions for it.
+  const viewPerms: Partial<Permissions> = isSelfView
+    ? user?.permissions ?? {} : rolePermSets[activePermissionKey] ?? {};
   const viewHas = (flag: string) => !!viewPerms[flag as keyof Permissions];
   const viewHasAny = (...flags: string[]) => flags.some((f) => !!viewPerms[f as keyof Permissions]);
-
-  // Self view (and any non-switching user) reads permissions straight off
-  // /user/me, which App.tsx has already awaited — authoritative on the
-  // first render.  Only a PREVIEW has to wait for /admin/permissions/roles;
-  // once that settles, viewPerms is authoritative either way (the role's
-  // own set, or the documented fallback to the previewer's).
-  const viewPermsReady = (!canSwitch || isSelfView) ? true : rolePermsSettled;
+  const viewPermsReady = isSelfView || rolePermsSettled;
+  const viewPermsError = !isSelfView && rolePermsSettled && !rolePermSets[activePermissionKey];
 
   // Non-switchable users see a single static pill showing their own
   // role.  During the loading window where realRole is undefined we
@@ -404,21 +351,23 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     ? PREVIEWABLE_ROLES.map(key => ({
         key,
         label: VIEW_LABELS[key] ?? key,
-        supportsManager: roleSupportsManager(key),
-        tier: ROLE_TIERS[key] ? { senior: ROLE_TIERS[key].senior, base: ROLE_TIERS[key].base } : undefined,
+        supportsTier: !!ROLE_TIER_LABELS[key],
+        tier: ROLE_TIER_LABELS[key],
       }))
     : realRole
     ? [{
         key: realRole,
         label: VIEW_LABELS[realRole] ?? realRole,
-        supportsManager: roleSupportsManager(realRole),
-        tier: ROLE_TIERS[realRole] ? { senior: ROLE_TIERS[realRole].senior, base: ROLE_TIERS[realRole].base } : undefined,
+        supportsTier: !!ROLE_TIER_LABELS[realRole],
+        tier: ROLE_TIER_LABELS[realRole],
       }]
     : [];
 
   const viewLabel = VIEW_LABELS[activeView] ?? activeView;
   const homeRoute = VIEW_HOME_ROUTE[activeView] ?? '/';
-  const isPreviewing = canSwitch && activeView !== realRole;
+  const isPreviewing = !isSelfView;
+  const ownTier = tierLabel(realRole ?? '', ownKey);
+  const ownViewLabel = `${VIEW_LABELS[realRole ?? ''] ?? realRole ?? ''}${ownTier ? ` · ${ownTier}` : ''}`;
   const viewVehicleScope: 'all' | 'assigned' | undefined = (!canSwitch || isSelfView)
     ? user?.vehicle_scope
     : roleWidths[activeView];
@@ -428,11 +377,7 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
       activeView, viewLabel, homeRoute, canSwitch, availableViews,
       switchView, viewHas, viewHasAny, viewPermsReady, isPreviewing,
       rolePermSets, refreshPermissions: fetchRolePerms,
-      activeViewSupportsManager,
-      activeViewTier: ROLE_TIERS[activeView]
-        ? { senior: ROLE_TIERS[activeView].senior, base: ROLE_TIERS[activeView].base }
-        : null,
-      previewAsManager, setPreviewAsManager,
+      activePermissionKey, ownViewLabel, viewPermsError,
       viewVehicleScope, refreshVehicleScope: fetchRoleWidths,
     }}>
       {children}

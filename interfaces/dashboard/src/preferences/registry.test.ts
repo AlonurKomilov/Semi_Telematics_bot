@@ -83,6 +83,7 @@ const FROZEN_KEYS: readonly string[] = [
   'assistant.expanded',
   'roleView.previewAsManager',
   'roleView.activeView',
+  'roleView.permissionKey',
   'kpi.incentiveRunView',
 ];
 

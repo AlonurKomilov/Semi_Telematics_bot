@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Eye } from '../lib/icons';
 import { useRoleView } from '../context/RoleViewContext';
+import { useAuth } from '../context/AuthContext';
+import { permissionRow, tierLabel } from '../context/roleViewTarget';
 import { Card } from '@/components/ui/card';
 
 /**
@@ -37,10 +39,11 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   const {
     activeView, viewLabel, canSwitch, availableViews, switchView,
     homeRoute, isPreviewing,
-    activeViewSupportsManager, activeViewTier, previewAsManager, setPreviewAsManager,
+    activePermissionKey, ownViewLabel,
   } = useRoleView();
-  const tierSuffix = activeViewSupportsManager && activeViewTier
-    ? ` · ${previewAsManager ? activeViewTier.senior : activeViewTier.base}` : '';
+  const { user } = useAuth();
+  const tier = tierLabel(activeView, activePermissionKey);
+  const label = `${viewLabel}${tier ? ` · ${tier}` : ''}`;
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   // Click-outside and Escape were two `document` listeners here. They
@@ -63,10 +66,10 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
     if (compact) {
       const initial = viewLabel.trim().charAt(0).toUpperCase() || '?';
       return (
-        <Tip label={`Your role: ${viewLabel}`}>
+        <Tip label={`Your role: ${label}`}>
           <div
             className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-muted/30 text-2xs font-semibold text-muted-foreground/80 select-none"
-            aria-label={`Your role: ${viewLabel}`}
+            aria-label={`Your role: ${label}`}
           >
             {initial}
           </div>
@@ -74,17 +77,17 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
       );
     }
     return (
-      <Tip label={`Your role: ${viewLabel}`}>
+      <Tip label={`Your role: ${label}`}>
         <div className="inline-flex h-7 items-center px-2 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md">
-          {viewLabel}
+          {label}
         </div>
       </Tip>
     );
   }
 
-  const handlePick = (role: string) => {
+  const handlePick = (role: string, permissionKey?: string) => {
+    switchView(role, permissionKey);
     if (role !== activeView) {
-      switchView(role);
       // Navigate to the new persona's home route so the preview lands
       // somewhere the chosen role would normally start.  We do this
       // even when picking the operator's own role back from a preview —
@@ -98,14 +101,12 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   // persists), then enter that role — navigating only when actually switching
   // roles (a same-role tier flip just re-skins the current pages in place).
   const pickTier = (role: string, wantManager: boolean) => {
-    setPreviewAsManager(wantManager);
-    if (role !== activeView) handlePick(role);
-    else setOpen(false);
+    handlePick(role, permissionRow(role, wantManager));
   };
 
   const triggerTitle = isPreviewing
-    ? `Previewing dashboard as ${viewLabel} — click to switch back. Changes what you see, not what's stored.`
-    : `Dashboard view: ${viewLabel}. Picking a different role re-skins the UI; data and permissions remain yours.`;
+    ? `Previewing dashboard as ${label} — click to switch back. Changes what you see, not what's stored.`
+    : `Dashboard view: ${label}. Picking a different role re-skins the UI; data and permissions remain yours.`;
 
   /* Collapsed-rail trigger.  Circular geometry matches the
      non-switchable badge above (and AvatarMenu's identity dot) so
@@ -141,7 +142,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
       aria-haspopup="listbox"
     >
       {isPreviewing && <Eye className="opacity-80 size-3" />}
-      <span>{viewLabel}{tierSuffix}</span>
+      <span>{label}</span>
       <ChevronDown className="opacity-60 size-3" />
     </button>
   );
@@ -164,12 +165,18 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           <li className="px-3 py-1.5 text-2xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
+          {user && <li><button type="button" role="option" aria-selected={!isPreviewing}
+            onClick={() => handlePick(user.role)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-foreground hover:bg-muted min-h-tap">
+            <span className="flex-1">My dashboard · {ownViewLabel}</span>
+            {!isPreviewing && <Check className="size-3.5" aria-hidden />}
+          </button></li>}
           {availableViews.map(v => {
-            const isActive = v.key === activeView;
+            const isActive = isPreviewing && v.key === activeView;
             // Manager-capable role (e.g. Recruiter): the role row enters at the
             // SAVED tier; two nested rows let the operator pick Manager /
             // Employee explicitly (and that choice persists).
-            if (v.supportsManager) {
+            if (v.supportsTier) {
               // Manager-capable role: a "Recruiter ›" submenu row that opens a
               // Manager / Employee flyout on hover (mirrors the column menu's
               // "Sort › Ascending/Descending").  Clicking the role itself enters
@@ -189,9 +196,9 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                     <ChevronRight className="opacity-50 size-3.5" />
                   </button>
                   {/* Flyout — flush to the right so hover bridges without a gap. */}
-                  <Card padding="none" className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden shadow-xl" render={<ul />} role="menu">
+                  <Card padding="none" className="invisible group-hover/sub:visible group-focus-within/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden shadow-xl" render={<ul />} role="menu">
                     {([[v.tier?.senior ?? 'Manager', true], [v.tier?.base ?? 'Employee', false]] as const).map(([label, wantManager]) => {
-                      const tierActive = isActive && previewAsManager === wantManager;
+                      const tierActive = isActive && activePermissionKey === permissionRow(v.key, wantManager);
                       return (
                         <li key={label}>
                           <button
