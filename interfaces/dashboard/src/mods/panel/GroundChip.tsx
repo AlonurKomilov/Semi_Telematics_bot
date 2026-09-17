@@ -128,7 +128,7 @@ export function GroundChip({ ground, hex, mode, fallback, compact = false, onPic
           type="color"
           defaultValue={shown}
           aria-label={t(`theme.ground_${ground.id}`, ground.label)}
-          className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
+          className="absolute inset-0 w-full min-h-tap opacity-0 pointer-events-none"
         />
       </span>
       {hex && (

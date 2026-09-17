@@ -77,6 +77,28 @@ describe('one control per picker', () => {
     }
   });
 
+  it('and the input cannot be reached by a pointer', () => {
+    // THE INPUT SITS ON TOP OF THE BUTTON at `inset-0`, so while it
+    // accepted pointer events a click landed on IT, and a real click
+    // focuses a form control. An `aria-hidden` element holding focus is
+    // a contradiction the platform refuses: Chrome drops the attribute
+    // and logs "Blocked aria-hidden on an element because its
+    // descendant retained focus", which is the app telling a screen
+    // reader one thing and the DOM another.
+    //
+    // It is opened programmatically instead, and `.click()` on an
+    // element does not move focus. So the pointer belongs to the
+    // button — the one control that is announced, and the one that
+    // carries a focus ring.
+    mount();
+    for (const name of PICKERS) {
+      expect(inputFor(name).className,
+        `${name}: the hidden input still takes the pointer, so a click focuses an `
+        + 'aria-hidden element and the platform blocks the attribute')
+        .toMatch(/\bpointer-events-none\b/);
+    }
+  });
+
   it('and the button opens the picker instead of doing nothing', () => {
     mount();
     for (const name of PICKERS) {

@@ -149,7 +149,7 @@ export function BrandChip({ brand, mode, wearing, onPick, onClear }: {
           type="color"
           defaultValue={shown}
           aria-label={t('theme.accent_custom', 'Custom')}
-          className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
+          className="absolute inset-0 w-full min-h-tap opacity-0 pointer-events-none"
         />
       </span>
       {/* Offered whenever a colour is STORED, not only while it paints.

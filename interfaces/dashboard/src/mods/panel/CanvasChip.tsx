@@ -138,7 +138,7 @@ export function CanvasChip({ canvas, mode, scope, onPick, onClear }: {
           type="color"
           defaultValue={shown}
           aria-label={t('theme.canvas_label', 'Background')}
-          className="absolute inset-0 w-full min-h-tap opacity-0 cursor-pointer"
+          className="absolute inset-0 w-full min-h-tap opacity-0 pointer-events-none"
         />
       </span>
       {canvas && (
