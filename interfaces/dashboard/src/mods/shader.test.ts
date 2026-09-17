@@ -29,7 +29,7 @@ const ALL_VARS = [...VARS, '--light-elevate'] as const;
 
 /** Tailwind's shadow scale, as the config declares it. */
 function shadowScale(): Record<string, string> {
-  const block = /boxShadow:\s*\{([\s\S]*?)\n      \},/.exec(CONFIG)?.[1] ?? '';
+  const block = /boxShadow:\s*\{([\s\S]*?)\n {6}\},/.exec(CONFIG)?.[1] ?? '';
   const out: Record<string, string> = {};
   for (const m of block.matchAll(/^\s*'?([A-Za-z0-9]+)'?:\s*'([^']*)',/gm)) out[m[1]] = m[2];
   return out;
@@ -165,7 +165,7 @@ describe('the light stays light', () => {
    * is 110.
    */
   it('the card surface is lit, and collapses to nothing at flat', () => {
-    const rule = /\n  \.surface \{([^}]*)\}/.exec(CSS)?.[1];
+    const rule = /\n {2}\.surface \{([^}]*)\}/.exec(CSS)?.[1];
     expect(rule, 'the card surface has no light of its own').toBeDefined();
     expect(rule!, '.surface does not answer to the light').toContain('--light-elevate');
     // Every term multiplied by it — offset, blur, spread and alpha — so
