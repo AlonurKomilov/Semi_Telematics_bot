@@ -185,9 +185,31 @@ function wordMatch(haystack: string, needle: string): boolean {
   return needleRegex(needle).test(haystack);
 }
 
-/** Returns true when any of the given terms word-matches any of the text fields. */
-function brandMatch(terms: string[], name: string, brand: string, op: string): boolean {
-  return terms.some((t) => wordMatch(name, t) || wordMatch(brand, t) || wordMatch(op, t));
+/**
+ * A BRAND TAG IS A STATEMENT OF IDENTITY; A NAME IS ONLY A HINT.
+ *
+ * Word matching every field alike is what put Canada under an American
+ * chip.  `wordMatch` treats a hyphen as a boundary on purpose — it is
+ * how 'TA' finds "TA-Petro #145" — so the `TA / Petro` chip's bare
+ * `Petro` term also matched `Petro-Canada`, `Petro Seven`, `Petro Bras`
+ * and `PetroUS`: four different companies, filed under one.
+ *
+ * Enumerating those would have been a list of everyone we had already
+ * met.  The rule instead: when OSM states a `brand`, that IS the chain
+ * and the term must equal it; a chip may only go hunting through the
+ * free-text name when no brand was stated at all.  Under-claiming a
+ * point is a missing pin; mis-claiming one is a lie about where the
+ * driver is going.
+ *
+ * Kept in step with the panel's copy in
+ * interfaces/browser_extension/src/features/live-map/poi/viewport.ts.
+ */
+export function brandMatch(terms: string[], name: string, brand: string, op: string): boolean {
+  if (brand) {
+    const stated = brand.trim().toLowerCase();
+    return terms.some((t) => t.trim().toLowerCase() === stated);
+  }
+  return terms.some((t) => wordMatch(name, t) || wordMatch(op, t));
 }
 
 /**

@@ -244,6 +244,17 @@ export const POI_LAYERS: PoiLayerDef[] = [
         label:      'Sapp Bros',
         matchTerms: ['Sapp Bros', 'Sapp Bros.'],
       },
+      //
+      //   Petro-Canada gets its OWN chip, because it is its own company.
+      //   It is admitted to this layer by measurement (147 of 173 tagged
+      //   stations sell diesel) instead of being deleted, so the filter has
+      //   to be able to say which points are Canadian — the import boxes
+      //   reach into Ontario and Quebec.
+      {
+        value:      'petro_canada',
+        label:      'Petro-Canada',
+        matchTerms: ['Petro-Canada', 'Petro Canada'],
+      },
       { value: 'Bosselman',    label: 'Bosselman' },
       { value: 'Ambest',       label: 'Ambest' },
       {
@@ -255,8 +266,14 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'kwik_trip',
         label:      'Kwik Trip',
-        matchTerms: ['Kwik Trip', 'Kwik Star'],
+        // OSM also carries the hyphenated spelling.  One company, one chip.
+        matchTerms: ['Kwik Trip', 'Kwik-Trip', 'Kwik Star'],
       },
+      //   Kwik Fill (Red Apple Group, NY/PA) is a DIFFERENT COMPANY despite
+      //   sharing a first word.  It earns its place on the layer by
+      //   measurement — 11 of 11 tagged stations sell diesel — so it earns a
+      //   chip of its own, never a seat under Kwik Trip's name.
+      { value: 'kwik_fill', label: 'Kwik Fill', matchTerms: ['Kwik Fill'] },
 
       // ── Independent fuel stations ──────────────────────────────────────
       { value: 'Shell',   label: 'Shell' },

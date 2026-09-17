@@ -255,6 +255,12 @@ const TRUCK_STOP_BRANDS: PoiBrand[] = [
   { value: 'ta_petro', label: 'TA / Petro',
     matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'] },
   { value: 'sapp_bros', label: 'Sapp Bros', matchTerms: ['Sapp Bros', 'Sapp Bros.'] },
+  // Its own chip, because it is its own company.  Admitted to the fuel
+  // layer by measurement (147 of 173 tagged stations sell diesel) rather
+  // than deleted, so the filter has to be able to say which points are
+  // Canadian — the import boxes reach into Ontario and Quebec.
+  { value: 'petro_canada', label: 'Petro-Canada',
+    matchTerms: ['Petro-Canada', 'Petro Canada'] },
   { value: 'road_ranger', label: 'Road Ranger', matchTerms: ['Road Ranger'] },
 ];
 
@@ -266,7 +272,15 @@ export const POI_LAYERS: PoiLayerDef[] = [
       ...TRUCK_STOP_BRANDS,
       { value: 'Bosselman', label: 'Bosselman' },
       { value: 'Ambest', label: 'Ambest' },
-      { value: 'kwik_trip', label: 'Kwik Trip', matchTerms: ['Kwik Trip', 'Kwik Star'] },
+      // Kwik Trip trades as Kwik Star in Iowa; OSM also carries the
+      // hyphenated spelling.  One company, one chip.
+      { value: 'kwik_trip', label: 'Kwik Trip',
+        matchTerms: ['Kwik Trip', 'Kwik-Trip', 'Kwik Star'] },
+      // A DIFFERENT COMPANY despite the first word (Red Apple Group).
+      // It earns its place on the layer by measurement, 11 of 11 tagged
+      // stations selling diesel — so it earns a chip of its own too,
+      // never a seat under Kwik Trip's name.
+      { value: 'kwik_fill', label: 'Kwik Fill', matchTerms: ['Kwik Fill'] },
       { value: 'Shell', label: 'Shell' },
       { value: 'BP', label: 'BP' },
       { value: 'Exxon', label: 'Exxon', matchTerms: ['ExxonMobil', 'Exxon', 'Esso'] },
