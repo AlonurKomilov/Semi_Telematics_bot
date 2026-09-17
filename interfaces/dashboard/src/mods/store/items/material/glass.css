@@ -455,14 +455,20 @@
      gutters carry the same class, so a rule written for the frame
      reaches all of it.
      `saturate` qualifies because it does the same thing to every pixel
-     it covers. The LENS does not, and the reason is measured rather
-     than felt: the pack's bevel band is 30px, and the gutters are 8px.
-     Three of the five sides are THINNER THAN THE BAND — a gutter would
-     be displaced end to end, which is distortion, not a rim. Nor does
-     bending only each side's inner edge save it: an 8px gutter is
-     inside a 30px band whichever edge it bends, and choosing an edge
-     per side is five declarations, which is the thing this frame was
-     unified to stop needing.
+     it covers. THE LENS IS HERE TOO, and my own measurement is what
+     kept it out for a while: the band is 30px and three of the five
+     sides are 8px gutters, so a gutter is displaced END TO END rather
+     than given a gradient rim.
+     That is true, and it is not a reason to leave it out — it is the
+     effect. A uniform offset across a thin strip means what is behind
+     the frame no longer lines up with what is behind the page, and
+     that break IS the line that tells the two apart. I was measuring
+     for a rim; a rim is what a thick pane gets, and the rail and the
+     header — both past the band — still get one. The owner asked for
+     the line, and a thin side is the thing that gives it.
+     Widening the gutters to fit a band was the wrong repair and was
+     taken back out: it cost the page 24px and made the frame LESS even,
+     since the two sides already past the band did not move.
      Blur is uniform and still left out: the frame's own pattern sits on
      the plane behind these panes, so blurring here softens the frame's
      wallpaper while the page's stays sharp. It is one token away if
@@ -476,8 +482,8 @@
      be forbidden for. */
   :root[data-material="glass"] .surface.chrome-pane {
     background-color: var(--surface-base, var(--card));
-    -webkit-backdrop-filter: saturate(var(--surface-saturate));
-    backdrop-filter: saturate(var(--surface-saturate));
+    -webkit-backdrop-filter: var(--surface-lens, ) saturate(var(--surface-saturate));
+    backdrop-filter: var(--surface-lens, ) saturate(var(--surface-saturate));
   }
 
   /* OPAQUE GLASS IS STILL GLASS, and the rule above deliberately leaves

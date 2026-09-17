@@ -339,17 +339,23 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
                 than this comment. `aria-hidden`: they carry no content
                 and a screen reader announcing empty groups around every
                 page is noise.
-                32px, and the number is the LENS's, not a taste. A bevel
-                bends within a band measured from the edge, and the
-                pack's band is 30px — so a side thinner than that is
-                displaced end to end, which is distortion rather than a
-                rim. At 8px these three were 3.75× inside the band and
-                no per-edge trick changed it. At 32px a band of half the
-                side fits, which is the width a refracting frame needs
-                before it can have one. The page pays 24px for it. */}
+                BACK TO 8px. They were widened to 32 so a bevel's band
+                would fit inside them, and the owner's verdict on the
+                result was that it bought nothing: without the lens on
+                top it was simply a thicker edge, and it made the frame
+                LESS even, since the rail and the header were already
+                past the band and did not move.
+                The lens went on anyway, and the reasoning that widened
+                these was aimed at the wrong target. A band wider than
+                its side does not produce a gradient rim — it displaces
+                the whole strip by one amount, and that offset between
+                what is behind the frame and what is behind the page is
+                exactly the line the frame needs to read as separate. A
+                rim was what I was measuring for. A break is what was
+                asked for, and a thin side gives it. */}
             <div
               aria-hidden
-              className={`w-8 shrink-0 bg-sidebar surface surface-sidebar chrome-pane ${dockedContentClass}`}
+              className={`w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane ${dockedContentClass}`}
             />
             {/* THE SUB-PAGE, in the row rather than over it. It renders
                 nothing unless it is open, allowed and off the /ai
@@ -360,13 +366,13 @@ export default function AppShell({ hero }: { hero?: ReactNode }) {
             {dock.docked && (
               <div
                 aria-hidden
-                className="w-8 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+                className="w-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
               />
             )}
           </div>
           <div
             aria-hidden
-            className="h-8 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
+            className="h-2 shrink-0 bg-sidebar surface surface-sidebar chrome-pane"
           />
         </div>
       </div>

@@ -428,39 +428,40 @@ describe('the occlusion escape hatch', () => {
    * All three went wrong under Glass and were correct under Solid, and
    * this is the only property that differs between them there.
    */
-  it('and the frame carries the material\'s uniform half and nothing else', () => {
-    // THIS RULE USED TO SAY THE OPPOSITE, and the reason it did has
-    // been removed rather than overruled. A `backdrop-filter` makes an
-    // element a backdrop root, so a menu opening inside one of these
-    // panes would stop occluding — and three did open inside them: the
-    // persona list, the account menu and the mods picker. All three are
-    // portalled now, and `shells/frame.test.ts` is what keeps them
-    // there. Without that guard this rule is the bug it was forbidden
-    // for, which is why the two are worth reading together.
+  it('and the frame refracts, which is what separates it from the page', () => {
+    // THIS GUARD USED TO FORBID THE LENS HERE, on a measurement that
+    // was right about the numbers and wrong about the goal. The band is
+    // 30px and three of the five sides are 8px gutters, so a gutter is
+    // displaced END TO END instead of being given a gradient rim.
     //
-    // What the frame may take is the half of the material that does the
-    // same thing to every pixel it covers. The lens does not, and the
-    // numbers say so: the pack's band is 30px and three of the five
-    // sides are 8px gutters. A side thinner than the band is displaced
-    // end to end — distortion, not a rim — and bending only its inner
-    // edge changes nothing about that while costing a declaration per
-    // side, which is exactly what unifying the frame was meant to stop
-    // needing.
+    // That is the effect, not the objection. A uniform offset across a
+    // thin strip means what is behind the frame stops lining up with
+    // what is behind the page, and that break is the line that tells
+    // the two apart — drawn by refraction rather than by a border,
+    // which is what a thick edge of glass actually does. The rail and
+    // the header are both past the band and still get the rim. I was
+    // measuring for a rim; the owner asked for the line.
+    //
+    // The repair I tried first — widening the gutters to 32px so a band
+    // would fit — was taken back out: it cost the page 24px and made
+    // the frame LESS even, because the two sides already past the band
+    // did not move.
     const rule = /:root\[data-material="glass"\]\s*\.surface\.chrome-pane\s*\{([^{}]*)\}/
       .exec(CODE)?.[1] ?? '';
     expect(rule, 'the frame has no rule of its own any more').not.toBe('');
 
     const filter = /(?:^|[^-])backdrop-filter:\s*([^;]+);/.exec(rule)?.[1] ?? '';
-    expect(filter, 'the frame takes nothing from the material').toContain('saturate(');
-    // The two that are not uniform. A lens bends at an edge, and every
-    // edge here but one is a seam with another side of the same frame;
-    // a blur would soften the frame's own pattern, which sits on the
-    // plane behind these panes rather than through them.
-    expect(filter, 'the frame was given the lens — see the 30px band against an 8px gutter')
-      .not.toMatch(/--surface-lens/);
+    expect(filter, 'the frame stopped refracting — nothing separates it from the page but a colour')
+      .toMatch(/--surface-lens/);
+    expect(filter, 'the frame takes no saturation from the material').toContain('saturate(');
+    // BLUR STAYS OUT, and for a reason the lens does not share: the
+    // frame's own pattern sits on the plane BEHIND these panes, so
+    // blurring here softens the frame's wallpaper while the page's
+    // stays sharp. A lens moves what is behind; a blur destroys it.
     expect(filter, 'the frame was given a blur, which softens its own wallpaper')
       .not.toMatch(/blur\(/);
   });
+
 
   it('and the call-site hatch still cancels the filter outright', () => {
     // `.surface-opaque` is the one a call site takes when it KNOWS
