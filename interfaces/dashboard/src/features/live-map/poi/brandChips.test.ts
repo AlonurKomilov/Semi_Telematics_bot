@@ -52,7 +52,8 @@ describe('fuel brand chips', () => {
     // incomplete list here hides the very thing the test is for: `TA
     // Express` and `Speedco` were both admitted and both unfilterable,
     // and this test said nothing, because neither was written down.
-    for (const brand of ['Pilot', 'Flying J', "Love's", 'TA', 'TA Express',
+    for (const brand of ['Pilot', 'Pilot Flying J', 'Flying J', "Love's",
+                         'TA', 'TA Express', 'TravelCenters of America',
                          'Petro', 'Sapp Bros', 'Sapp Bros.', 'Road Ranger',
                          'AmBest', 'Bosselman', 'Speedco', 'Kwik Trip',
                          'Kwik-Trip', 'Kwik Star', 'Kwik Fill', 'Maverik',

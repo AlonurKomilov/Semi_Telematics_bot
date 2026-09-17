@@ -418,10 +418,16 @@ MEASURED_BRANDS: dict[str, tuple[int, int, int]] = {
 }
 
 #: Ground 1 — the business IS the qualification, so no sample applies.
+#: Five of these match nothing in OSM today (`Bosselman`, `Speedco`,
+#: `TravelCenters of America`, `Pilot Flying J`; `AmBest` holds one
+#: point).  They stay listed anyway — absence from OSM's vocabulary is a
+#: fact about OSM, not about the business, and a both-ends-anchored
+#: alternative that matches nothing can leak nothing.  The rule is all of
+#: them or none; see layers.py for why that had to be written down.
 TRUCK_STOP_CHAINS = frozenset({
-    "Pilot", "Flying J", "Love's", "TA", "TA Express", "Petro",
-    "Sapp Bros", "Sapp Bros.", "Road Ranger", "AmBest", "Bosselman",
-    "Speedco",
+    "Pilot", "Pilot Flying J", "Flying J", "Love's", "TA", "TA Express",
+    "TravelCenters of America", "Petro", "Sapp Bros", "Sapp Bros.",
+    "Road Ranger", "AmBest", "Bosselman", "Speedco",
 })
 
 #: Ground 2 — a retail chain earns its name-inference by measurement.

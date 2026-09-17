@@ -103,16 +103,26 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
     # hydrogen and CNG arm, which is the one Love's site that does NOT
     # imply a diesel pump.
     #
-    # GONE BECAUSE THEY DO NOT EXIST, not because they were dropped: the
-    # old prefix clause also carried `TravelCenters` and `Pilot Flying J`.
-    # The 2026-09-17 sweep asked North America for every `amenity=fuel`
-    # node whose brand STARTS WITH Pilot, Flying J, Love, TA,
-    # TravelCenter, Petro, Sapp, Road Ranger, Bosselman, AmBest, Speedco,
-    # Kwik or Maverik — 2,058 nodes, 34 distinct brand values — and
-    # neither string was among them.  OSM spells these `Pilot`, `Flying
-    # J` and `TA`.  They are recorded here because an entry that vanishes
-    # without a reason is indistinguishable from one deleted by accident,
-    # which is the failure this whole block exists to prevent.  None of this deletes anything: every one of
+    # FIVE NAMES HERE MATCH NOTHING TODAY, AND STAY ANYWAY: measured on
+    # the live layer after the 2026-09-17 import, `Bosselman`, `Speedco`,
+    # `TravelCenters of America` and `Pilot Flying J` hold zero points
+    # each and `AmBest` holds one.  OSM spells these chains `Pilot`,
+    # `Flying J` and `TA`.
+    #
+    # They are ground-1 entries, and absence from OSM's vocabulary TODAY
+    # is a fact about OSM, not about the business — the chain is still a
+    # truck stop, and the day a mapper types the longer spelling we
+    # should catch it rather than discover it a quarter later.  A
+    # both-ends-anchored alternative that matches nothing costs one
+    # alternation and can leak nothing.
+    #
+    # This paragraph exists because the first draft of this rule struck
+    # `TravelCenters of America` and `Pilot Flying J` off for being
+    # absent while keeping `Bosselman` and ADDING `Speedco`, which are
+    # equally absent — one piece of evidence, two opposite verdicts,
+    # decided by which line I happened to be editing.  Either all of them
+    # go or none do; they stay, and the rule is written down so the next
+    # pass does not re-litigate it from whichever end it starts.  None of this deletes anything: every one of
     # them still arrives through the tag clauses the moment OSM says it
     # sells diesel.  What stops is us saying it on their behalf.
     #
@@ -148,10 +158,10 @@ POI_OVERPASS_QUERIES: dict[str, list[str]] = {
         'node["amenity"="fuel"]["fuel:diesel"="yes"]',
         'node["amenity"="fuel"]["hgv"="yes"]',
         'nwr["amenity"="truck_stop"]',
-        'node["amenity"="fuel"]["brand"~"^(Pilot|Flying J|Love.s|TA|'
-        'TA Express|Petro|Sapp Bros.?|Road Ranger|AmBest|Bosselman|'
-        'Speedco|Kwik Trip|Kwik-Trip|Kwik Star|Kwik Fill|Maverik|'
-        'Petro-Canada|Petro Canada)$",i]',
+        'node["amenity"="fuel"]["brand"~"^(Pilot|Pilot Flying J|Flying J|'
+        'Love.s|TA|TA Express|TravelCenters of America|Petro|Sapp Bros.?|'
+        'Road Ranger|AmBest|Bosselman|Speedco|Kwik Trip|Kwik-Trip|'
+        'Kwik Star|Kwik Fill|Maverik|Petro-Canada|Petro Canada)$",i]',
     ],
     # ── DEF / AdBlue Stations ─────────────────────────────────────────────────
     # fuel:adblue=yes has ~15-25% coverage; brand allowlist catches the rest.
