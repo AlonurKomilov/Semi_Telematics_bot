@@ -25,6 +25,7 @@ import pytest_asyncio
 from adapters.storage import Database
 from features.vehicles.warehouse import readers as warehouse_reader, aggregator
 from capabilities.integrations.samsara import sync
+from capabilities.integrations.shared import vehicle_state
 
 
 # ── tenant DB fixture ────────────────────────────────────────────────
@@ -352,6 +353,11 @@ class TestWarehouseReader:
 # ── ingestor with stubbed Samsara client ─────────────────────────────
 
 
+async def _samsara_only(_account_id, _capability):
+    """The resolver's answer for every account today: Samsara, alone."""
+    return ["samsara"]
+
+
 class _StubClient:
     def __init__(self, fleet=None, events=None, eff=None):
         self._fleet = fleet or []
@@ -387,7 +393,9 @@ class TestIngestor:
         monkeypatch.setattr(sync, "get_client", get_client_stub)
         monkeypatch.setattr(sync, "get_tenant_db", get_tenant_db_stub)
 
-        n = await sync.ingest_vehicle_state(1)
+        monkeypatch.setattr(vehicle_state, "get_tenant_db", get_tenant_db_stub)
+        monkeypatch.setattr(vehicle_state, "resolve_all_providers_for", _samsara_only)
+        n = await vehicle_state.ingest_vehicle_state(1)
         assert n == 2
         rows = await tenant.get_vehicle_state(1)
         assert {r["vehicle_id"] for r in rows} == {"v1", "v2"}
@@ -446,7 +454,9 @@ class TestIngestor:
 
         # Each ingestor must swallow the missing-client case so a single
         # unconfigured tenant can't take the whole scheduler down.
-        assert await sync.ingest_vehicle_state(1) == 0
+        monkeypatch.setattr(vehicle_state, "get_tenant_db", get_tenant_db_stub)
+        monkeypatch.setattr(vehicle_state, "resolve_all_providers_for", _samsara_only)
+        assert await vehicle_state.ingest_vehicle_state(1) == 0
         assert await sync.ingest_safety_events(1) == 0
         assert await sync.ingest_driver_efficiency_day(1) == 0
 

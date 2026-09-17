@@ -43,6 +43,8 @@ _RESOLVING = {
     "eld.driver_hos",      # whichever ELD the account connected
     "vehicles.spec_fill",  # a second opinion, from whoever offers one
     "drivers.spec_fill",   # the same, about people an admin linked
+    "vehicles.state",      # one write path: every provider reporting live
+                           # state is asked and arbitrated per reading
 }
 
 

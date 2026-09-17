@@ -51,6 +51,8 @@ class TestOwnership:
             "object_storage.gdrive.user_email",
             "user:1527638770:ai_tier",
             "vehicle_field_precedence",
+            "field_precedence:driver_hos",
+            "field_precedence:vehicle_state",
             "kpi_thresholds",
             "dqf.export_passphrase",
         ):

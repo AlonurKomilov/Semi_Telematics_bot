@@ -53,7 +53,8 @@ export default function VehiclesConfigPanel() {
     mutationFn: (args: {
       primary: Record<string, string>;
       lifecycle?: Record<string, Record<string, boolean>>;
-    }) => putVehiclesConfig(args.primary, args.lifecycle),
+      state?: Record<string, string>;
+    }) => putVehiclesConfig(args.primary, args.lifecycle, args.state),
     onSuccess: (next) =>
       qc.setQueryData(['vehicles-config'], next),
   });
@@ -105,6 +106,19 @@ export default function VehiclesConfigPanel() {
     (lifecycle[source] ??= {})[verb] = allowed;
     mutation.mutate({ primary: currentPrimary(), lifecycle });
   };
+
+  const setStateReading = (group: string, source: string) => {
+    // The whole block each save, like the matrix: the server expands
+    // each primary into a full order, and sending every group keeps
+    // what is stored equal to what the panel shows.
+    const state: Record<string, string> = {};
+    for (const f of data.state?.fields ?? []) state[f.key] = f.primary;
+    state[group] = source;
+    mutation.mutate({ primary: currentPrimary(), state });
+  };
+  // Providers only — the rule is not a device, and one device cannot
+  // disagree with itself.
+  const stateProviders = (data.state?.sources ?? []).filter((s) => s !== '__newest__');
 
   // No card wrapper and no heading: FeatureConfigGear supplies the
   // dialog, the title and the permission wall. This used to be a card in
@@ -204,6 +218,63 @@ export default function VehiclesConfigPanel() {
               />
             ))}
           </div>
+        </>
+      )}
+
+      {data.state && (
+        <>
+          {/* Live readings: who wins a POSITION, an odometer, a fuel
+              level when two connected devices report the same truck.
+              Its own block, not more rows in the list above: those are
+              facts about a static object and merge field by field with
+              a hand edit on top; a reading moves whole with its clock
+              and nobody hand-enters a GPS fix. */}
+          <p className="mt-4 mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Live readings
+          </p>
+          {stateProviders.length <= 1 ? (
+            // One device, nothing to arbitrate — and the block SAYS so
+            // rather than offering a choice between a provider and
+            // itself.
+            <p className="mb-2 text-sm text-muted-foreground max-w-prose">
+              One telematics provider reports live readings, so no two
+              can disagree about the same truck. Connect a second and
+              this is where you choose whose reading wins.
+            </p>
+          ) : (
+            <>
+              <p className="mb-2 text-sm text-muted-foreground max-w-prose">
+                {data.state.applies_when}
+              </p>
+              <ul className="divide-y divide-border">
+                {data.state.fields.map((f) => {
+                  const items = data.state!.sources.map((s) => ({
+                    value: s,
+                    label: data.state!.source_labels[s] ?? SOURCE_LABEL[s] ?? s,
+                  }));
+                  return (
+                    <li
+                      key={f.key}
+                      className="flex items-start justify-between gap-3 py-2 text-sm"
+                    >
+                      <span className="text-foreground">{f.label}</span>
+                      <Select
+                        value={f.primary}
+                        disabled={mutation.isPending}
+                        onValueChange={(v) => setStateReading(f.key, v)}
+                        items={items}
+                      >
+                        <SelectTrigger aria-label={`Winning source for ${f.label}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {items.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
         </>
       )}
     </div>

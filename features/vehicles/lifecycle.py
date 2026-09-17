@@ -203,7 +203,10 @@ from capabilities.data_lifecycle.ingest import IngestDataset, register_dataset
 
 
 def _run_vehicle_state(account_id: int):
-    from capabilities.integrations.samsara.sync import ingest_vehicle_state
+    # The provider-neutral tick — every connected provider that reports
+    # live state is asked, and one row is written.  Samsara's own fetch
+    # is a collector it registers with this module.
+    from capabilities.integrations.shared.vehicle_state import ingest_vehicle_state
     return ingest_vehicle_state(account_id)
 
 
@@ -232,6 +235,11 @@ register_dataset(IngestDataset(
     owner="vehicles",
     job_id="warehouse_vehicle_state",
     capability="vehicle_state",
+    # Resolve, do not assume — for the reason the HOS dataset gives.
+    # The tick asks every connected provider offering the capability;
+    # pinning Samsara here would have skipped an account whose live
+    # state comes from another device before its provider was found.
+    provider_id=None,
     cadence={"interval_min": 1},
     run=_run_vehicle_state,
     tables=("vehicle_state_live", "vehicle_state_minute"),

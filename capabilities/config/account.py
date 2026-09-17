@@ -151,6 +151,16 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "default — whose hours are authoritative is the owner's call.",
     ),
     SettingOwner(
+        "field_precedence:vehicle_state", "can_manage_config_all",
+        "config", "vehicles",
+        "Which telematics provider wins each LIVE reading (position, "
+        "odometer, engine hours, fuel, DEF) when one truck is reported by "
+        "more than one.  A reading moves whole with its clock; a stale "
+        "preferred device yields to a fresh one.  Engine: "
+        "capabilities/integrations/shared/vehicle_state; surface: the "
+        "Vehicles page gear, 'Live readings'.",
+    ),
+    SettingOwner(
         "source_lifecycle:*", "can_manage_config_all",
         "config", "vehicles",
         "Which integration may auto-ADD vehicles and whose silence-sweep "

@@ -26,6 +26,32 @@ from adapters.storage.warehouse._util import (
     _opt_float,
 )
 
+
+def _prov_json(v: Any) -> str | None:
+    """``field_provenance`` on the way in: a dict → JSON; JSON text passes
+    through; nothing → NULL (rows from before the column, and minute
+    rows the backfill writes without a live tick behind them)."""
+    if isinstance(v, dict):
+        return json.dumps(v, sort_keys=True) if v else None
+    if isinstance(v, str) and v.strip():
+        return v
+    return None
+
+
+def _prov_load(v: Any) -> dict[str, str]:
+    """The stored JSON as a dict; NULL or unparsable reads as unknown
+    (``{}``) — what a surface should show for a row nobody stamped,
+    rather than a crash on the first pre-migration row."""
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            obj = json.loads(v)
+        except (TypeError, ValueError):
+            return {}
+        return obj if isinstance(obj, dict) else {}
+    return {}
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,6 +99,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                 int(r.get("dtc_critical_count") or 0),
                 str(r.get("last_driver_id") or ""),
                 str(r.get("last_driver_name") or ""),
+                _prov_json(r.get("field_provenance")),
                 r.get("registry_id"),
                 r.get("source_ts"),
                 # Preserve an empty ``captured_at`` instead of substituting
@@ -95,10 +122,10 @@ class VehiclesWarehouseMixin(_MixinBase):
                     odometer_mi, odometer_time,
                     engine_hours, engine_hours_time,
                     fault_count, dtc_critical_count,
-                    last_driver_id, last_driver_name,
+                    last_driver_id, last_driver_name, field_provenance,
                     registry_id, source_ts,
                     captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -120,6 +147,10 @@ class VehiclesWarehouseMixin(_MixinBase):
                     dtc_critical_count=excluded.dtc_critical_count,
                     last_driver_id=excluded.last_driver_id,
                     last_driver_name=excluded.last_driver_name,
+                    -- Lockstep with the values it describes, like the
+                    -- per-metric clocks: this tick's row, this tick's
+                    -- provenance.
+                    field_provenance=excluded.field_provenance,
                     -- The identity WE resolved outranks its absence: a
                     -- tick where the resolver missed keeps the last
                     -- known registry link rather than unlinking history.
@@ -182,6 +213,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             "engine_hours", "engine_hours_time",
             "fault_count", "dtc_critical_count",
             "last_driver_id", "last_driver_name",
+            "field_provenance",
             "registry_id", "source_ts",
             "captured_at", "updated_at",
         ]
@@ -194,7 +226,10 @@ class VehiclesWarehouseMixin(_MixinBase):
             """,
             tuple(args),
         )
-        return [dict(zip(cols, row)) for row in await cur.fetchall()]
+        out = [dict(zip(cols, row)) for row in await cur.fetchall()]
+        for d in out:
+            d["field_provenance"] = _prov_load(d.get("field_provenance"))
+        return out
 
 
     # ── vehicle_state_hour ────────────────────────────────────
@@ -442,6 +477,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                 _opt_float(r.get("rpm")),
                 r.get("registry_id"),
                 r.get("source_ts"),
+                _prov_json(r.get("field_provenance")),
             ))
         if values:
             await self._db.executemany(
@@ -452,8 +488,9 @@ class VehiclesWarehouseMixin(_MixinBase):
                     fuel_pct, def_pct, odometer_mi, engine_hours,
                     fault_count, dtc_critical_count, last_driver_id,
                     battery_v, oil_psi, coolant_c,
-                    engine_load_pct, rpm, registry_id, source_ts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    engine_load_pct, rpm, registry_id, source_ts,
+                    field_provenance
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (account_id, vehicle_id, captured_at) DO NOTHING
                 """,
                 values,

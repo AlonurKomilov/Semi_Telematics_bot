@@ -18,10 +18,21 @@ export interface LifecycleSource {
   verbs: Record<string, boolean>;
 }
 
+/** Live readings — the `vehicle_state` entity.  A reading group moves
+ *  whole with its clock; `__newest__` is a selectable rule the server
+ *  labels for us, never a provider id. */
+export interface StateReadingsConfig {
+  sources: string[];
+  fields: PrecedenceField[];
+  source_labels: Record<string, string>;
+  applies_when: string;
+}
+
 export interface SourcePrecedence {
   sources: string[];
   fields: PrecedenceField[];
   lifecycle?: { sources: LifecycleSource[] };
+  state?: StateReadingsConfig;
 }
 
 export async function getVehiclesConfig(): Promise<SourcePrecedence> {
@@ -31,11 +42,16 @@ export async function getVehiclesConfig(): Promise<SourcePrecedence> {
 export async function putVehiclesConfig(
   primary: Record<string, string>,
   lifecycle?: Record<string, Record<string, boolean>>,
+  state?: Record<string, string>,
 ): Promise<SourcePrecedence> {
   return apiJSON<SourcePrecedence>('/vehicles/config', {
     method: 'PUT',
-    // `lifecycle` omitted = untouched server-side, so a precedence-only
-    // save stays byte-identical.
-    body: lifecycle ? { primary, lifecycle } : { primary },
+    // `lifecycle` / `state` omitted = untouched server-side, so a
+    // precedence-only save stays byte-identical.
+    body: {
+      primary,
+      ...(lifecycle ? { lifecycle } : {}),
+      ...(state ? { state } : {}),
+    },
   });
 }

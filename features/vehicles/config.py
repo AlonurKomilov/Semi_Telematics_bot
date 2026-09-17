@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from capabilities import source as reconciliation
+from capabilities.integrations.shared import vehicle_state as _state
 from infra.platform import get_tenant_db as _get_tenant_db
 from interfaces.api.deps import require_permission
 
@@ -41,6 +42,10 @@ class SourcePrecedenceUpdate(BaseModel):
     # untouched, so the precedence-only PUT the panel has always sent keeps
     # working unchanged.
     lifecycle: dict[str, dict[str, bool]] | None = None
+    # {reading_group: winning_source}, e.g. {"odometer": "orient_eld"} or
+    # {"location": "__newest__"} — LIVE readings, the ``vehicle_state``
+    # entity, not the roster's spec fields.  Omitted = untouched.
+    state: dict[str, str] | None = None
 
 
 @router.get("/config")
@@ -61,6 +66,7 @@ async def get_config(user: dict = Depends(_config)):
         raise HTTPException(503, "tenant DB unavailable")
     payload = await reconciliation.precedence_options(tenant, account_id, "vehicle")
     payload["lifecycle"] = await _lifecycle_payload(tenant, account_id)
+    payload["state"] = await _state.config_payload(tenant, account_id)
     return payload
 
 
@@ -109,6 +115,12 @@ async def put_config(
     if body.lifecycle is not None:
         await reconciliation.set_lifecycle_policy(
             tenant, account_id, "vehicle", body.lifecycle)
+    if body.state:
+        # Same store, its own entity: a reading group is arbitrated
+        # whole, so this never touches the per-field vehicle order.
+        await reconciliation.set_precedence(
+            tenant, account_id, _state.ENTITY, body.state)
     payload = await reconciliation.precedence_options(tenant, account_id, "vehicle")
     payload["lifecycle"] = await _lifecycle_payload(tenant, account_id)
+    payload["state"] = await _state.config_payload(tenant, account_id)
     return payload

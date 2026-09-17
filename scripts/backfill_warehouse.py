@@ -36,8 +36,8 @@ from capabilities.integrations.samsara.sync import (
     ingest_safety_events,
     ingest_vehicle_faults,
     ingest_vehicle_health,
-    ingest_vehicle_state,
 )
+from capabilities.integrations.shared.vehicle_state import ingest_vehicle_state
 from infra.services import get_platform_db
 from infra.startup import initialize as init_services
 

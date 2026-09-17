@@ -23,6 +23,9 @@ Structure:
   * ``registry``   — features declare their reconcilable shape via
                      ``register_reconciled_entity`` (the "by feature" hook).
   * ``precedence`` — per-account, per-entity source priority (account_settings).
+  * ``readings``   — ``pick_readings``: whole-reading arbitration for values
+                     that carry their own clock (live state); freshness is a
+                     fact here, and ``0`` is a value.
   * ``conflicts``  — the generic ``data_conflicts`` store + resolution dispatch.
 
 A feature = one ``register_reconciled_entity(...)`` call + a call to
@@ -57,6 +60,11 @@ from .precedence import (  # noqa: F401
     get_precedence,
     precedence_options,
     set_precedence,
+)
+from .readings import (  # noqa: F401
+    NEWEST,
+    Reading,
+    pick_readings,
 )
 from .registry import (  # noqa: F401
     ReconciledEntity,

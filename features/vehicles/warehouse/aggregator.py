@@ -150,6 +150,10 @@ async def snapshot_vehicle_state(account_id: int) -> int:
             "coolant_c":          health.get("coolant_c"),
             "engine_load_pct":    health.get("load_pct"),
             "rpm":                health.get("rpm"),
+            # Who supplied each reading travels with the sample, so a
+            # timeline can say it too — NULL for rows the live tick
+            # never stamped.
+            "field_provenance":   sr.get("field_provenance") or None,
         })
     if not rows:
         return 0

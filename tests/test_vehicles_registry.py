@@ -280,7 +280,9 @@ async def test_set_precedence_round_trips_and_validates(db):
     assert by["make"] == "samsara"
     assert by["vin"] == "datatruck"          # default kept
     assert "nope" not in by
-    assert opts["sources"] == ["datatruck", "samsara"]
+    # Providers only, in catalog order — ``manual`` is a rule, never an
+    # option.  ORIENT joined as a fill-only second opinion (ca204ecd).
+    assert opts["sources"] == ["datatruck", "samsara", "orient_eld"]
 
 
 # ── Cross-source conflicts (Layer 3) ──────────────────────────

@@ -37,7 +37,6 @@ from typing import Any
 
 from infra.services import get_tenant_db
 from capabilities.integrations.samsara.sync import (
-    ingest_vehicle_state,
     ingest_vehicle_health,
     ingest_vehicle_faults,
     ingest_fleet_weather,
@@ -46,6 +45,7 @@ from capabilities.integrations.samsara.sync import (
     ingest_fleet_efficiency,
     ingest_geofence_definitions,
 )
+from capabilities.integrations.shared.vehicle_state import ingest_vehicle_state
 
 logger = logging.getLogger(__name__)
 

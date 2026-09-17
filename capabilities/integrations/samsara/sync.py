@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from infra.services import get_tenant_db, get_client
+from capabilities.integrations.shared import vehicle_state as _vehicle_state
 
 from capabilities.data_lifecycle.staleness import freshest
 from capabilities.integrations.shared.engine_state import resolve_engine_state
@@ -171,31 +172,35 @@ def _driver_eff_to_daily_row(rec: dict[str, Any], day: str) -> dict[str, Any]:
 # ── per-account jobs ─────────────────────────────────────────────────
 
 
-async def ingest_vehicle_state(account_id: int) -> int:
-    """Pull the live fleet overview and overwrite ``vehicle_state``.
-    Returns the number of vehicles persisted.
+async def collect_vehicle_state(
+    account_id: int, tenant,
+) -> "_vehicle_state.StateBatch | None":
+    """Samsara's half of the vehicle-state tick: fetch, reshape, watch —
+    and NO write.  The write belongs to
+    ``capabilities.integrations.shared.vehicle_state``, which asks every
+    connected provider, arbitrates per reading where two describe one
+    truck, and upserts once; this returns what Samsara saw plus the
+    side effects that must follow the write.
 
-    Also fans out to ``get_current_odometer_readings()`` per company
-    and stamps ``odometer_mi`` + ``odometer_time`` onto each row before
-    upsert.  This is the warehouse-side population so every consumer
-    (vehicles list, dashboard, mini-app, AI tools, maintenance
-    progress UI) reads odometer from the DB rather than re-querying
-    Samsara on the request path.
+    Fans out to ``get_current_odometer_readings()`` per company and
+    stamps ``odometer_mi`` + ``odometer_time`` onto each row (same for
+    engine hours), so every consumer — vehicles list, dashboard,
+    mini-app, AI tools, maintenance progress UI — reads them from the
+    DB rather than re-querying Samsara on the request path.
+
+    ``None`` when Samsara cannot be asked: no client, or the overview
+    call failed.  A row left alone beats a blanked table.
     """
-    tenant = await get_tenant_db(account_id)
-    if tenant is None:
-        return 0
     try:
         client = await get_client(account_id)
     except Exception:
-        logger.warning("ingest_vehicle_state: no Samsara client for acct=%d", account_id)
-        return 0
-
+        logger.warning("collect_vehicle_state: no Samsara client for acct=%d", account_id)
+        return None
     try:
         fleet = await client.get_vehicles_overview()
     except Exception:
-        logger.exception("ingest_vehicle_state: get_vehicles_overview failed acct=%d", account_id)
-        return 0
+        logger.exception("collect_vehicle_state: get_vehicles_overview failed acct=%d", account_id)
+        return None
 
     # Fetch current odometer + cumulative engine-hours for every active
     # company so we can merge the values before persisting.  Failures
@@ -277,56 +282,6 @@ async def ingest_vehicle_state(account_id: int) -> int:
             row.get("def_time"),
         )
 
-    # Stamp OUR identity onto every row before it becomes history.  The
-    # registry resolves by the provider's stable external id — never by
-    # display name, which is provider-editable free text (a rename is how
-    # one truck spent weeks in the warehouse as "229 Idris Ahmed").  A
-    # vehicle the registry cannot place keeps registry_id NULL and is
-    # quarantined instead of guessed at.
-    orphans: list[dict[str, Any]] = []
-    try:
-        ref_to_id = await tenant.registry_ids_by_telematics_ref(account_id)
-    except Exception:
-        logger.exception(
-            "registry-id resolution unavailable acct=%d — rows keep their "
-            "last known registry link", account_id,
-        )
-        ref_to_id = {}
-    # Trucks a PERSON archived.  Their rows are dropped below, AFTER the
-    # identity watch has read them — see the filter for why the order
-    # matters.  FAIL-OPEN: a registry read that fails ingests everything,
-    # because one leaked tick is a smaller harm than blanking a fleet's
-    # telemetry on a transient database error.
-    try:
-        archived_refs = await tenant.operator_archived_refs(account_id)
-    except Exception:
-        logger.exception(
-            "archived-vehicle filter unavailable acct=%d — ingesting "
-            "everything this tick", account_id,
-        )
-        archived_refs = set()
-    if ref_to_id:
-        for row in rows:
-            vid = str(row.get("vehicle_id") or "")
-            rid = ref_to_id.get(vid)
-            if rid is not None:
-                row["registry_id"] = rid
-            else:
-                orphans.append({
-                    "external_id": vid,
-                    "name": row.get("vehicle_name") or "",
-                    "company_code": row.get("company_code") or "",
-                })
-        if orphans:
-            try:
-                await tenant.record_ingest_orphans(
-                    account_id, "vehicles.state", orphans,
-                )
-            except Exception:
-                logger.exception(
-                    "orphan quarantine write failed acct=%d", account_id,
-                )
-
     # ── Identity watch: hardware changes become recorded events, not
     # data mysteries (128's odometer scale change went unseen for a
     # day; a VIN change means the ID now points at a DIFFERENT truck).
@@ -357,193 +312,158 @@ async def ingest_vehicle_state(account_id: int) -> int:
     except Exception:
         logger.debug("identity watch skipped acct=%d", account_id,
                      exc_info=True)
-
-    # ── The archive gate ────────────────────────────────────────
-    # Placed HERE, after `_detect_identity_events` above has already
-    # read `rows`, and that order is load-bearing.  If a gateway is
-    # pulled off an archived truck and bolted into a different one, the
-    # VIN change still has to reach `device_event_log` — otherwise the
-    # archived row keeps a telematics_ref that now names another
-    # physical truck, and restoring it would re-attach the wrong
-    # vehicle.  Silencing the truck must not silence the watch.
-    #
-    # Dropping the rows is what actually stops the 60-odd downstream
-    # readers of `vehicle_state_*`: none of them join `vehicles`, so
-    # they cannot ask whether a truck is archived.  With no fresh row
-    # their own staleness gates close, and billing — which counts
-    # `vehicle_state_live.captured_at`, not registry rows — stops
-    # charging for a truck that left.
-    #
-    # Nobody may read the ABSENCE as a fact.  "Archived" and "gateway
-    # broken" look identical in the warehouse and always did; the
-    # registry answers that question and is the only thing that may.
-    if archived_refs:
-        before = len(rows)
-        rows = [r for r in rows
-                if str(r.get("vehicle_id") or "") not in archived_refs]
-        dropped = before - len(rows)
-        if dropped:
-            # Said out loud every tick: support still has to be able to
-            # answer "is that gateway alive?" about a truck we have
-            # deliberately stopped recording.
-            logger.info(
-                "ingest_vehicle_state acct=%d dropped_archived=%d refs=%s",
-                account_id, dropped, sorted(archived_refs)[:20],
-            )
-
-    n = await tenant.upsert_vehicle_state(account_id, rows)
-    logger.info(
-        "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d "
-        "with_engine_hours=%d with_engine_state=%d with_registry_id=%d "
-        "orphans=%d",
-        account_id, n,
-        len(odometer_by_vehicle_id),
-        len(engine_hours_by_vehicle_id),
-        sum(1 for r in rows if r.get("engine_state")),
-        sum(1 for r in rows if r.get("registry_id") is not None),
-        len(orphans),
-    )
-    # Surface a whole-fleet odometer stall: we persisted vehicles but got
-    # ZERO odometer readings.  Covers both failure modes — the endpoint
-    # threw (warned above) AND the quieter case where it returns an empty
-    # list with no exception.  Without this, every snapshot from here on
-    # carries a NULL odometer and the back-dated work-order reading
-    # silently freezes at the last good day, account-wide, for days.
-    if n > 0 and not odometer_by_vehicle_id:
-        logger.warning(
-            "odometer ingestion stalled acct=%d: %d vehicles persisted, "
-            "0 odometer readings (Samsara odometer endpoint down or "
-            "unauthorized?) — back-dated WO mileage will freeze",
-            account_id, n,
-        )
-
-    # Keep the Vehicle registry (our SSOT) complete: every Samsara
-    # vehicle this tick saw is upserted into ``vehicles`` (source=
-    # samsara).  ``upsert_from_integration`` refreshes the spec +
-    # telematics_ref but preserves any operator-set vehicle_type /
-    # status / notes.  Best-effort — a registry hiccup must never
-    # poison the live-state ingest, so we swallow.  This is what makes
-    # a newly-added Samsara truck appear in the registry within 60s
-    # and is the ongoing guarantee behind the migration-105 backfill.
-    try:
-        registry_rows = [
-            {
-                "company_code":   v.get("_org") or "",
-                "unit_number":    v.get("name") or "",
-                "telematics_ref": str(v.get("id") or ""),
-                "vin":            "" if v.get("vin") in (None, "N/A") else v.get("vin"),
-                "make":           "" if v.get("make") in (None, "N/A") else v.get("make"),
-                "model":          "" if v.get("model") in (None, "N/A") else v.get("model"),
-                "year":           None if v.get("year") in (None, "N/A") else v.get("year"),
-                "plate_number":   "" if v.get("license_plate") in (None, "N/A") else v.get("license_plate"),
-                "gateway_serial": v.get("gateway_serial") or "",
-            }
-            for v in fleet
-        ]
-        written = await tenant.upsert_from_integration(
-            account_id, registry_rows, source="samsara",
-        )
-        if registry_rows and not written:
+    async def _after_write(written_rows: list[dict], n: int) -> None:
+        """What Samsara does once the row is written: the odometer-stall
+        warning, the registry refresh from the fleet payload, the
+        condition sweep and the identity-watch notices.  Runs over the
+        rows the tick actually wrote — after another provider's
+        readings were arbitrated in and archived trucks dropped."""
+        rows = written_rows
+        # Surface a whole-fleet odometer stall: we persisted vehicles but got
+        # ZERO odometer readings.  Covers both failure modes — the endpoint
+        # threw (warned above) AND the quieter case where it returns an empty
+        # list with no exception.  Without this, every snapshot from here on
+        # carries a NULL odometer and the back-dated work-order reading
+        # silently freezes at the last good day, account-wide, for days.
+        if n > 0 and not odometer_by_vehicle_id:
             logger.warning(
-                "registry upsert wrote NOTHING acct=%d despite %d vehicles "
-                "in the payload — the registry is the identity SSOT, so it "
-                "is now drifting from what the provider reports",
-                account_id, len(registry_rows),
+                "odometer ingestion stalled acct=%d: %d vehicles persisted, "
+                "0 odometer readings (Samsara odometer endpoint down or "
+                "unauthorized?) — back-dated WO mileage will freeze",
+                account_id, n,
             )
-    except Exception:
-        # ERROR, not debug.  The roster upserts as one transaction, so a
-        # single unusable value rolls back every vehicle with it — and at
-        # debug level that failure stayed invisible for 47 days while the
-        # registry silently froze.  Still swallowed: a registry hiccup
-        # must not poison live-state ingest.
-        logger.exception(
-            "registry upsert from ingest FAILED acct=%d (%d vehicles) — "
-            "registry now stale", account_id, len(registry_rows),
-        )
-    # ── Standing conditions: what is TRUE about a vehicle right now.
-    # The identity watch above records CHANGES; this records a state
-    # that persists until the world fixes it, so the dashboard and the
-    # bot can say why a truck's fields are empty instead of leaving
-    # "\u2014" to read like our bug.  Best-effort: a condition write must
-    # never poison live-state ingest.
-    try:
-        await _sweep_vehicle_conditions(account_id, tenant, rows, _prev_state)
-    except Exception:
-        logger.debug("condition sweep skipped acct=%d", account_id,
-                     exc_info=True)
 
-    if identity_events:
+        # Keep the Vehicle registry (our SSOT) complete: every Samsara
+        # vehicle this tick saw is upserted into ``vehicles`` (source=
+        # samsara).  ``upsert_from_integration`` refreshes the spec +
+        # telematics_ref but preserves any operator-set vehicle_type /
+        # status / notes.  Best-effort — a registry hiccup must never
+        # poison the live-state ingest, so we swallow.  This is what makes
+        # a newly-added Samsara truck appear in the registry within 60s
+        # and is the ongoing guarantee behind the migration-105 backfill.
         try:
-            new_events = await tenant.record_device_events(
-                account_id, identity_events)
-            # A changed anchor is the ACCOUNT's fleet event — their
-            # hardware, their trucks — so it rides the notifications
-            # capability to the account's own admins, exactly like
-            # every other alert.  Tenant data never goes to a
-            # platform-operator channel.  Only NEWLY recorded
-            # transitions notify: the watch re-detects a changed
-            # anchor every tick until the registry catches up.
-            from capabilities.alerting.device_identity import (
-                notify_device_identity_events,
-            )
-            # RECORDED for every truck, ANNOUNCED only for live ones.
-            # The two are deliberately different: the watch has to keep
-            # anchoring an archived truck, because a gateway pulled out
-            # of it and bolted into another one must still produce a VIN
-            # change — otherwise the archived row keeps a ref that now
-            # names a different physical truck and a restore re-attaches
-            # the wrong vehicle.  But nobody wants to be DM'd "VIN
-            # changed — is a different truck behind this unit?" about a
-            # truck they retired last month.  The event is in
-            # device_event_log either way, waiting for whoever restores
-            # it.
-            announce = new_events
-            try:
-                retired = {
-                    r for r in await tenant.archived_refs(account_id) if r
+            registry_rows = [
+                {
+                    "company_code":   v.get("_org") or "",
+                    "unit_number":    v.get("name") or "",
+                    "telematics_ref": str(v.get("id") or ""),
+                    "vin":            "" if v.get("vin") in (None, "N/A") else v.get("vin"),
+                    "make":           "" if v.get("make") in (None, "N/A") else v.get("make"),
+                    "model":          "" if v.get("model") in (None, "N/A") else v.get("model"),
+                    "year":           None if v.get("year") in (None, "N/A") else v.get("year"),
+                    "plate_number":   "" if v.get("license_plate") in (None, "N/A") else v.get("license_plate"),
+                    "gateway_serial": v.get("gateway_serial") or "",
                 }
-                if retired:
-                    announce = [
-                        e for e in new_events
-                        if str(e.get("vehicle_id") or "") not in retired
-                    ]
-                    hushed = len(new_events) - len(announce)
-                    if hushed:
-                        logger.info(
-                            "identity events acct=%d recorded=%d "
-                            "not_announced_archived=%d",
-                            account_id, len(new_events), hushed,
-                        )
-            except Exception:
-                # Fail-open the same way the ingest gate does: an
-                # unannounced identity change is worse than one extra.
-                logger.exception(
-                    "archived filter unavailable for identity notices "
-                    "acct=%d — announcing all", account_id,
+                for v in fleet
+            ]
+            written = await tenant.upsert_from_integration(
+                account_id, registry_rows, source="samsara",
+            )
+            if registry_rows and not written:
+                logger.warning(
+                    "registry upsert wrote NOTHING acct=%d despite %d vehicles "
+                    "in the payload — the registry is the identity SSOT, so it "
+                    "is now drifting from what the provider reports",
+                    account_id, len(registry_rows),
                 )
-            if announce:
-                await notify_device_identity_events(account_id, announce)
+        except Exception:
+            # ERROR, not debug.  The roster upserts as one transaction, so a
+            # single unusable value rolls back every vehicle with it — and at
+            # debug level that failure stayed invisible for 47 days while the
+            # registry silently froze.  Still swallowed: a registry hiccup
+            # must not poison live-state ingest.
+            logger.exception(
+                "registry upsert from ingest FAILED acct=%d (%d vehicles) — "
+                "registry now stale", account_id, len(registry_rows),
+            )
+        # ── Standing conditions: what is TRUE about a vehicle right now.
+        # The identity watch above records CHANGES; this records a state
+        # that persists until the world fixes it, so the dashboard and the
+        # bot can say why a truck's fields are empty instead of leaving
+        # "\u2014" to read like our bug.  Best-effort: a condition write must
+        # never poison live-state ingest.
+        try:
+            await _sweep_vehicle_conditions(account_id, tenant, rows, _prev_state)
+        except Exception:
+            logger.debug("condition sweep skipped acct=%d", account_id,
+                         exc_info=True)
+
+        if identity_events:
+            try:
+                new_events = await tenant.record_device_events(
+                    account_id, identity_events)
+                # A changed anchor is the ACCOUNT's fleet event — their
+                # hardware, their trucks — so it rides the notifications
+                # capability to the account's own admins, exactly like
+                # every other alert.  Tenant data never goes to a
+                # platform-operator channel.  Only NEWLY recorded
+                # transitions notify: the watch re-detects a changed
+                # anchor every tick until the registry catches up.
+                from capabilities.alerting.device_identity import (
+                    notify_device_identity_events,
+                )
+                # RECORDED for every truck, ANNOUNCED only for live ones.
+                # The two are deliberately different: the watch has to keep
+                # anchoring an archived truck, because a gateway pulled out
+                # of it and bolted into another one must still produce a VIN
+                # change — otherwise the archived row keeps a ref that now
+                # names a different physical truck and a restore re-attaches
+                # the wrong vehicle.  But nobody wants to be DM'd "VIN
+                # changed — is a different truck behind this unit?" about a
+                # truck they retired last month.  The event is in
+                # device_event_log either way, waiting for whoever restores
+                # it.
+                announce = new_events
+                try:
+                    retired = {
+                        r for r in await tenant.archived_refs(account_id) if r
+                    }
+                    if retired:
+                        announce = [
+                            e for e in new_events
+                            if str(e.get("vehicle_id") or "") not in retired
+                        ]
+                        hushed = len(new_events) - len(announce)
+                        if hushed:
+                            logger.info(
+                                "identity events acct=%d recorded=%d "
+                                "not_announced_archived=%d",
+                                account_id, len(new_events), hushed,
+                            )
+                except Exception:
+                    # Fail-open the same way the ingest gate does: an
+                    # unannounced identity change is worse than one extra.
+                    logger.exception(
+                        "archived filter unavailable for identity notices "
+                        "acct=%d — announcing all", account_id,
+                    )
+                if announce:
+                    await notify_device_identity_events(account_id, announce)
+            except Exception:
+                logger.exception(
+                    "device-event record/notify failed acct=%d", account_id)
+
+        # Reconcile billing quantity with the freshly-ingested activity.
+        # The provider only PATCHes Stripe when the active-vehicle count
+        # actually changed, so most ingests are no-ops; failures here must
+        # not poison the ingest result, so we swallow.  Skipped silently
+        # for stub-provider accounts and any account without a saved
+        # extras subscription_item id.
+        try:
+            from capabilities.platform.billing import get_provider as _get_billing_provider
+            provider = _get_billing_provider()
+            await provider.sync_billing_quantity(account_id, tenant)
         except Exception:
             logger.exception(
-                "device-event record/notify failed acct=%d", account_id)
+                "sync_billing_quantity raised during ingest for acct=%d "
+                "(non-fatal — vehicle_state still persisted)",
+                account_id,
+            )
+        return n
 
-    # Reconcile billing quantity with the freshly-ingested activity.
-    # The provider only PATCHes Stripe when the active-vehicle count
-    # actually changed, so most ingests are no-ops; failures here must
-    # not poison the ingest result, so we swallow.  Skipped silently
-    # for stub-provider accounts and any account without a saved
-    # extras subscription_item id.
-    try:
-        from capabilities.platform.billing import get_provider as _get_billing_provider
-        provider = _get_billing_provider()
-        await provider.sync_billing_quantity(account_id, tenant)
-    except Exception:
-        logger.exception(
-            "sync_billing_quantity raised during ingest for acct=%d "
-            "(non-fatal — vehicle_state still persisted)",
-            account_id,
-        )
-    return n
+    return _vehicle_state.StateBatch(
+        provider_id="samsara", rows=rows, after_write=_after_write,
+    )
 
 
 async def _sweep_vehicle_conditions(account_id, tenant, rows, prev_live):
@@ -772,7 +692,7 @@ from adapters.telematics.protocol import Capability as _Cap  # noqa: E402
 
 async def job_ingest_vehicle_state(_app=None) -> None:
     await _for_each_account_with_capability(
-        _Cap.VEHICLE_STATE, ingest_vehicle_state,
+        _Cap.VEHICLE_STATE, _vehicle_state.ingest_vehicle_state,
     )
 
 
@@ -1054,3 +974,9 @@ async def job_ingest_geofence_definitions(_app=None) -> None:
     await _for_each_account_with_capability(
         _Cap.GEOFENCE_DEFINITIONS, ingest_geofence_definitions,
     )
+
+
+# The neutral tick asks for this by provider id; registering here keeps
+# the roster in ``shared.vehicle_state._CONTRIBUTORS`` the only thing
+# that has to know this module exists.
+_vehicle_state.register_state_collector("samsara", collect_vehicle_state)

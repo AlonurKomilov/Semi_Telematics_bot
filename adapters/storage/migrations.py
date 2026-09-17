@@ -845,6 +845,7 @@ async def migrate_warehouse_tables(conn) -> None:
             dtc_critical_count  INTEGER NOT NULL DEFAULT 0,
             last_driver_id      TEXT    NOT NULL DEFAULT '',
             last_driver_name    TEXT    NOT NULL DEFAULT '',
+            field_provenance    TEXT,
             captured_at         TEXT    NOT NULL DEFAULT '',
             updated_at          TEXT    NOT NULL DEFAULT ''
         )
@@ -4171,6 +4172,7 @@ async def migrate_vehicle_metrics_daily(conn) -> None:
             coolant_c           REAL,
             engine_load_pct     REAL,
             rpm                 REAL,
+            field_provenance    TEXT,
             UNIQUE(account_id, vehicle_id, captured_at)
         );
     """)
@@ -9701,3 +9703,35 @@ async def migrate_driver_hos_minute(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 217: warehouse.driver_hos_minute ready")
+
+
+@_register("218_vehicle_state_field_provenance")
+async def migrate_vehicle_state_field_provenance(conn) -> None:
+    """Add ``field_provenance`` to ``vehicle_state_live`` and
+    ``vehicle_state_minute``.
+
+    The live row is now written by one provider-neutral path that can
+    take each reading group (position, odometer, engine hours, fuel,
+    DEF) from a different connected provider, and a row assembled that
+    way has to say which — the way the roster's ``vehicles`` row names
+    who owns each spec field.  JSON ``{group: provider_id}``; NULL on
+    every row written before this migration, which readers show as
+    unknown rather than guessing Samsara.
+
+    The fresh-install CREATEs carry the column; this is the upgrade path
+    for every database already running.  Idempotent — silently no-ops
+    when a column is present (migration 216's pattern, same tables by
+    their post-rename names).
+    """
+    for table in ("vehicle_state_live", "vehicle_state_minute"):
+        try:
+            await conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN field_provenance TEXT")
+            await conn.commit()
+            logger.info("Migration 218: added %s.field_provenance", table)
+        except Exception as e:
+            logger.debug("%s.field_provenance migration skipped: %s", table, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass

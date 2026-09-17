@@ -372,6 +372,27 @@ plus safety_event_log's global `UNIQUE(samsara_event_id)`) get
 account-scoped keys via CONCURRENTLY-built unique indexes + constraint swap,
 and their upserts stop overwriting `account_id` on conflict.
 
+**Who supplied a reading (2026-09-17):** `vehicle_state_live` and
+`vehicle_state_minute` carry `field_provenance`, JSON `{group:
+provider_id}` over the five reading groups (`location`, `odometer`,
+`engine_hours`, `fuel`, `def`).  The live row is written by ONE
+provider-neutral path — `capabilities/integrations/shared/vehicle_state.py`
+— which asks every connected provider that offers `vehicle_state`,
+arbitrates per reading where two rows meet on one `registry_id`
+(`capabilities/source/readings.py::pick_readings`: the configured order
+among readings inside `freshness_sla_min`, the newest once every
+candidate is past it, and a reading moves WHOLE with its clock), and
+upserts once.  `vehicle_id` stays the external id the registry links to
+by telematics ref, whichever provider won the fix — so an owner's
+`__newest__` choice changes whose position shows and never the row's
+key.  A provider package contributes a COLLECTOR (fetch + reshape, no
+write) and registers it; a provider that is alone gets its rows written
+verbatim.  NULL provenance is a row from before the column and reads
+as unknown, never as Samsara.  Trucks only a second provider reports
+still land under that provider's own id — the namespaced-key amendment
+to this contract is owed before such a truck can be joined to the
+registry.
+
 ## Invariants (CI-guarded)
 
 1. Production **table names never change**; `vehicle_id` keeps meaning
