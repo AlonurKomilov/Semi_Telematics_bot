@@ -63,7 +63,7 @@ def _enabled() -> bool:
 # facade served the same rows as current until 30.  Each gate below now
 # asks ``sla_minutes(<dataset>)`` for the number the dataset declared
 # next to its cadence; there is no second copy to drift.
-from capabilities.data_lifecycle.staleness import sla_minutes
+from capabilities.data_lifecycle.staleness import is_stale, sla_minutes
 
 
 def _rows_are_stale(rows, sla_min, *keys):
@@ -79,6 +79,41 @@ def _rows_are_stale(rows, sla_min, *keys):
                 newest = freshest(newest, str(v))
                 break
     return is_stale(newest, sla_min)
+
+
+async def _table_stale(tenant, account_id: int, table: str, sla_min: float) -> bool:
+    """Whether a live table's NEWEST provider stamp is older than the
+    dataset's tolerance.
+
+    For the readers whose rows are the vendor's own JSON (health,
+    weather): those dicts carry no ``source_ts`` — it is a column on
+    the row, not a key in the payload — so the gate reads the column
+    itself, through the same query the Integration card's freshness
+    cell already uses.  A freshness read that FAILS counts as stale:
+    "cannot be proven fresh" is the Contract 2 answer, and the fallback
+    is the safe side of that coin.
+    """
+    try:
+        fresh = await tenant.get_feed_freshness(account_id, [(table, "source_ts")])
+    except Exception:
+        return True
+    return is_stale((fresh.get(table) or {}).get("last_at"), sla_min)
+
+
+async def _ledger_stale(tenant, account_id: int, dataset_key: str, sla_min: float) -> bool:
+    """Whether a dataset's job has not RUN within its tolerance.
+
+    The faults feed cannot be judged by its rows: a healthy fleet has
+    zero fault rows, so the table's newest stamp is empty for the best
+    possible reason.  The job still runs every tick and the ingest
+    ledger records that it did — the one freshness signal that survives
+    an empty table.  Unknown (never ran, read failed) is stale.
+    """
+    try:
+        last = await tenant.last_ingest_run_at(account_id, dataset_key)
+    except Exception:
+        return True
+    return is_stale(last, sla_min)
 
 
 def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
@@ -527,6 +562,14 @@ async def get_vehicle_health(
     if not rows and samsara_fallback is not None:
         logger.info("warehouse cold (vehicle_health_live empty) for acct=%d \u2014 using live Samsara", account_id)
         return await samsara_fallback()
+    # Present but ancient is worse than empty — Contract 2.  The rows are
+    # the vendor's JSON and carry no stamp, so ask the table's column.
+    if rows and samsara_fallback is not None and await _table_stale(
+            tenant, account_id, "vehicle_health_live", sla_minutes("vehicles.health")):
+        logger.warning(
+            "warehouse STALE (vehicle_health_live newest source_ts > %.0f min) for "
+            "acct=%d -- using live Samsara", sla_minutes("vehicles.health"), account_id)
+        return await samsara_fallback()
     return rows
 
 
@@ -552,6 +595,16 @@ async def get_vehicle_fault_live(
         return None
     tenant = await get_tenant_db(account_id)
     if tenant is None:
+        return None
+    # A stale snapshot must not present three-day-old DTC names as
+    # current.  None here sends the route to vehicle_state's count-only
+    # placeholders — fewer words, none of them wrong.
+    if await _ledger_stale(
+            tenant, account_id, "vehicles.faults", sla_minutes("vehicles.faults")):
+        logger.warning(
+            "warehouse STALE (vehicles.faults last ran > %.0f min ago) for "
+            "acct=%d -- fault detail withheld for %s",
+            sla_minutes("vehicles.faults"), account_id, vehicle_name)
         return None
     try:
         return await tenant.get_vehicle_fault_live_by_name(
@@ -587,6 +640,14 @@ async def get_vehicles_with_faults(
     if total == 0 and samsara_fallback is not None:
         logger.info("warehouse cold (vehicle_state empty) for acct=%d \u2014 using live faults", account_id)
         return await samsara_fallback()
+    # A clean fleet has no fault rows to date, so the feed's age is the
+    # last time its JOB ran — the ledger — not the newest row.
+    if samsara_fallback is not None and await _ledger_stale(
+            tenant, account_id, "vehicles.faults", sla_minutes("vehicles.faults")):
+        logger.warning(
+            "warehouse STALE (vehicles.faults last ran > %.0f min ago) for "
+            "acct=%d -- using live faults", sla_minutes("vehicles.faults"), account_id)
+        return await samsara_fallback()
     return faulted, total, breakdown
 
 
@@ -610,6 +671,12 @@ async def get_fleet_weather(
     rows = await tenant.get_weather_live(account_id, company=company)
     if not rows and samsara_fallback is not None:
         logger.info("warehouse cold (weather_live empty) for acct=%d \u2014 using live", account_id)
+        return await samsara_fallback()
+    if rows and samsara_fallback is not None and await _table_stale(
+            tenant, account_id, "weather_live", sla_minutes("vehicles.weather")):
+        logger.warning(
+            "warehouse STALE (weather_live newest source_ts > %.0f min) for "
+            "acct=%d -- using live", sla_minutes("vehicles.weather"), account_id)
         return await samsara_fallback()
     return rows
 

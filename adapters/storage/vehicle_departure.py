@@ -167,3 +167,33 @@ class VehicleDepartureMixin:
              now.strftime("%Y-%m-%dT%H:%M:%S")),
         )
         await self._db.commit()
+
+    async def last_ingest_run_at(
+        self, account_id: int, dataset_key: str,
+    ) -> str | None:
+        """When this dataset's job last RAN for the account — the ledger's
+        newest ``last_ran_at`` — or ``None`` when it never has.
+
+        This exists for the one feed whose rows cannot carry their own
+        freshness: faults.  A healthy fleet has ZERO fault rows, so
+        ``MAX(source_ts)`` over ``vehicle_fault_live`` is empty for the
+        best possible reason, and a reader gating on it would fall back
+        to the live provider on every read of a clean fleet.  The job
+        still runs every tick and records that it ran — the ledger is
+        the only freshness signal that survives an empty table, which is
+        why it is the one the faults readers ask.
+
+        UTC, second precision, no zone suffix — exactly as
+        :meth:`record_ingest_run` writes it; the staleness helper reads
+        a naive stamp as UTC.
+        """
+        cur = await self._db.execute(
+            "SELECT MAX(last_ran_at) FROM ingest_runs "
+            "WHERE account_id = ? AND dataset_key = ?",
+            (account_id, dataset_key),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        val = row[0] if not isinstance(row, dict) else next(iter(row.values()), None)
+        return str(val) if val else None

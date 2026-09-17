@@ -331,6 +331,20 @@ called its readings stale at 15 while its dataset said 30. Guard test:
 `test_staleness_contract.py::TestOneNumber` — the consumers agree with
 the registry, and no numeric staleness literal survives in them.
 
+**Two kinds of age gate, chosen by what the rows can carry.** Vehicle
+state and driver efficiency rows carry `source_ts`, so the reader gates
+on the rows. Health and weather rows are the vendor's own JSON with no
+stamp on the dict, so the reader asks the TABLE's newest `source_ts`
+(`_table_stale`, through `get_feed_freshness`). Faults can be empty for
+the best reason — a clean fleet — so their age is the last time the
+JOB ran: the ingest ledger's `last_ran_at` (`_ledger_stale`, through
+`last_ingest_run_at`); the per-vehicle fault detail returns `None` when
+stale and the route degrades to count-only placeholders rather than
+presenting old DTC names as current. Safety events deliberately have
+NO age gate: an event's age is a fact about the world (a quiet fleet
+has old events), not about the pipe — the watchdog owns that feed's
+health. A freshness read that fails is stale, never fresh.
+
 ## Contract 3 — Identity
 
 **Naming decision (settled — collision found by the conformance sweep):**
