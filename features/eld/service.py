@@ -23,16 +23,19 @@ from adapters.telematics.registry import get_provider, is_registered
 #: Kept here rather than imported from features.eld.config, which is an
 #: interface module — the service must not depend on a router.
 _NEWEST = "__newest__"
-from capabilities.data_lifecycle.staleness import data_age_minutes
+from capabilities.data_lifecycle.staleness import data_age_minutes, sla_minutes
 
 logger = logging.getLogger(__name__)
 
 
-#: Past this, a reading stops being shown as current.  Two ingest ticks
-#: plus a margin: one missed poll is a hiccup, three is a feed that
-#: stopped, and the difference matters because the second is the case
-#: where a dispatcher must go and look at the ELD itself.
-STALE_AFTER_MINUTES = 15
+#: Past this, a reading stops being shown as current.  The NUMBER lives
+#: on the dataset that writes the rows (``eld.driver_hos`` in
+#: features/eld/lifecycle.py, with the reasoning) and is read here — it
+#: was a private 15 in this file while the registry said 30, so the
+#: watchdog stayed quiet for twice as long as this page had already
+#: called its readings stale.  The name is kept: the API and its tests
+#: speak it.
+STALE_AFTER_MINUTES = sla_minutes("eld.driver_hos")
 
 
 def _clock(seconds: Optional[int]) -> Optional[dict]:

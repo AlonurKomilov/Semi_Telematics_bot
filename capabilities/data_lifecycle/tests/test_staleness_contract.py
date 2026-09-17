@@ -77,3 +77,70 @@ class TestTimeGrid:
         from capabilities.integrations.shared import history_backfill as hb
         ts = datetime(2026, 8, 3, 7, 59, 59, tzinfo=timezone.utc)
         assert hb._floor_to_slot(ts) == floor_to_slot(ts, hb.SLOT_SECONDS)
+
+
+class TestOneNumber:
+    """"How old is too old" is declared once, on the dataset, and read
+    everywhere — a private copy in a consumer is a second policy.
+
+    Before ``sla_minutes`` existed, vehicle state carried four answers
+    (registry 15, reader 30, ELD 15 for its own dataset that said 30,
+    dashboard dot 60).  These tests hold the consumers to the registry
+    and refuse a numeric staleness literal reappearing in them.
+    """
+
+    CONSUMERS = {
+        "features/vehicles/warehouse/readers.py": ("_rows_are_stale",),
+        "features/eld/service.py": ("STALE_AFTER_MINUTES",),
+    }
+
+    def test_the_helper_reads_the_registry(self):
+        from capabilities.data_lifecycle.ingest import discover, get_dataset
+        from capabilities.data_lifecycle.staleness import sla_minutes
+        discover()
+        for key in ("vehicles.state", "drivers.efficiency", "eld.driver_hos"):
+            assert sla_minutes(key) == float(get_dataset(key).freshness_sla_min), key
+
+    def test_an_unknown_dataset_raises_rather_than_defaulting(self):
+        """A typo must not become "never stale"."""
+        from capabilities.data_lifecycle.staleness import sla_minutes
+        with pytest.raises(KeyError):
+            sla_minutes("vehicles.stat")
+
+    def test_the_eld_feature_agrees_with_its_dataset(self):
+        from capabilities.data_lifecycle.staleness import sla_minutes
+        from features.eld.service import STALE_AFTER_MINUTES
+        assert STALE_AFTER_MINUTES == sla_minutes("eld.driver_hos")
+
+    def test_no_consumer_carries_a_numeric_staleness_literal(self):
+        """AST, not grep: a comment recording the OLD constant by name is
+        allowed to exist; a call or assignment that hands a NUMBER to a
+        staleness gate is not."""
+        import ast
+        from tests._repo import REPO
+        offenders: list[str] = []
+        for rel, names in self.CONSUMERS.items():
+            tree = ast.parse((REPO / rel).read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                # _rows_are_stale(rows, <literal or arithmetic of literals>, ...)
+                if isinstance(node, ast.Call) and getattr(node.func, "id", "") in names:
+                    if len(node.args) > 1 and _is_numeric(node.args[1]):
+                        offenders.append(f"{rel}:{node.lineno} literal SLA in {node.func.id}()")
+                # STALE_AFTER_MINUTES = <number>
+                if isinstance(node, ast.Assign):
+                    for t in node.targets:
+                        if getattr(t, "id", "") in names and _is_numeric(node.value):
+                            offenders.append(f"{rel}:{node.lineno} {t.id} = literal")
+        assert not offenders, "\n".join(offenders)
+
+
+def _is_numeric(node) -> bool:
+    """A number, or arithmetic made only of numbers (``2 * 24 * 60.0``)."""
+    import ast
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
+    if isinstance(node, ast.BinOp):
+        return _is_numeric(node.left) and _is_numeric(node.right)
+    if isinstance(node, ast.UnaryOp):
+        return _is_numeric(node.operand)
+    return False

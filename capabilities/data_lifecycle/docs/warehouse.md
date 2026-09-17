@@ -320,6 +320,17 @@ Readers use one shared `is_stale(source_ts, sla)` helper; live-Samsara
 fallback fires on AGE, not on table-emptiness. Guard test: every table
 listed in any registered dataset must have `source_ts`.
 
+**The `sla` itself is declared once** — `IngestDataset.freshness_sla_min`
+on the dataset that writes the rows — and read everywhere through
+`sla_minutes("<dataset.key>")` (`capabilities/data_lifecycle/staleness.py`).
+A reader, a feature's own "stale" flag, the watchdog and the operator
+console all fire on that one number. No consumer carries a private
+copy: the last time one did, the watchdog paged at 15 minutes while the
+reader facade served the same rows as current until 30, and a feature
+called its readings stale at 15 while its dataset said 30. Guard test:
+`test_staleness_contract.py::TestOneNumber` — the consumers agree with
+the registry, and no numeric staleness literal survives in them.
+
 ## Contract 3 — Identity
 
 **Naming decision (settled — collision found by the conformance sweep):**

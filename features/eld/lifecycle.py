@@ -37,8 +37,14 @@ register_dataset(IngestDataset(
     cadence={"interval_min": 5},
     run=_run_driver_hos,
     tables=("driver_hos_live",),
-    # Half an hour — six missed ticks — before silence is abnormal.
-    freshness_sla_min=30,
+    # Fifteen minutes — two missed ticks plus a margin.  One missed poll
+    # is a hiccup; three is a feed that stopped, and on this surface the
+    # difference is the case where a dispatcher must go and look at the
+    # ELD itself.  The feature's own service reasoned its way to 15 and
+    # carried it as a private constant while this line said 30, so the
+    # watchdog kept quiet for twice as long as the page had already
+    # declared its readings stale.  One number, here, read everywhere.
+    freshness_sla_min=15,
     # Unlike safety events, silence here is NOT good news.  A connected
     # ELD reports every driver on every poll, including the off-duty
     # ones, so zero rows means the feed stopped rather than that the

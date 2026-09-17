@@ -54,9 +54,16 @@ def _enabled() -> bool:
 # one: the empty case falls back loudly, the stale case used to serve
 # a 43-hour-old fleet as "current" with nothing amiss (2026-07-27
 # outage).  Readers therefore fall back on AGE, not just emptiness --
-# Contract 2 (capabilities/data_lifecycle/docs/warehouse.md).  30 min
-# matches the operator console's ingest-freshness card.
-_STATE_STALE_MIN = 30.0
+# Contract 2 (capabilities/data_lifecycle/docs/warehouse.md).
+#
+# HOW OLD IS TOO OLD is not decided here.  A private ``_STATE_STALE_MIN
+# = 30.0`` used to sit on this line with a comment saying it matched the
+# operator console's freshness card — and the card reads the registry,
+# which said 15, so it did not.  The watchdog paged at 15 while this
+# facade served the same rows as current until 30.  Each gate below now
+# asks ``sla_minutes(<dataset>)`` for the number the dataset declared
+# next to its cadence; there is no second copy to drift.
+from capabilities.data_lifecycle.staleness import sla_minutes
 
 
 def _rows_are_stale(rows, sla_min, *keys):
@@ -289,10 +296,10 @@ async def get_current_vehicles(
         logger.info("warehouse cold (vehicle_state empty) for acct=%d \u2014 using live Samsara", account_id)
         return await samsara_fallback()
     if rows and samsara_fallback is not None and _rows_are_stale(
-            rows, _STATE_STALE_MIN, "source_ts", "captured_at"):
+            rows, sla_minutes("vehicles.state"), "source_ts", "captured_at"):
         logger.warning(
             "warehouse STALE (vehicle_state age > %.0f min) for acct=%d "
-            "-- using live Samsara", _STATE_STALE_MIN, account_id)
+            "-- using live Samsara", sla_minutes("vehicles.state"), account_id)
         return await samsara_fallback()
     return [_warehouse_row_to_overview(r) for r in rows]
 
@@ -382,11 +389,15 @@ async def get_driver_efficiency_window(
     )
     if not rows and samsara_fallback is not None:
         return await samsara_fallback()
+    # The table is day-grain, so its tolerance is days, not minutes —
+    # and that fact belongs on the dataset, next to the cadence that
+    # explains it, not as a 2-day literal in a reader.
     if rows and samsara_fallback is not None and _rows_are_stale(
-            rows, 2 * 24 * 60.0, "source_ts", "day"):
+            rows, sla_minutes("drivers.efficiency"), "source_ts", "day"):
         logger.warning(
-            "warehouse STALE (driver_efficiency newest day > 2d) for "
-            "acct=%d -- using live Samsara", account_id)
+            "warehouse STALE (driver_efficiency newest day > %.0f min) for "
+            "acct=%d -- using live Samsara",
+            sla_minutes("drivers.efficiency"), account_id)
         return await samsara_fallback()
     return rows
 

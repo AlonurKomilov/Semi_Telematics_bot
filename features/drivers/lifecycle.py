@@ -33,7 +33,13 @@ register_dataset(IngestDataset(
     # Windowed provider totals with no per-record world-time: the rows
     # are ageless by nature, so the watchdog judges this one on whether
     # it writes at all, not on how old it looks.
-    freshness_sla_min=240,
+    #
+    # Two days, because the table is DAY-grain: its newest row is
+    # yesterday's total on the best day the feed ever has, so anything
+    # under 24h would call a healthy feed stale on every read.  The
+    # reader facade used to carry this as a private 2-day literal while
+    # this line said 240 — one number here, read by ``sla_minutes``.
+    freshness_sla_min=2 * 24 * 60,
     label="Ingest per-driver daily efficiency",
 ))
 

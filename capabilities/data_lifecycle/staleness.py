@@ -19,6 +19,24 @@ Shared here (the data-lifecycle family) because every warehouse, every
 reader facade and the future ingest watchdog need the same answer —
 three private definitions of "fresh" is how the last three freshness
 bugs stayed invisible.
+
+THE NUMBER IS DECLARED ONCE, TOO
+--------------------------------
+"How old is too old" is answered by the dataset that produces the
+rows — ``IngestDataset.freshness_sla_min`` in the ingest registry —
+and by nothing else.  :func:`sla_minutes` is how a reader, a feature or
+a surface asks for it.
+
+Before it existed, one dataset carried FOUR answers.  Vehicle state:
+the registry said 15, the reader facade said 30 (with a comment
+claiming that matched the operator console — which reads the
+registry, so it did not), the ELD feature said 15 for hours of service
+where the registry said 30, and the dashboard's freshness dot fired at
+60 for everything.  So the watchdog paged an operator at 15 minutes
+while readers kept serving the same rows as current until 30, and a
+40-minute-old engine state — 25 minutes past its own SLA — drew no
+cue on screen.  Four numbers is not a policy; it is four places for
+the policy to drift, and it did.
 """
 
 from __future__ import annotations
@@ -64,6 +82,35 @@ def is_stale(source_ts: Any, sla_minutes: float,
     """
     age = data_age_minutes(source_ts, now=now)
     return True if age is None else age > sla_minutes
+
+
+def sla_minutes(dataset_key: str) -> float:
+    """The one tolerance for rows a dataset writes, in minutes.
+
+    Read from the ingest registry — the dataset declares it, next to
+    the cadence that makes it meaningful — so a reader falling back to
+    the live provider, the watchdog paging an operator, and a freshness
+    cue on a screen all fire on the SAME age.
+
+    An unknown key RAISES.  Returning a default here would turn a typo
+    into "this data is never stale", which is the silent failure this
+    whole module exists to end; a KeyError at first use is the loud one.
+
+    The import is deliberately inside the function: the ingest package
+    imports this module at load time (its watchdog and its router both
+    do), so importing it back at module level would be a cycle.
+    """
+    from capabilities.data_lifecycle.ingest import discover, get_dataset
+
+    discover()
+    ds = get_dataset(dataset_key)
+    if ds is None:
+        raise KeyError(
+            f"no ingest dataset {dataset_key!r} — the staleness SLA is "
+            "declared on the dataset that writes the rows, and this key "
+            "names none"
+        )
+    return float(ds.freshness_sla_min)
 
 
 def freshest(*timestamps: Any) -> str | None:
