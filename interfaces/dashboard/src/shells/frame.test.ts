@@ -394,15 +394,89 @@ describe('the frame holds nothing that floats', () => {
     expect(found, 'the persona selector is not among them').toContain('components/PersonaSelector.tsx');
   });
 
+  /**
+   * A `<Card>` IS A SURFACE AND NEVER SAYS SO.
+   *
+   * `cardVariants` starts `"surface surface-card border …"`, so the
+   * word arrives from inside the component and no call site writes it.
+   * The first version of this guard matched the word in a className and
+   * reported ZERO on the persona selector — the one file it was written
+   * for, whose menu is an `absolute` `<Card>`. It was green while the
+   * thing it guards sat two lines away, which is the same failure
+   * `glass.css` already records: `.surface-popover` was the first
+   * answer and did not reach the reported bug either.
+   *
+   * So the tag counts as well as the word. Its extent is found by
+   * walking braces and quotes rather than to the first `>`: a `<Card
+   * render={<ul />}>` carries a `>` inside an attribute, and every
+   * matcher in this repo that stopped there has been wrong about it
+   * once.
+   */
+  const cardClassNames = (src: string): string[] => {
+    const out: string[] = [];
+    for (const m of src.matchAll(/<Card\b/g)) {
+      let i = m.index! + 5, depth = 0, quote = '';
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (quote) { if (c === quote) quote = ''; continue; }
+        if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+        if (c === '{') depth++;
+        else if (c === '}') depth--;
+        else if (c === '>' && depth === 0) break;
+      }
+      const tag = src.slice(m.index!, i);
+      for (const c of tag.match(CLASSNAME) ?? []) out.push(c);
+    }
+    return out;
+  };
+
+  /**
+   * WHAT IS INSIDE A `<Dropdown>` IS NOT INSIDE THE FRAME.
+   *
+   * The primitive portals its panel to `<body>`, so a positioned
+   * surface among its children — the tier flyout hanging off a role
+   * row at `left-full` — is nobody's descendant at runtime whatever the
+   * source looks like. Computed rather than exempted by name: a list of
+   * blessed files stops being true the moment one of them changes, and
+   * the reason it was blessed is not written down anywhere the next
+   * edit will look.
+   */
+  const portalledSpans = (src: string): [number, number][] => {
+    const spans: [number, number][] = [];
+    for (const m of src.matchAll(/<Dropdown\b/g)) {
+      const end = src.indexOf('</Dropdown>', m.index!);
+      if (end !== -1) spans.push([m.index!, end]);
+    }
+    return spans;
+  };
+
   it('and none of them pins a surface inside it', () => {
     for (const rel of inhabitants()) {
-      for (const cls of read(rel).match(CLASSNAME) ?? []) {
-        if (!/\bsurface(?![\w-])/.test(cls)) continue;
+      const src = read(rel);
+      const spans = portalledSpans(src);
+      const inPortal = (cls: string) => {
+        const at = src.indexOf(cls);
+        return at !== -1 && spans.some(([a, b]) => at > a && at < b);
+      };
+      const surfaces = [
+        ...(src.match(CLASSNAME) ?? []).filter((c) => /\bsurface(?![\w-])/.test(c)),
+        ...cardClassNames(src),
+      ].filter((c) => !inPortal(c));
+      for (const cls of surfaces) {
         expect(cls, `${rel}: a floating surface is rendered INSIDE the frame. Under glass `
           + 'the frame is a backdrop root, so this cannot occlude — it will show the page '
           + 'through itself. Portal it (see `Dropdown` in components/ui/context-menu.tsx).')
           .not.toMatch(/\b(absolute|fixed|sticky)\b/);
       }
     }
+  });
+
+  it('and the tag scanner finds a Card that never says surface', () => {
+    // The control on the scanner itself, with the exact shape that
+    // defeated the first version: the `>` inside `render={<ul />}`.
+    const fixture = '<Card padding="none" className="absolute left-0" render={<ul />} role="listbox">';
+    expect(cardClassNames(fixture)).toEqual(['className="absolute left-0"']);
+    expect(cardClassNames('<div className="absolute" />'), 'it matched something that is not a Card')
+      .toEqual([]);
   });
 });
