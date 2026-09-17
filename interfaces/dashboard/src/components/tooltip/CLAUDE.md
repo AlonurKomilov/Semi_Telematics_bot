@@ -10,7 +10,13 @@ learn-once field explanations — never native `title=`.
 
 - `<Tip label="…">` — plain hover label for the 90% case; the drop-in
   replacement for native `title=`. Hover + cursor-anchored.
-- `<Freshness ts={…}>` — data-age indicator (quiet-by-default dot).
+- `<Freshness ts={…} sla={…}>` — data-age indicator (quiet-by-default
+  dot). **The hour is a default, not the policy**: pass `sla` (minutes —
+  the row's `sla_min`, which is the dataset's declared
+  `freshness_sla_min`) and the dot fires at THAT age, the same age the
+  backend reader falls back and the watchdog pages. One number in three
+  places, never a fourth. Vehicle rows carry `sla_min` from `_simplify`;
+  a value without a declared tolerance keeps the hour.
 - `<InfoTip>` — learn-once field explanation behind a muted ⓘ.
 
 One `TooltipProvider` is mounted in `main.tsx` — never add per-instance
