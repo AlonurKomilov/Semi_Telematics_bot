@@ -191,7 +191,7 @@ describe('a pane that ends in only some places', () => {
   const mid = { x: RESOLUTION.w >> 1, y: RESOLUTION.h >> 1 };
 
   it('bends toward the stretch that is an edge, and not the other way', () => {
-    const right: OpenSpan[] = [{ side: 'right', from: 0, to: H }];
+    const right: OpenSpan[] = [{ side: 'right', from: 0, to: 1 }];
     const m = bevelMap(W, H, 0, BEVEL, right);
     expect(at(m, RESOLUTION.w - 1, mid.y).x, 'the open side stopped bending').toBeLessThan(-40);
     expect(at(m, 0, mid.y).x, 'the sealed side bends anyway').toBe(0);
@@ -200,13 +200,29 @@ describe('a pane that ends in only some places', () => {
   it('and along a side, only within the stretch that is open', () => {
     // The rail: the header covers the top of its right side, the page
     // faces the rest. The top must be still and the bottom must bend.
-    const partial: OpenSpan[] = [{ side: 'right', from: H / 2, to: H }];
+    const partial: OpenSpan[] = [{ side: 'right', from: 0.5, to: 1 }];
     const m = bevelMap(W, H, 0, BEVEL, partial);
     const outer = RESOLUTION.w - 1;
     expect(Math.abs(at(m, outer, 1).x), 'it bends where the neighbour covers it')
       .toBeLessThan(6);
     expect(at(m, outer, RESOLUTION.h - 2).x, 'it stopped bending where it faces the page')
       .toBeLessThan(-40);
+  });
+
+  it('and a full side is full however the map was rounded', () => {
+    // THE BUG THE ID GAVE AWAY. A filter is drawn for a size rounded UP
+    // to the next 24px so similar panes share one, and spans measured
+    // in PIXELS then lived in a different coordinate system from the
+    // map that used them: a full-width top read as `0-968` on a map
+    // drawn 984 wide left the last sixteen pixels sealed, at the very
+    // corner where it shows most.
+    //
+    // A fraction means the same thing in both. Drawn for a width the
+    // span never saw, the far end still has to bend.
+    const full: OpenSpan[] = [{ side: 'top', from: 0, to: 1 }];
+    const m = bevelMap(984, 720, 0, BEVEL, full);
+    for (const mx of [0, RESOLUTION.w - 1])
+      expect(at(m, mx, 0).y, `the top stops bending at column ${mx}`).toBeGreaterThan(40);
   });
 
   it('and not at all when nothing about it is an edge', () => {

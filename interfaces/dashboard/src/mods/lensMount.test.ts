@@ -55,13 +55,13 @@ describe('bucketing', () => {
     // The point of bucketing: a list that grows a scrollbar changes its
     // pane by a few px, and minting a filter per pixel mints one per
     // interaction.
-    const whole: OpenSpan[] = [{ side: 'top', from: 0, to: 300 }];
+    const whole: OpenSpan[] = [{ side: 'top', from: 0, to: 1 }];
     expect(lensFilterId(bucketed(313), bucketed(300), 12, whole))
       .toBe(lensFilterId(bucketed(320), bucketed(300), 12, whole));
   });
 
   it('but not panes of a different shape', () => {
-    const whole: OpenSpan[] = [{ side: 'top', from: 0, to: 300 }];
+    const whole: OpenSpan[] = [{ side: 'top', from: 0, to: 1 }];
     expect(lensFilterId(240, 300, 12, whole)).not.toBe(lensFilterId(240, 300, 28, whole));
     expect(lensFilterId(240, 300, 12, whole)).not.toBe(lensFilterId(480, 300, 12, whole));
   });
@@ -313,8 +313,8 @@ describe('installing', () => {
  */
 describe('a filter is named after where its pane ends', () => {
   it('and two panes that end differently do not share one', () => {
-    const a: OpenSpan[] = [{ side: 'right', from: 0, to: 800 }];
-    const b: OpenSpan[] = [{ side: 'right', from: 48, to: 800 }];
+    const a: OpenSpan[] = [{ side: 'right', from: 0, to: 1 }];
+    const b: OpenSpan[] = [{ side: 'right', from: 0.06, to: 1 }];
     expect(spanKey(a)).not.toBe(spanKey(b));
     expect(lensFilterId(240, 800, 0, a)).not.toBe(lensFilterId(240, 800, 0, b));
   });

@@ -37,8 +37,11 @@ describe('where a pane actually ends', () => {
     const header = box(224, 0, 1176, 48);
     const right = sideOf(spansFor(rail, [header], VIEW), 'right');
     expect(right.length, 'the whole side was sealed by a 48px neighbour').toBe(1);
-    expect(Math.round(right[0].from), 'the open stretch starts where the header ends').toBe(48);
-    expect(Math.round(right[0].to), 'the open stretch runs to the bottom').toBe(800);
+    // A FRACTION of the side, not pixels — see `OpenSpan`. The header
+    // covers 48 of the rail's 800, so the glass starts at 0.06 of the
+    // way down and runs to the end.
+    expect(right[0].from, 'the open stretch starts where the header ends').toBeCloseTo(48 / 800, 3);
+    expect(right[0].to, 'the open stretch runs to the bottom').toBeCloseTo(1, 6);
   });
 
   it('and drops a side that lies on the window itself', () => {

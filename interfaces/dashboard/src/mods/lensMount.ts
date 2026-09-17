@@ -58,8 +58,15 @@ export const bucketed = (px: number): number =>
  *  every pane of these dimensions shares it. */
 /** A stable name for one set of open stretches, so two panes of the
  *  same size that end in different places do not share a filter. */
+/** A stable name for one set of open stretches.
+ *
+ *  Two decimals, and that is the same trade `bucketed` makes on the
+ *  size: a hundredth of a side is under a pixel on anything small and a
+ *  few on a rail, which is below what the map itself resolves — so
+ *  panes that end in nearly the same places share a filter instead of
+ *  minting one apiece. */
 export const spanKey = (open: readonly OpenSpan[]): string =>
-  open.map((o) => `${o.side[0]}${Math.round(o.from)}-${Math.round(o.to)}`).join('_') || 'none';
+  open.map((o) => `${o.side[0]}${o.from.toFixed(2)}-${o.to.toFixed(2)}`).join('_') || 'none';
 
 export const lensFilterId = (
   w: number, h: number, r: number, open?: readonly OpenSpan[],

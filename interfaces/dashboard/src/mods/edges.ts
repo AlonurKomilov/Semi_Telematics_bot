@@ -50,8 +50,19 @@ export const SURFACES = '.surface';
  */
 export const SEAM = 1.5;
 
-/** A stretch of one side that is still an edge, in surface pixels from
- *  that side's start. A side can have none, one, or several. */
+/**
+ * A stretch of one side that is still an edge, as a FRACTION of that
+ * side — 0 at its start, 1 at its end. A side can have none, one, or
+ * several.
+ *
+ * Fractions rather than pixels, and the reason is the bucketing. A
+ * filter is drawn for a size ROUNDED UP to the nearest 24px so panes of
+ * a similar size can share one, and spans measured in pixels then land
+ * in a different coordinate system from the map that uses them: a
+ * full-width top side read as `0-968` on a map drawn 984 wide left the
+ * last sixteen pixels of it treated as sealed. A fraction means the
+ * same thing in both, and it survives any rounding either of them does.
+ */
 export interface OpenSpan {
   readonly side: 'top' | 'right' | 'bottom' | 'left';
   readonly from: number;
@@ -110,8 +121,9 @@ export function spansFor(
   }
 
   const add = (side: OpenSpan['side'], len: number, onWindow: boolean) => {
-    if (onWindow) return;
-    for (const [from, to] of remaining(len, closed[side])) out.push({ side, from, to });
+    if (onWindow || len <= 0) return;
+    for (const [from, to] of remaining(len, closed[side]))
+      out.push({ side, from: from / len, to: to / len });
   };
   add('left', rect.height, rect.left <= SEAM);
   add('right', rect.height, rect.right >= view.innerWidth - SEAM);

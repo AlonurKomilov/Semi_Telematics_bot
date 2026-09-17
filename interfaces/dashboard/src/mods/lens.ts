@@ -157,7 +157,13 @@ export function bevelMap(
         let best = Infinity;
         let bx = 0, by = 0;
         for (const span of open!) {
-          const lo = Math.min(span.from, span.to), hi = Math.max(span.from, span.to);
+          // The span is a FRACTION of its side; the side is however
+          // long this map was drawn for. Multiplying here is what keeps
+          // the two in one coordinate system whatever either of them
+          // was rounded to.
+          const along = (span.side === 'top' || span.side === 'bottom') ? w : h;
+          const a = span.from * along, b = span.to * along;
+          const lo = Math.min(a, b), hi = Math.max(a, b);
           let px: number, py: number;
           if (span.side === 'left') { px = 0; py = Math.min(Math.max(y, lo), hi); }
           else if (span.side === 'right') { px = w; py = Math.min(Math.max(y, lo), hi); }
