@@ -17,7 +17,8 @@ Tuning knobs (all overridable via environment):
 
 Why these defaults
 ------------------
-* ``--worker-class uvicorn.workers.UvicornWorker``: each worker hosts its own
+* ``interfaces.api.worker.APIWorker`` extends UvicornWorker with bounded
+  WebSocket input buffers; each worker hosts its own
   uvicorn loop so async endpoints stay async. Sync gunicorn workers would
   defeat the purpose.
 * ``preload_app = False``: per-worker imports cost a few hundred ms but avoid
@@ -46,7 +47,7 @@ bind = os.getenv("GUNICORN_BIND", f"0.0.0.0:{_DEFAULT_PORT}")
 _DEFAULT_WORKERS = max(2, multiprocessing.cpu_count() * 2 + 1)
 workers = int(os.getenv("GUNICORN_WORKERS", str(_DEFAULT_WORKERS)))
 
-worker_class = "uvicorn.workers.UvicornWorker"
+worker_class = "interfaces.api.worker.APIWorker"
 
 # Keep async loops independent across forks — see module docstring.
 preload_app = False

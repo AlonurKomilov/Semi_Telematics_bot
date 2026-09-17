@@ -96,7 +96,8 @@ async def run_api():
 
     api = create_api()
     api_port = int(os.environ.get("API_PORT", "8000"))
-    config = uvicorn.Config(api, host="0.0.0.0", port=api_port, log_level="info")
+    config = uvicorn.Config(api, host="0.0.0.0", port=api_port, log_level="info",
+                            ws_max_size=4096, ws_max_queue=4, ws_ping_interval=20, ws_ping_timeout=20)
     server = uvicorn.Server(config)
     await server.serve()
 

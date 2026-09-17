@@ -48,4 +48,14 @@ describe('Permissions role/tier preview', () => {
     fireEvent.click(screen.getByRole('button', { name: `Preview the dashboard as Owner — ${primary ? 'Co-owner' : 'Primary'}` }));
     expect(switchView).toHaveBeenLastCalledWith('owner', primary ? 'owner__co' : 'owner');
   });
+  it('does not describe a base-only Chat grant as something the Manager adds', () => {
+    mount();
+    const added = screen.getByText('Manager adds 1:').parentElement!;
+    expect(added.textContent).toContain('Send Invites');
+    expect(added.textContent).not.toContain('Chat');
+    expect(screen.getByText('Employee only 1:').parentElement!.textContent).toContain('Chat');
+    expect(screen.getByRole('button', { name: 'Chat — view: granted' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Manager' }));
+    expect(screen.getByRole('button', { name: 'Chat — view: no access' })).toBeDefined();
+  });
 });

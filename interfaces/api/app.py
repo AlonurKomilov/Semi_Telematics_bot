@@ -47,6 +47,7 @@ from features.scorecards import router as scorecards_routes
 from features.scorecards import config as scorecard_rules_routes
 from capabilities.platform.billing import router as billing_routes
 from capabilities.platform.billing.operator import router as billing_operator_routes
+from capabilities.chat import router as chat_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.object_storage import router as object_storage_routes
 # Feature-owned routers live with their feature (vertical slice):
@@ -465,9 +466,16 @@ async def _lifespan(app: FastAPI):
     queue_poller = asyncio.create_task(
         _obs.poll_arq_queue_depth(), name="arq-queue-depth-poller",
     )
+    from capabilities.chat.realtime import ChatRuntime, RedisSignals
+    from infra.cache import get_pubsub_client
+    from infra.platform import get_platform_db
+    chat_runtime = await ChatRuntime(get_platform_db(), RedisSignals(get_pubsub_client)).start()
+    app.state.chat_runtime = chat_runtime
     try:
         yield
     finally:
+        await chat_runtime.stop()
+        app.state.chat_runtime = None
         queue_poller.cancel()
         try:
             await queue_poller
@@ -602,6 +610,8 @@ def create_api() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
     # CORS — explicit allowed origins (wildcard + credentials is spec-violating)
+    app.state.chat_origins = frozenset(o for o in _ALLOWED_ORIGINS if o != '*')
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_ALLOWED_ORIGINS,
@@ -657,6 +667,7 @@ def create_api() -> FastAPI:
         from capabilities.alerting.triggers.router import router as alert_triggers_router
         app.include_router(alert_triggers_router, prefix=prefix)
         app.include_router(notifications_routes.router, prefix=prefix)
+        app.include_router(chat_routes.router, prefix=prefix)
         app.include_router(parking_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)
         app.include_router(scorecards_routes.router, prefix=prefix)

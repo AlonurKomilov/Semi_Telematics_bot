@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Truck, Bell, Bot, FileText, Mail, MapPin, BookOpen,
+  LayoutDashboard, Truck, Bell, Bot, MessageSquare, FileText, Mail, MapPin, BookOpen,
   Wrench, Map, Route, Trophy, AlertTriangle, TrendingUp,
   Camera, ParkingSquare, Fuel, DollarSign, Users, Shield, Building2,
   Link as LinkIcon, ClipboardList, CreditCard, GraduationCap,
@@ -22,6 +22,8 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Top
   { label: 'Overview',     path: '/',        icon: LayoutDashboard, group: 'Home',   permission: null,
     description: 'Status at a glance — adapts to your role', keywords: ['home','dashboard','start'] },
+  { label: 'Chat', path: '/chat', icon: MessageSquare, group: 'Home', permission: 'can_view_chat',
+    description: 'Account conversations, role groups and direct messages', keywords: ['team', 'chat', 'messages', 'groups'] },
   { label: 'AI Assistant', path: '/ai/chat', icon: Bot,             group: 'Home',   permission: 'can_view_ai_assistant',
     description: 'Ask AI about vehicles, faults, trips, and events', keywords: ['chat','assistant','gpt'] },
   { label: 'Notifications', path: '/notifications', icon: Bell, group: 'Home', permission: 'can_view_notifications',

@@ -141,6 +141,7 @@ class FeatureSet:
     can_view_mods: bool = True   # Mods — the personal look, sound and effects (a service: per person, per device). ON for everyone by default, the owner's call; withheld per role, and then every setting stays at its default and the panel, page and doors are closed.
     can_view_notifications: bool = True  # Notifications — the bell, the centre, the channels (Telegram, email, push) and their settings, and delivery itself (a service: per role; withheld, nothing reaches the person — mandatory security/billing notices excepted). ON for everyone by default; the field default carries every stored row that predates it.
     can_view_knowledge_base: bool = True  # Knowledge Base — tips & guides, a Shared feature (owner decision 2026-09-10); on for everyone by default
+    can_view_chat: bool = False          # Chat — explicit account/role pilot grant; no automatic rollout
     can_view_tours: bool = True           # Tours — the interactive walkthroughs, a service like Mods (owner decision 2026-09-10); on for everyone by default
 
     # Management
@@ -272,7 +273,15 @@ class FeatureSet:
 # owner self-grants per account the day it's ready.  The owner
 # blanket-invariant test exempts exactly this set; keep it tiny and
 # deliberate.
-DARK_FEATURE_FIELDS: frozenset[str] = frozenset({"can_view_truck_anatomy"})
+DARK_FEATURE_FIELDS: frozenset[str] = frozenset({
+    "can_view_truck_anatomy",
+    # Chat ships dark on purpose — an explicit account/role grant, no
+    # automatic rollout.  This is the contract for that (owner decision
+    # 2026-07-30); a bare ``= False`` default expressed the same intent
+    # and tripped the owner-has-everything guard, because it is not the
+    # mechanism.
+    "can_view_chat",
+})
 
 
 # ─── Legacy names: aliases over the canonical fields ─────────────
@@ -1541,6 +1550,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_view_mods": "mods (personal look, sound and effects)",
     "can_view_notifications": "notifications (the bell, channels and delivery)",
     "can_view_knowledge_base": "knowledge base (tips & guides)",
+    "can_view_chat": "chat",
     "can_view_tours": "tours (interactive walkthroughs)",
     "can_cost_reports": "cost reports (executive rollups)",
     "can_inspections_all": "inspections (review all)",

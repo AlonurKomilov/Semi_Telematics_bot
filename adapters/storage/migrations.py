@@ -9586,3 +9586,31 @@ async def migrate_live_map_flag_rename(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("212_chat_foundation")
+async def migrate_chat_foundation(conn) -> None:
+    """Communication data and transactional structural membership history."""
+    from .chat_schema import migrate_chat
+    await migrate_chat(conn)
+
+
+@_register("213_chat_message_api")
+async def migrate_chat_message_api(conn) -> None:
+    from .chat_schema import migrate_chat_message_api as migrate
+    await migrate(conn)
+
+
+@_register("214_chat_realtime")
+async def migrate_chat_realtime(conn) -> None:
+    from .chat_schema import migrate_chat_realtime as migrate
+    await migrate(conn)
+
+
+@_register("215_chat_rls")
+async def migrate_chat_rls(conn) -> None:
+    """tenant_isolation on the Chat tables a tenant path reads — the wall
+    every other tenant table already has.  The delivery queue stays out,
+    like the platform's other cross-account queues (chat_schema says why)."""
+    from .chat_schema import migrate_chat_rls as migrate
+    await migrate(conn)

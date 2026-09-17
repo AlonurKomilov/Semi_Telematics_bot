@@ -144,6 +144,7 @@ const Applications     = lazyWithReload(() => import('./features/applications/Ap
 const ApplyPreview     = lazyWithReload(() => import('./features/applications/ApplyPreview'));
 const CarrierDirectory = lazyWithReload(() => import('./features/carrier-directory/CarrierDirectory'));
 const CarrierProfile   = lazyWithReload(() => import('./features/carrier-directory/CarrierProfile'));
+const ChatPage         = lazyWithReload(() => import('./features/chat/Chat'));
 const AIChat           = lazyWithReload(() => import('./features/ai/Chat'));
 const AISummary        = lazyWithReload(() => import('./features/ai/Summary'));
 const NotFound         = lazy(() => import('./pages/NotFound'));
@@ -224,6 +225,7 @@ export default function AppRouter() {
             server-side, so a non-fleet persona (recruiter, HR, accounting)
             gets the assistant without inheriting fault/vehicle data.  The
             previous vehicle-centric guard bounced those personas to "/". */}
+        <Route path="chat" element={L(<P perm="can_view_chat"><ChatPage /></P>)} />
         <Route path="ai/chat" element={L(<P perm="can_view_ai_assistant"><AIChat /></P>)} />
         <Route path="ai/summary" element={L(<P perm="can_view_ai_assistant"><AISummary /></P>)} />
 

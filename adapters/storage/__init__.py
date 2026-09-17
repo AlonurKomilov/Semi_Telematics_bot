@@ -47,6 +47,10 @@ from .companies import CompaniesMixin
 from .users import UsersMixin
 from .invites import InvitesMixin
 from .telegram_chats import TelegramChatsMixin
+from .chat import ChatMixin
+from .chat_messages import ChatMessagesMixin
+from .chat_queries import ChatQueriesMixin
+from .chat_realtime import ChatRealtimeMixin
 from .forum_routing import ForumRoutingMixin
 from .account_persona_groups import AccountPersonaGroupsMixin
 from .bot_instances import BotInstancesMixin
@@ -139,6 +143,10 @@ class Database(
     UsersMixin,
     InvitesMixin,
     TelegramChatsMixin,
+    ChatMixin,
+    ChatMessagesMixin,
+    ChatQueriesMixin,
+    ChatRealtimeMixin,
     ForumRoutingMixin,
     AccountPersonaGroupsMixin,
     BotInstancesMixin,

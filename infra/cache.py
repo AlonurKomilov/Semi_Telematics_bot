@@ -737,3 +737,12 @@ async def _refresh_in_background(
         logger.debug("SWR refresh failed for %s: %s", key, e)
     finally:
         await release_lock(f"swr:{key}")
+
+
+def get_pubsub_client():
+    """Borrow the lifecycle-owned Redis/Sentinel client for optional pub/sub.
+
+    Callers own their PubSub subscriptions, never the shared client. Pub/sub
+    is lossy: consumers must reconcile against their durable source of truth.
+    """
+    return _pool if is_available() else None

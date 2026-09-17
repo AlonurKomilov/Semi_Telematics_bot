@@ -69,6 +69,7 @@ export interface Permissions {
   can_view_mods: boolean;
   can_view_notifications: boolean;
   can_view_knowledge_base: boolean;
+  can_view_chat: boolean;
   can_view_tours: boolean;
   can_manage_poi_layers: boolean;
   can_driver_pay_admin: boolean;

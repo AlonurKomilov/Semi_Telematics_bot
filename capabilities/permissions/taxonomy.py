@@ -239,6 +239,10 @@ TAXONOMY: dict[str, Verdict] = {
     "can_view_mods":      Verdict(V, "can_view_mods"),
     "can_view_notifications": Verdict(V, "can_view_notifications"),
     "can_view_knowledge_base": Verdict(V, "can_view_knowledge_base"),
+    "can_view_chat":          Verdict(
+        V, "can_view_chat",
+        note="DARK — seeded to nobody, the owner included, until granted in the matrix; see roles.DARK_FEATURE_FIELDS",
+    ),
     "can_view_tours":         Verdict(V, "can_view_tours"),
     "can_digest":         Verdict(V, "can_view_reports"),
     "can_alerts_all":     Verdict(V, "can_view_alerts"),

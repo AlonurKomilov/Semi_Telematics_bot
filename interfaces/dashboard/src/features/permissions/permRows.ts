@@ -91,6 +91,7 @@ export const SERVICE_ROW_KEYS: Record<string, string> = {
   mods: 'can_view_mods',
   notifications: 'can_view_notifications',
   tours: 'can_view_tours',
+  chat: 'can_view_chat',
 };
 
 export const PERM_GROUPS: PermGroup[] = [
@@ -110,6 +111,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_view_reports', kind: 'feature', label: 'Reports', description: 'The hub and its scheduled-report subscription; which tabs appear follows the role’s features' },
       { key: 'can_view_notifications', kind: 'feature', label: 'Notifications', description: 'The bell, the notification centre, the channels (Telegram, email, push) and their settings, and delivery itself. Without it nothing reaches the person — except mandatory security and billing notices' },
       { key: 'can_view_mods', kind: 'feature', label: 'Mods', description: 'The personal look — colour, corners, sound, effects, wallpaper. Per person, per device; without it every setting stays at its default and the panel, page and doors are closed' },
+      { key: 'can_view_chat', kind: 'feature', label: 'Chat', description: 'Account and role groups, private conversations and group creation. Group owners choose their admins and settings.' },
       { key: 'can_view_tours', kind: 'feature', label: 'Tours', description: 'The interactive walkthroughs — the beacons on pages and the Tours library. Each tour still needs the feature it walks through; without this grant no tour is offered' },
     ],
   },
@@ -427,6 +429,7 @@ export const DRIVER_RECORDS: SimpleFlag[] = [
 // The channels a driver holds — the same service rows the staff matrix
 // carries, read at the driver's width (the inbox: their trucks).
 export const DRIVER_SERVICES: SimpleFlag[] = [
+  { kind: 'feature', key: 'can_view_chat', label: 'Chat', description: 'Account and role groups and private conversations on the responsive web dashboard.' },
   { kind: 'feature', key: 'can_view_alerts',       label: 'Alerts',       description: 'The inbox for their trucks (bot + mini app)' },
   { kind: 'feature', key: 'can_view_ai_assistant', label: 'AI Assistant', description: 'Chat about their own truck (bot + mini app)' },
   { kind: 'feature', key: 'can_view_reports',      label: 'Reports',      description: 'Scheduled reports for their truck (bot)' },

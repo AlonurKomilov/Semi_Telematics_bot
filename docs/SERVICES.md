@@ -1,24 +1,23 @@
-# System Services — the channels
+# Customer services — channels and communication
 
-Decided 2026-06-22 (the "Option C" pass), revised 2026-09-06. This is the
-SSOT for the four **services** — **Alerts, the AI assistant, Reports,
-and Mods**. They are **not features**: a service owns no data of its own;
-it is a *channel* through which the role's features flow. Since 2026-09-06 a
-service is **granted per role** like a feature (one View row each in the
-matrix — `can_view_alerts`, `can_view_ai_assistant`, `can_view_reports`,
-`can_view_mods`), so
-an owner can withhold a channel from a role (a future broker role denied AI).
-What flows *through* a granted channel is still decided by the role's
-**feature** grants. For the toggleable feature taxonomy, see
-[`FEATURES.md`](FEATURES.md).
+Decided 2026-06-22, revised 2026-09-16. This is the SSOT for customer
+**services**: Alerts, the AI assistant, Reports, Mods, Notifications, Tours
+and Chat. A service is a reusable customer capability, granted per
+role with one View row in the Permissions matrix. Aggregating channels
+consume feature contributions; communication services may own their own
+communication data. Chat owns conversations, messages and group settings,
+while Team Management remains authoritative for employees and account roles.
+
+These customer services are distinct from operator-only `system/` services.
+For the feature taxonomy, see [`FEATURES.md`](FEATURES.md).
 
 ## Service vs feature — two different architectures
 
-| | Feature ([`FEATURES.md`](FEATURES.md)) | System service (this doc) |
+| | Feature ([`FEATURES.md`](FEATURES.md)) | Customer service (this doc) |
 |---|---|---|
-| **Unit** | a `features/<x>/` leaf surface | a *hub* that aggregates contributions from many features |
-| **Access** | owner-toggled per role (the Permissions page) | owner-toggled per role too (one View row: the channel) — content still follows the features |
-| **Direction** | owns its own data + surface | consumes `alert.py` / `report.py` / `ai_tool.py` contributions **from** features |
+| **Unit** | a `features/<x>/` leaf surface | a reusable channel or communication capability in `capabilities/<x>/` |
+| **Access** | owner-toggled per role (the Permissions page) | owner-toggled per role too (one View row); content also follows feature or resource access |
+| **Direction** | owns its own data + surface | aggregators consume feature contributions; Chat owns communication data and consumes identity/permission authorities |
 | **Reader question** | "what may role X open?" | "what infra is always running, and how does content flow into it?" |
 
 A service's access is a **stored grant** like any feature's — one View row
@@ -36,7 +35,7 @@ route + nav registry. A service carries **no `tier`** — the type makes that
 impossible (`CatalogEntry`'s service arm declares `tier?: never`), because a
 value inside the tier union would claim services sit on an axis they don't.
 
-## The six services
+## The seven services
 
 ### 🔔 Alerts
 - **Surface**: the Alerts inbox (dashboard) · bot `/alerts` · *My Notifications*.
@@ -128,14 +127,41 @@ value inside the tier union would claim services sit on an axis they don't.
   Nothing account-wide flows through it: no config verb, no company theme.
 - **Content gate**: none — there is nothing role-specific inside it.
 
+### Chat
+- **Home**: [`capabilities/chat/`](../capabilities/chat/), SQL in
+  [`adapters/storage/chat.py`](../adapters/storage/chat.py).
+- **Access**: `can_view_chat`, default **off for every role**, including owner
+  and driver; existing permission rows without the key stay off. The plan
+  mask applies through the service registry. No automatic pilot grants.
+- **Content gate**: active same-account identity, effective Chat grant,
+  current group audience or DM pair, and the membership history boundary.
+  Group owner/admin grants never bypass these gates. Account ownership does
+  not reveal another employee's direct conversations.
+- **Owned data**: account/role groups, direct pairs, messages, local admin
+  grants, history intervals and personal state. Team roles are not copied
+  into a second employee authority. Group settings belong to Manage group;
+  account policies will integrate with Config in P5.
+- **Entry points**: Chat in the sidebar and the topbar speech-bubble icon
+  beside AI, both opening `/chat`. Both use the catalog's `can_view_chat`
+  grant through the active-view permission resolver. Permissions preview
+  carries the exact selected server row (including Owner Primary/Co-owner
+  and Employee/Manager) between subdomains and within the same role.
+  “My dashboard” restores the real `/user/me` grants. Missing preview rows
+  offer retry; Chat content always uses the real authenticated member.
+- **Status**: P1–P4 implementation is available in the working tree: durable
+  HTTP APIs, realtime/outbox and the responsive dashboard. P5 notifications
+  and lifecycle, production acceptance and the unresolved P3 performance
+  release gate remain.
+
 ## The service verbs
 
 ```
 can_view_alerts · can_view_ai_assistant · can_view_reports · can_view_mods
+can_view_notifications · can_view_tours · can_view_chat
 ```
 
-Plain grants, stored like any feature's, seeded for every role (the inbox
-only where the role sees vehicles). Their legacy names — `can_alerts_all`,
+Plain grants, stored like any feature's. Existing channels are seeded on
+(the inbox follows vehicle visibility); Chat is deliberately seeded off. Their legacy names — `can_alerts_all`,
 `can_alerts_vehicle`, `can_ai_chat`, `can_digest` — are alias properties for
 one release and die with the alias layer.
 
@@ -143,8 +169,9 @@ one release and die with the alias layer.
 
 **"Hub"** is an *implementation* pattern — a registry + shared core that
 collects one contribution from every feature: **Alerting, Reporting, AI,
-Scorecards** (the four true `capabilities/`). **"System service"** is an
-*access* model — always-on, derived.
+Scorecards**. A customer **service** is an *access* model — a stored role
+grant, combined with resource authorization. Chat is a service without being
+a feature-contribution hub.
 
 Three of the four hubs became services. **Scorecards did NOT**: it's a
 hub by implementation but remains a **gated feature** (`can_scorecard_all` /
@@ -163,7 +190,7 @@ not here. Hub describes *how it's built*; service describes *how it's reached*.
 
 ## Why this is split from FEATURES.md
 The two docs answer different questions and never duplicate a fact: FEATURES.md
-owns the *toggleable feature taxonomy*; this doc owns the *always-on service
+owns the *toggleable feature taxonomy*; this doc owns the *customer service
 architecture*. Each fact has exactly one home. FEATURES.md's tier axis
 (Personal / Shared / Role / Administration) deliberately has no member for
 services — it cross-references here instead, so there is nothing to drift.

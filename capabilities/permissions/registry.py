@@ -98,6 +98,8 @@ def _e(id, kind="feature", tier=None, modules=(), opens=(), flags=None, nav=True
 ENTRIES: tuple[Entry, ...] = (
     # ── core — always on ─────────────────────────────────────────────
     _e("overview", tier="shared", modules=["core"], note="an aggregator page; gated by what it shows"),
+    _e("chat", kind="service", modules=["core"], opens=["can_view_chat"],
+       note="account communication; default off, group ownership and audience are local Chat rules"),
     _e("ai_assistant", kind="service", modules=["core"], opens=["can_view_ai_assistant"]),
     _e("notifications", kind="service", modules=["core"], opens=["can_view_notifications"],
        note="the delivery channel: the bell, the centre, Telegram/email/push and their settings; "

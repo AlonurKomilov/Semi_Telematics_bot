@@ -54,6 +54,7 @@ import {
   Link,
   Map as MapIcon,
   MapPin,
+  MessageSquare,
   Package,
   Palette,
   ParkingSquare,
@@ -154,7 +155,7 @@ const P_REPORTS = ['can_view_reports'];
  *  a legacy pair.  Guards that ask "is this a real flag" must accept
  *  these too — grown one family at a time as enforcement migrates. */
 export const CANONICAL_WIRE_FLAGS: readonly string[] = [
-  'can_view_notifications', 'can_view_knowledge_base', 'can_view_tours',
+  'can_view_chat', 'can_view_notifications', 'can_view_knowledge_base', 'can_view_tours',
   'can_manage_maintenance', 'can_manage_work_orders',
   'can_manage_inspections', 'can_manage_geofence',
   'can_view_driver_pay', 'can_view_coaching', 'can_view_driver_docs',
@@ -184,6 +185,8 @@ export const PERSON_VIEW_VERBS: readonly string[] = [
 export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── CORE (always on) ──────────────────────────────────────────────
   { id: 'overview',       labelKey: 'nav.overview',       path: '/',          icon: LayoutDashboard, modules: ['core'], tier: 'shared', permission: null, navGroup: 'main' },
+  // Chat navigation follows the shared grant; content always uses the real session actor.
+  { id: 'chat', labelKey: 'nav.chat', path: '/chat', icon: MessageSquare, modules: ['core'], kind: 'service', permission: ['can_view_chat'], navGroup: 'main' },
   // Route-only: the assistant launches from the topbar icon (beside the
   // avatar) + ⌘/Ctrl-J, not a sidebar row — navHidden keeps the route guard
   // and can_view_ai_assistant wiring while dropping the nav entry.

@@ -66,9 +66,9 @@ def test_every_field_has_exactly_one_home():
 
 
 def test_kinds_and_tiers():
-    # Four since 2026-09-08: Mods joined as a service — one View row so a
-    # role can be withheld the personal look like any channel.
-    assert set(SERVICES) == {"ai_assistant", "alerts", "reports", "mods", "notifications", "tours"}
+    # Seven since 2026-09-16: Chat joined as a service — one View row, ships
+    # dark (DARK_FEATURE_FIELDS), and its groups and audiences are its own.
+    assert set(SERVICES) == {"ai_assistant", "alerts", "reports", "mods", "notifications", "tours", "chat"}
     for e in SERVICES.values():
         assert e.tier is None, e.id
     for e in FEATURES.values():
