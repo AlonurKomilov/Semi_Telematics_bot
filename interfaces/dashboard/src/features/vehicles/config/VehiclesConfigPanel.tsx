@@ -119,6 +119,14 @@ export default function VehiclesConfigPanel() {
   // Providers only — the rule is not a device, and one device cannot
   // disagree with itself.
   const stateProviders = (data.state?.sources ?? []).filter((s) => s !== '__newest__');
+  // What "most recent" costs, said under the row that chose it: the
+  // reading may switch devices from one tick to the next, and for the
+  // fix that is a marker that jumps.  An owner who picked it on purpose
+  // loses nothing; one who expected a blend learns before the map does.
+  const newestNote = (group: string) =>
+    group === 'location'
+      ? 'A truck both devices report may jump between their fixes as each one reports.'
+      : 'This reading may switch between devices from one update to the next.';
 
   // No card wrapper and no heading: FeatureConfigGear supplies the
   // dialog, the title and the permission wall. This used to be a card in
@@ -253,22 +261,26 @@ export default function VehiclesConfigPanel() {
                     label: data.state!.source_labels[s] ?? SOURCE_LABEL[s] ?? s,
                   }));
                   return (
-                    <li
-                      key={f.key}
-                      className="flex items-start justify-between gap-3 py-2 text-sm"
-                    >
-                      <span className="text-foreground">{f.label}</span>
-                      <Select
-                        value={f.primary}
-                        disabled={mutation.isPending}
-                        onValueChange={(v) => setStateReading(f.key, v)}
-                        items={items}
-                      >
-                        <SelectTrigger aria-label={`Winning source for ${f.label}`}><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {items.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                    <li key={f.key} className="py-2 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-foreground">{f.label}</span>
+                        <Select
+                          value={f.primary}
+                          disabled={mutation.isPending}
+                          onValueChange={(v) => setStateReading(f.key, v)}
+                          items={items}
+                        >
+                          <SelectTrigger aria-label={`Winning source for ${f.label}`}><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {items.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {f.primary === '__newest__' && (
+                        <p className="mt-1 text-xs text-muted-foreground max-w-prose">
+                          {newestNote(f.key)}
+                        </p>
+                      )}
                     </li>
                   );
                 })}
