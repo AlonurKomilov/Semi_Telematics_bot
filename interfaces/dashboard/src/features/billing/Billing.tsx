@@ -8,7 +8,6 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CalendarDays, Check, CreditCard, ExternalLink, FileText, FlaskConical, Gift, Lightbulb, Users, Download } from '../../lib/icons';
 import { apiFetch, apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
-import { usePermissions } from '../../hooks/usePermissions';
 import { formatDay } from '../../utils/datetime';
 import { CardSkeleton, PageHeader, SectionHeader } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
@@ -86,6 +85,8 @@ interface BillingSummary {
   // enforcement-middleware grace-period check.
   past_due_since: string | null;
   billing_email: string | null;
+  /** The server's own answer — the same rule that gates the change routes. */
+  can_edit_contact?: boolean;
   trial_ends_at: string | null;
   current_period_start: string | null;
   current_period_end: string | null;
@@ -993,7 +994,6 @@ export default function Billing() {
   // can_manage_billing reads the bills but does not get to redirect
   // where they are sent.  The API enforces the same; this only keeps
   // the control from appearing where it would be refused.
-  const { role } = usePermissions();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [plans, setPlans] = useState<CustomerPlan[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot[]>([]);
@@ -1194,7 +1194,7 @@ export default function Billing() {
       {summary && (
         <SummaryCard
           summary={summary}
-          canEditContact={role === 'owner'}
+          canEditContact={!!summary.can_edit_contact}
           onContactChanged={load}
         />
       )}
