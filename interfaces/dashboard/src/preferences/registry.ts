@@ -493,7 +493,8 @@ export const MOD_ICONS_LIST: ModIcons[] = [...MOD_ICONS];
  * whole page rather than a flash of the wrong shade.
  */
 export const PREPAINT_AXES = [
-  'mode', 'accent', 'radius', 'material', 'motion', 'font', 'wallpaper', 'wallpaperPage', 'cursor',
+  'mode', 'accent', 'radius', 'material', 'motion', 'font',
+  'wallpaper', 'wallpaperPage', 'wallpaperDesk', 'cursor',
   'shader', 'color',
 ] as const;
 
@@ -1363,6 +1364,12 @@ export const DEFS = {
   }),
   // device: a preview affordance for THIS session's window, and it must
   // not follow the operator to a machine where they expect their own view.
+  'roleView.permissionKey': def<string>({
+    default: '',
+    scope: 'device',
+    sanitize: (v) => (typeof v === 'string' ? v : undefined),
+    note: 'Exact permission row being previewed; empty restores own-role access.',
+  }),
   'roleView.previewAsManager': def<boolean>({
     // true — an Owner previewing a role should see the FULL experience
     // (matches RoleViewContext's pre-service default, where an absent

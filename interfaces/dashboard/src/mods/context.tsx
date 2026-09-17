@@ -83,6 +83,10 @@ export function applyTheme(theme: Theme) {
   // agree with: a typeface changes the width of every word, so getting
   // it a frame late reflows the page rather than recolouring it.
   root.dataset.font = theme.font;
+  // The UNDERLAY's own pattern, on its own plane, under everything the
+  // other two paint. Stamped raw — it is a pack id already, never the
+  // sentinel, because the sentinel is a region deferring to this.
+  root.dataset.wallpaperDesk = theme.wallpaperDesk;
   // RESOLVED HERE, so `desk` never reaches the DOM. Every stylesheet
   // and every guard keeps seeing a real pack id, and no pack file
   // learns a third selector — the desk is a question about which

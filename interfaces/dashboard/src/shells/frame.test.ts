@@ -167,12 +167,25 @@ describe('a material may not switch the wallpaper off', () => {
       .toBe(true);
   });
 
-  it('and still paints the chrome when there is no pattern', () => {
-    // The control. Without it "always transparent" passes the test
-    // above, and the rail would simply disappear.
+  it('and solid still paints the chrome, which is the difference', () => {
+    // THE CONTROL MOVED, because what it was controlling changed. It
+    // used to say a glass pane stays opaque when its own region has no
+    // pattern — a pane deciding, on the material's behalf, that there
+    // was nothing behind worth letting through. There is now: the
+    // UNDERLAY, which is why that plane was given a colour of its own.
+    // So glass transmits either way, and the thing that must still be
+    // true is that SOLID does not. Without this, "always transparent"
+    // passes whatever the material says and the rail disappears under
+    // both.
     expect(transparent(mount('glass', 'none')),
-      'the chrome went transparent with no pattern behind it — the rail has vanished')
-      .toBe(false);
+      'glass stopped transmitting when its own region had no pattern').toBe(true);
+    expect(transparent(mount('solid', 'none')),
+      'solid went see-through — the rail has vanished').toBe(false);
+    // NOT asserted: solid under a pattern. It steps aside there too,
+    // and that is not transmission — the frame's board is simply
+    // painted one level down, on the plane, so the pane has to get out
+    // of its way. The material's claim is about what happens when there
+    // is NO board, which is the line above.
   });
 });
 

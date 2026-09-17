@@ -5,6 +5,7 @@
      so the wash sits UNDER the panes and OVER the paint — `z-index: -1`
      on the pseudo-element would otherwise put it behind the ground. */
   :root[data-wallpaper="night-haul"] .chrome-ground,
+  :root[data-wallpaper-desk="night-haul"] .desk-ground,
   :root[data-wallpaper-page="night-haul"] .page-ground {
     background-color: var(--ground);
     /* NO `position` HERE, deliberately.
@@ -28,6 +29,7 @@
      Held low on purpose: text sits in the upper two thirds of a pane,
      and the strongest stop is the one furthest from it. */
   :root[data-wallpaper="night-haul"] .chrome-ground::before,
+  :root[data-wallpaper-desk="night-haul"] .desk-ground::before,
   :root[data-wallpaper-page="night-haul"] .page-ground::before {
     content: '';
     position: absolute;

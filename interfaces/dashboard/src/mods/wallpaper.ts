@@ -120,6 +120,14 @@ export const resolveWallpaper = (value: string, desk: string): string =>
  *  its own attribute, so one pack file serves either place. */
 export const WALLPAPER_PAGE_ATTR = 'data-wallpaper-page';
 
+/** The attribute the UNDERLAY's pattern is keyed on.
+ *
+ *  It reaches the DOM and `desk` does not, which is not a contradiction:
+ *  the sentinel is a REGION saying "wear whatever the underlay wears",
+ *  and it is resolved away before stamping. This is the underlay's own
+ *  pattern, painted on its own plane, and something has to select it. */
+export const WALLPAPER_DESK_ATTR = 'data-wallpaper-desk';
+
 /** The attribute a live pattern's animation is gated on. A live pack's
  *  keyframes may play under this and nowhere else — `wallpaper.test.ts`
  *  holds it — so a pattern that can move never moves unasked. */

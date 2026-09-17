@@ -525,11 +525,18 @@
      pattern on it is `background-color: transparent`"), which is how it
      survived — the rule the reasoning depended on had never been
      written down, so nothing was there to be wrong.
-     (0,5,0), and it names both axes because it is the composition of
-     both: glass, AND a pattern to reveal. `frame.test.ts` measures the
-     resolved colour rather than reading this selector, because the next
-     rung that out-specifies it would be just as invisible. */
-  :root[data-material="glass"]:not([data-wallpaper="none"]) .surface.chrome-pane {
+     IT NO LONGER ASKS WHETHER THERE IS A PATTERN, and that is the
+     material saying what it is. Glass transmits; whether anything
+     interesting is behind it is not the pane's business. So a frame
+     with a board of its own shows that board, and a frame with none
+     shows the UNDERLAY it is laid on — which is the whole reason the
+     bottom plane was given a colour. A pane that stayed opaque
+     whenever its own region had no pattern was a pane deciding, on the
+     material's behalf, that there was nothing worth letting through.
+     `frame.test.ts` measures the resolved colour rather than reading
+     this selector, because the next rung that out-specifies it would be
+     just as invisible. */
+  :root[data-material="glass"] .surface.chrome-pane {
     background-color: transparent;
   }
 }

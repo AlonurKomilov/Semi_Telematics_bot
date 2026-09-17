@@ -5,6 +5,7 @@
      paint: `z-index: -1` on the pseudo-element would otherwise put it
      behind the ground's own background. */
   :root[data-wallpaper="mesh"] .chrome-ground,
+  :root[data-wallpaper-desk="mesh"] .desk-ground,
   :root[data-wallpaper-page="mesh"] .page-ground {
     background-color: var(--ground);
     /* NO `position` HERE, deliberately.
@@ -25,6 +26,7 @@
      live paint the same stops and the contrast gate measures them once,
      here. Larger than the ground by the drift, so no edge ever shows. */
   :root[data-wallpaper="mesh"] .chrome-ground::before,
+  :root[data-wallpaper-desk="mesh"] .desk-ground::before,
   :root[data-wallpaper-page="mesh"] .page-ground::before {
     content: '';
     position: absolute;
@@ -41,6 +43,7 @@
      compositor. Slower than Plasma and along the other diagonal — two
      patterns that drift identically are one pattern with two names. */
   :root[data-wallpaper="mesh"][data-wallpaper-live] .chrome-ground::before,
+  :root[data-wallpaper-desk="mesh"][data-wallpaper-live] .desk-ground::before,
   :root[data-wallpaper-page="mesh"][data-wallpaper-live] .page-ground::before {
     will-change: transform;
     animation: mesh-drift calc(140s * var(--motion-scale, 1)) ease-in-out infinite alternate;
@@ -53,6 +56,7 @@
      still. */
   @media (prefers-reduced-motion: reduce) {
     :root[data-wallpaper="mesh"][data-wallpaper-live] .chrome-ground::before,
+    :root[data-wallpaper-desk="mesh"][data-wallpaper-live] .desk-ground::before,
     :root[data-wallpaper-page="mesh"][data-wallpaper-live] .page-ground::before {
       animation: none;
     }

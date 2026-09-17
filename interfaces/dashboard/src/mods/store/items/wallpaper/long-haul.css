@@ -7,6 +7,7 @@
    strength and twice as soft. The gate measures both either way. */
 @media screen {
   :root[data-wallpaper="long-haul"] .chrome-ground,
+  :root[data-wallpaper-desk="long-haul"] .desk-ground,
   :root[data-wallpaper-page="long-haul"] .page-ground {
     background-color: var(--ground);
     /* NO `position` HERE, deliberately.
@@ -24,6 +25,7 @@
     isolation: isolate;
   }
   :root[data-wallpaper="long-haul"] .chrome-ground::before,
+  :root[data-wallpaper-desk="long-haul"] .desk-ground::before,
   :root[data-wallpaper-page="long-haul"] .page-ground::before {
     content: '';
     position: absolute;

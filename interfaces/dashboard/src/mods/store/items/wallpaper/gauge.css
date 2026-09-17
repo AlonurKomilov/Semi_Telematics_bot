@@ -23,6 +23,7 @@
    Screen-only, like every pattern here: paper gets the print reset. */
 @media screen {
   :root[data-wallpaper="gauge"] .chrome-ground,
+  :root[data-wallpaper-desk="gauge"] .desk-ground,
   :root[data-wallpaper-page="gauge"] .page-ground {
     background-color: var(--ground);
     background-image:
