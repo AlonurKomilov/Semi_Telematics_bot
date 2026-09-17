@@ -4,12 +4,13 @@
  * Shell only. Everything inside it is `ModControls compact`, which is
  * the same component the profile card and the /mods page render.
  */
-import { useState, useRef, useEffect, useLayoutEffect, type CSSProperties } from 'react';
+import { useState, useRef, useLayoutEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Palette } from '../../lib/icons';
 import { Button } from '../../components/ui/button';
 import { useMods } from '../context';
 import { ModControls } from './ModControls';
+import { Dropdown } from '../../components/ui/context-menu';
 
 /**
  * The top-bar entry point: a button, a popover, and the compact controls.
@@ -42,44 +43,37 @@ export function ModPanel() {
     window.addEventListener('resize', fit);
     return () => window.removeEventListener('resize', fit);
   }, [open]);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
+  // Click-outside and Escape were two `document` listeners here, and
+  // are the primitive's now — along with the thing they could not give:
+  // this panel is PORTALLED. It was an `absolute` box inside the
+  // topbar, and while it sat there the topbar could never be given a
+  // `backdrop-filter`: an ancestor carrying one becomes a backdrop
+  // root, so this panel's own filter would resolve against nothing and
+  // it would show the page straight through itself.
 
   return (
-    <div className="relative" ref={ref}>
-      {/* `mods.picker`, not the pre-existing `theme.toggle` ("Toggle
-          theme") — this opens a menu of three settings, it does not
-          flip one. */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        aria-label={t('mods.picker', 'Mods')}
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <Palette />
-      </Button>
-
-      {open && (
-        <div
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      className="w-56"
+      trigger={(
+        /* `mods.picker`, not the pre-existing `theme.toggle` ("Toggle
+           theme") — this opens a menu of three settings, it does not
+           flip one.
+           No `onClick` and no `aria-expanded` of its own: the trigger
+           owns both, and a second toggle would open the panel and close
+           it again in the same click. */
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label={t('mods.picker', 'Mods')}
+        >
+          <Palette />
+        </Button>
+      )}
+    >
+      <div
           // The picker holds its OWN size, like the /profile panel: it
           // lives in the `controls` region AND drives the global, so
           // without this the slider grows and slides under the pointer
@@ -100,11 +94,13 @@ export function ModPanel() {
           // Size slider and the door to the rest of the axes with it.
           // `overscroll-contain` keeps a scroll inside it from moving
           // whatever is behind.
-          className="absolute right-0 top-10 z-50 w-56 overflow-y-auto overscroll-contain surface surface-popover border border-border rounded-xl shadow-xl p-3 space-y-3"
+          // The chrome — surface, border, radius, shadow — belongs to
+          // the primitive now. What stays here is what this panel alone
+          // needs: its measured cap, its own size region, and a scroller.
+          className="overflow-y-auto overscroll-contain p-3 space-y-3"
         >
           <ModControls compact onNavigate={() => setOpen(false)} />
-        </div>
-      )}
-    </div>
+      </div>
+    </Dropdown>
   );
 }

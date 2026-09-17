@@ -378,8 +378,26 @@ describe('the frame holds nothing that floats', () => {
           .exec(src)?.[1];
         if (!imp) continue;
         const rel = imp.replace(/^@\//, '').replace(/^\.\.\//, '').replace(/^\.\//, host.includes('/') ? `${host.split('/')[0]}/` : '');
+        // A BARREL HIDES A COMPONENT FROM THIS SCAN, and one did.
+        // `ModPanel` arrives as `from '../mods'`, which is a directory:
+        // the resolver looked for `mods.tsx`, found nothing, and moved
+        // on — so the mods panel, an `absolute` popover living in the
+        // header, was never measured and the guard reported the frame
+        // clear. Third time in this file that a check has been green
+        // for the wrong reason, so the re-export is followed now.
+        const candidates = [rel + '.tsx', rel + '.ts', `${rel}/index.ts`, `${rel}/index.tsx`];
+        const file = candidates.find((c) => existsSync(join(SRC, c)));
+        if (!file) continue;
+        if (!/\/index\.tsx?$/.test(file)) { out.add(file); continue; }
+        // A barrel names no markup of its own — follow the line that
+        // re-exports this tag, one hop, which is as far as a barrel
+        // ever goes in this app.
+        const dir = file.replace(/\/index\.tsx?$/, '');
+        const via = new RegExp(`export\\s*\\{[^}]*\\b${tag}\\b[^}]*\\}\\s*from\\s*'\\.\\/([^']+)'`)
+          .exec(readFileSync(join(SRC, file), 'utf8'))?.[1];
+        if (!via) continue;
         for (const ext of ['.tsx', '.ts'])
-          if (existsSync(join(SRC, rel + ext))) out.add(rel + ext);
+          if (existsSync(join(SRC, `${dir}/${via}${ext}`))) out.add(`${dir}/${via}${ext}`);
       }
     }
     return [...out];
@@ -392,6 +410,9 @@ describe('the frame holds nothing that floats', () => {
       .toBeGreaterThan(5);
     expect(found, 'the account menu is not among them').toContain('components/AvatarMenu.tsx');
     expect(found, 'the persona selector is not among them').toContain('components/PersonaSelector.tsx');
+    // Reached only through the barrel — the case that was missed.
+    expect(found, 'a component behind a barrel import is not resolved')
+      .toContain('mods/panel/ModPanel.tsx');
   });
 
   /**

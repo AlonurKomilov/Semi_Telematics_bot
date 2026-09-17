@@ -443,11 +443,41 @@
      has nothing of its own to filter, and a backdrop filter on it
      creates a containing block for every menu in the product, which is
      the bug this whole file's frame rules exist to avoid. */
-  :root[data-material="glass"] .surface-opaque,
-  :root[data-material="glass"] .surface.chrome-pane {
+  :root[data-material="glass"] .surface-opaque {
     background-color: var(--surface-base, var(--card));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+
+  /* THE FRAME TAKES THE MATERIAL'S UNIFORM HALF, AND ONLY THAT.
+     One rule, five sides, and not a word declared per side — which is
+     what unifying the frame was for: the rail, the header and the three
+     gutters carry the same class, so a rule written for the frame
+     reaches all of it.
+     `saturate` qualifies because it does the same thing to every pixel
+     it covers. The LENS does not, and the reason is measured rather
+     than felt: the pack's bevel band is 30px, and the gutters are 8px.
+     Three of the five sides are THINNER THAN THE BAND — a gutter would
+     be displaced end to end, which is distortion, not a rim. Nor does
+     bending only each side's inner edge save it: an 8px gutter is
+     inside a 30px band whichever edge it bends, and choosing an edge
+     per side is five declarations, which is the thing this frame was
+     unified to stop needing.
+     Blur is uniform and still left out: the frame's own pattern sits on
+     the plane behind these panes, so blurring here softens the frame's
+     wallpaper while the page's stays sharp. It is one token away if
+     that turns out to be wanted.
+     AND THE FILTER IS ONLY SAFE BECAUSE NOTHING FLOATS IN HERE. An
+     element with a `backdrop-filter` becomes a backdrop root, so a menu
+     rendered inside one of these panes would stop occluding. That was
+     true of three menus — the persona list, the account menu and this
+     picker — and all three are portalled now. `shells/frame.test.ts`
+     is what keeps it true; without it this rule is the bug it used to
+     be forbidden for. */
+  :root[data-material="glass"] .surface.chrome-pane {
+    background-color: var(--surface-base, var(--card));
+    -webkit-backdrop-filter: saturate(var(--surface-saturate));
+    backdrop-filter: saturate(var(--surface-saturate));
   }
 
   /* OPAQUE GLASS IS STILL GLASS, and the rule above deliberately leaves

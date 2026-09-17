@@ -428,28 +428,49 @@ describe('the occlusion escape hatch', () => {
    * All three went wrong under Glass and were correct under Solid, and
    * this is the only property that differs between them there.
    */
-  it('and the three shell rails carry no backdrop filter', () => {
-    const selectors = /([^{}]*)\{[^}]*backdrop-filter:\s*none[^}]*\}/.exec(CODE)?.[1] ?? '';
-    expect(
-      selectors,
-      'the shell rails are frosted again. `backdrop-filter` on the sidebar, the '
-        + 'header or the content envelope makes each a containing block and a '
-        + 'stacking context for every menu that opens inside it — for a blur that '
-        + 'shows a transparent pane under a wallpaper and an opaque rail without one.',
-    ).toMatch(/\.surface\.chrome-pane/);
+  it('and the frame carries the material\'s uniform half and nothing else', () => {
+    // THIS RULE USED TO SAY THE OPPOSITE, and the reason it did has
+    // been removed rather than overruled. A `backdrop-filter` makes an
+    // element a backdrop root, so a menu opening inside one of these
+    // panes would stop occluding — and three did open inside them: the
+    // persona list, the account menu and the mods picker. All three are
+    // portalled now, and `shells/frame.test.ts` is what keeps them
+    // there. Without that guard this rule is the bug it was forbidden
+    // for, which is why the two are worth reading together.
+    //
+    // What the frame may take is the half of the material that does the
+    // same thing to every pixel it covers. The lens does not, and the
+    // numbers say so: the pack's band is 30px and three of the five
+    // sides are 8px gutters. A side thinner than the band is displaced
+    // end to end — distortion, not a rim — and bending only its inner
+    // edge changes nothing about that while costing a declaration per
+    // side, which is exactly what unifying the frame was meant to stop
+    // needing.
+    const rule = /:root\[data-material="glass"\]\s*\.surface\.chrome-pane\s*\{([^{}]*)\}/
+      .exec(CODE)?.[1] ?? '';
+    expect(rule, 'the frame has no rule of its own any more').not.toBe('');
 
-    // And in NO rule that gives it one. Being listed in the reset is
-    // not the same claim: the floating set now occludes by FLATTENING
-    // rather than by dropping the filter, and a rail swept into that
-    // set would still satisfy the line above while carrying a filter —
-    // which is the containing-block bug, not a cosmetic one. Caught by
-    // mutation: adding `.chrome-pane` to the flattening selector left
-    // every other assertion here green.
-    const filtered = [...CODE.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
-      .filter(([, , body]) => /backdrop-filter:\s*(?!none)\S/.test(body))
-      .map(([, sel]) => sel)
-      .filter((sel) => /\.chrome-pane(?![\w-])/.test(sel));
-    expect(filtered, 'a shell rail was given a backdrop filter of its own').toEqual([]);
+    const filter = /(?:^|[^-])backdrop-filter:\s*([^;]+);/.exec(rule)?.[1] ?? '';
+    expect(filter, 'the frame takes nothing from the material').toContain('saturate(');
+    // The two that are not uniform. A lens bends at an edge, and every
+    // edge here but one is a seam with another side of the same frame;
+    // a blur would soften the frame's own pattern, which sits on the
+    // plane behind these panes rather than through them.
+    expect(filter, 'the frame was given the lens — see the 30px band against an 8px gutter')
+      .not.toMatch(/--surface-lens/);
+    expect(filter, 'the frame was given a blur, which softens its own wallpaper')
+      .not.toMatch(/blur\(/);
+  });
+
+  it('and the call-site hatch still cancels the filter outright', () => {
+    // `.surface-opaque` is the one a call site takes when it KNOWS
+    // geometry cannot see its case. It shared a rule with the frame
+    // until the frame needed a filter; splitting them is what let the
+    // frame have one, so this checks the half that did not move.
+    const opaque = /:root\[data-material="glass"\]\s*\.surface-opaque\s*\{([^{}]*)\}/
+      .exec(CODE)?.[1] ?? '';
+    expect(opaque, 'the opaque hatch is gone').not.toBe('');
+    expect(opaque, 'the hatch stopped cancelling the filter').toMatch(/backdrop-filter:\s*none/);
   });
 
   /**
